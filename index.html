@@ -3,106 +3,79 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BN — v0.2 alpha</title>
+  <title>Blush Narratives — Demo v1.0</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="logo" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28">
-          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#06B6D4"/>
-          </linearGradient></defs>
-          <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#g)"/>
-          <text x="32" y="40" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="26" text-anchor="middle" fill="white" font-weight="700">BN</text>
-        </svg>
-      </span>
-      <span class="name">BN</span>
-      <span class="tag">v0.2 alpha</span>
+      <h1>Blush Narratives</h1>
+      <span class="tag">Demo v1.0</span>
     </div>
-    <nav class="tabs" role="tablist" aria-label="Huvudnavigering">
+    <nav class="tabs">
       <button class="tab active" data-panel="home">Hem</button>
       <button class="tab" data-panel="explore">Utforska</button>
-      <button class="tab" data-panel="tips">Hur du tillfredsställer din partner</button>
       <button class="tab" data-panel="saved">Sparat</button>
-      <button class="tab" data-panel="settings">Inställningar</button>
+      <button class="tab" data-panel="connect">BlushConnect</button>
     </nav>
   </header>
 
   <main>
-    <section id="home" class="panel active" role="tabpanel" aria-labelledby="tab-home">
+    <!-- Hem -->
+    <section id="home" class="panel active">
       <div class="hero">
-        <h1>Välkommen till BN</h1>
-        <p class="muted">v0.2-fokus: tema/brand, artikelmotor (20 st), fulltextsök & sparat.</p>
-        <form id="onboarding" class="card">
-          <h3>Snabbstart</h3>
-          <label>Fokusområde
-            <select id="focus">
-              <option>Relation & kommunikation</option>
-              <option>Intimitet & närhet</option>
-              <option>Wellness & självkänsla</option>
-              <option>Allt</option>
-            </select>
-          </label>
-          <label>Ton & språk
-            <select id="tone">
-              <option>Varm & rak</option>
-              <option>Neutral & informativ</option>
-              <option>Lekfull</option>
-            </select>
-          </label>
-          <button type="button" id="savePrefs">Spara preferenser</button>
-          <span id="saveStatus" class="status" aria-live="polite"></span>
-        </form>
+        <h2>Välkommen till Blush Narratives</h2>
+        <p class="muted">Utforska berättelser och lyssna med din favorit­röst.</p>
       </div>
-
       <div class="feed">
         <h3>Ditt flöde</h3>
         <div id="cards" class="grid"></div>
       </div>
     </section>
 
-    <section id="explore" class="panel" role="tabpanel">
+    <!-- Utforska -->
+    <section id="explore" class="panel">
       <div class="toolbar">
-        <input id="search" type="search" placeholder="Sök i alla artiklar (titel, ingress, brödtext)..." aria-label="Sök" />
-        <button id="doSearch" title="Sök">Sök</button>
+        <input id="search" type="search" placeholder="Sök artiklar..." />
+        <button id="doSearch">Sök</button>
       </div>
       <div id="results" class="grid"></div>
     </section>
 
-    <section id="tips" class="panel" role="tabpanel">
-      <article class="card">
-        <h3>Guiden</h3>
-        <p class="muted small">Denna sektion använder artikelmotorn och filtrerar på kategorin “Guiden”.</p>
-        <div id="guideList" class="grid"></div>
-      </article>
-    </section>
-
-    <section id="saved" class="panel" role="tabpanel">
+    <!-- Sparat -->
+    <section id="saved" class="panel">
       <h3>Sparade artiklar</h3>
       <div id="savedList" class="grid"></div>
     </section>
 
-    <section id="settings" class="panel" role="tabpanel">
-      <h3>Inställningar</h3>
+    <!-- BlushConnect -->
+    <section id="connect" class="panel">
+      <h3>BlushConnect — Inställningar</h3>
       <div class="card">
-        <label class="toggle">
-          <input type="checkbox" id="privacyMode" />
-          <span>Integritetsläge (dölj känsliga rubriker)</span>
-        </label>
-        <details>
-          <summary>Tema</summary>
-          <div class="theme-grid">
-            <label>Primär <input type="color" id="primaryColor" value="#6366F1"></label>
-            <label>Sekundär <input type="color" id="secondaryColor" value="#06B6D4"></label>
-            <label>Accent <input type="color" id="accentColor" value="#22C55E"></label>
-            <button id="applyTheme" type="button">Spara tema</button>
-          </div>
-        </details>
-        <button id="reset">Återställ demo</button>
+        <label for="voiceSelect">Välj röst:</label>
+        <select id="voiceSelect">
+          <option value="warm-female">Varm kvinnlig</option>
+          <option value="calm-male">Lugn manlig</option>
+          <option value="playful-female">Lekfull kvinnlig</option>
+          <option value="erotic-female">Erotisk kvinnlig</option>
+          <option value="deep-male">Djup manlig</option>
+          <option value="storyteller">Berättarröst</option>
+          <option value="whisper">Viskning</option>
+          <option value="energetic">Energisk</option>
+        </select>
+
+        <label for="intensity">Intensitet:</label>
+        <input type="range" id="intensity" min="1" max="4" step="1" value="2" />
+        <div class="intensity-labels">
+          <span>Soft</span>
+          <span>Varm</span>
+          <span>Spicy</span>
+          <span>Explicit</span>
+        </div>
+
+        <button id="previewVoice">Förhandslyssna</button>
+        <button id="savePrefs">Spara inställningar</button>
       </div>
-      <p class="muted small">All data sparas lokalt i din webbläsare.</p>
     </section>
   </main>
 
@@ -112,7 +85,7 @@
       <p class="ingress"></p>
       <div class="actions">
         <button class="save">Spara</button>
-        <button class="open">Öppna</button>
+        <button class="listen">Lyssna</button>
       </div>
     </article>
   </template>
@@ -127,7 +100,7 @@
   </dialog>
 
   <footer class="footer">
-    <span>BN v0.2 alpha — frontend only</span>
+    <span>Blush Narratives v1.0 Demo — Frontend</span>
   </footer>
 
   <script src="app.js"></script>
