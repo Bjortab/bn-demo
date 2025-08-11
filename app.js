@@ -1,106 +1,126 @@
-const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BN — v0.2 alpha</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28">
+          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#06B6D4"/>
+          </linearGradient></defs>
+          <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#g)"/>
+          <text x="32" y="40" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="26" text-anchor="middle" fill="white" font-weight="700">BN</text>
+        </svg>
+      </span>
+      <span class="name">BN</span>
+      <span class="tag">v0.2 alpha</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Huvudnavigering">
+      <button class="tab active" data-panel="home">Hem</button>
+      <button class="tab" data-panel="explore">Utforska</button>
+      <button class="tab" data-panel="saved">Sparat</button>
+      <button class="tab" data-panel="settings">Inställningar</button>
+    </nav>
+  </header>
 
-// Artiklar (placeholder – fylls på i v0.3)
-const articles = [
-  {id:"g1", category:"Guiden", title:"Kommunikation som faktiskt funkar", ingress:"En enkel modell för svåra samtal: spegla, validera, önska.", body:"Fulltext placeholder.", tags:["kommunikation","relation"]},
-  {id:"e1", category:"Utforska", title:"Stärk självkänslan", ingress:"Övningar för att bli snällare mot dig själv.", body:"Fulltext placeholder.", tags:["självkänsla"]},
-  {id:"e2", category:"Utforska", title:"10 frågor som öppnar upp", ingress:"Enkla frågor att börja med.", body:"Fulltext placeholder.", tags:["frågor"]},
-  {id:"e3", category:"Utforska", title:"Planera en dejt hemma", ingress:"Låg effort, hög effekt.", body:"Fulltext placeholder.", tags:["dejt"]},
-  {id:"e4", category:"Utforska", title:"Sömn & närhet", ingress:"Hur sömn påverkar intimitet.", body:"Fulltext placeholder.", tags:["sömn"]},
-  {id:"e5", category:"Utforska", title:"Stress och lust", ingress:"Strategier för att hitta tillbaka.", body:"Fulltext placeholder.", tags:["stress","lust"]},
-  {id:"e6", category:"Utforska", title:"Kroppsspråkets signaler", ingress:"Läsa och bli läst.", body:"Fulltext placeholder.", tags:["kroppsspråk"]}
-];
+  <main>
+    <section id="home" class="panel active" role="tabpanel">
+      <div class="hero">
+        <h1>Välkommen till BN</h1>
+        <p class="muted">v0.2-fokus: tema/brand, artikelmotor (20 st), fulltextsök & sparat.</p>
+        <form id="onboarding" class="card">
+          <h3>Snabbstart</h3>
+          <label>Fokusområde
+            <select id="focus">
+              <option>Relation & kommunikation</option>
+              <option>Intimitet & närhet</option>
+              <option>Wellness & självkänsla</option>
+              <option>Allt</option>
+            </select>
+          </label>
+          <label>Ton & språk
+            <select id="tone">
+              <option>Varm & rak</option>
+              <option>Neutral & informativ</option>
+              <option>Lekfull</option>
+            </select>
+          </label>
+          <button type="button" id="savePrefs">Spara preferenser</button>
+          <span id="saveStatus" class="status" aria-live="polite"></span>
+        </form>
+      </div>
 
-const store = {
-  key: 'bn-v02',
-  load(){ try { return JSON.parse(localStorage.getItem(this.key)) || {}; } catch { return {}; } },
-  save(data){ localStorage.setItem(this.key, JSON.stringify(data)); }
-};
+      <div class="feed">
+        <h3>Ditt flöde</h3>
+        <div id="cards" class="grid"></div>
+      </div>
+    </section>
 
-function applyThemeFromState(){
-  const s = store.load();
-  const theme = s.theme || {primary:'#6366F1', secondary:'#06B6D4', accent:'#22C55E'};
-  const r = document.documentElement;
-  r.style.setProperty('--primary', theme.primary);
-  r.style.setProperty('--secondary', theme.secondary);
-  r.style.setProperty('--accent', theme.accent);
-  const pc = $('#primaryColor'), sc = $('#secondaryColor'), ac = $('#accentColor');
-  if (pc) pc.value = theme.primary; if (sc) sc.value = theme.secondary; if (ac) ac.value = theme.accent;
-}
-function saveTheme(){
-  const theme = { primary: $('#primaryColor').value, secondary: $('#secondaryColor').value, accent: $('#accentColor').value };
-  const s = store.load(); s.theme = theme; store.save(s);
-}
+    <section id="explore" class="panel" role="tabpanel">
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="Sök i alla artiklar (titel, ingress, brödtext)..." aria-label="Sök" />
+        <button id="doSearch" title="Sök">Sök</button>
+      </div>
+      <div id="results" class="grid"></div>
+    </section>
 
-function renderList(container, list){
-  container.innerHTML = '';
-  list.forEach((a,i) => {
-    const tpl = $('#card-tpl').content.cloneNode(true);
-    const privacy = $('#privacyMode')?.checked || false;
-    tpl.querySelector('.title').textContent = privacy ? `Artikel ${i+1}` : a.title;
-    tpl.querySelector('.ingress').textContent = privacy ? 'Dolt i integritetsläge' : a.ingress;
-    tpl.querySelector('.save').addEventListener('click', () => saveArticle(a));
-    tpl.querySelector('.open').addEventListener('click', () => openArticle(a));
-    container.appendChild(tpl);
-  });
-}
-function renderFeed(){ renderList($('#cards'), articles.filter(a=>a.category!=='Guiden')); }
-function renderSaved(){
-  const { saved=[] } = store.load();
-  renderList($('#savedList'), saved);
-}
-function saveArticle(a){
-  const s = store.load(); s.saved = s.saved || [];
-  if (!s.saved.find(x=>x.id===a.id)) s.saved.push(a);
-  store.save(s); renderSaved();
-}
-function openArticle(a){
-  $('#modalTitle').textContent = a.title;
-  $('#modalIngress').textContent = a.ingress;
-  $('#modalBody').innerHTML = `<p>${a.body}</p>`;
-  $('#modal').showModal();
-}
+    <section id="saved" class="panel" role="tabpanel">
+      <h3>Sparade artiklar</h3>
+      <div id="savedList" class="grid"></div>
+    </section>
 
-// Sök
-function search(){
-  const q = $('#search').value.trim().toLowerCase();
-  const hit = a =>
-    a.title.toLowerCase().includes(q) ||
-    a.ingress.toLowerCase().includes(q) ||
-    a.body.toLowerCase().includes(q) ||
-    (a.tags||[]).some(t=>t.toLowerCase().includes(q));
-  renderList($('#results'), articles.filter(hit));
-}
+    <section id="settings" class="panel" role="tabpanel">
+      <h3>Inställningar</h3>
+      <div class="card">
+        <label class="toggle">
+          <input type="checkbox" id="privacyMode" />
+          <span>Integritetsläge (dölj känsliga rubriker)</span>
+        </label>
+        <details>
+          <summary>Tema</summary>
+          <div class="theme-grid">
+            <label>Primär <input type="color" id="primaryColor" value="#6366F1"></label>
+            <label>Sekundär <input type="color" id="secondaryColor" value="#06B6D4"></label>
+            <label>Accent <input type="color" id="accentColor" value="#22C55E"></label>
+            <button id="applyTheme" type="button">Spara tema</button>
+          </div>
+        </details>
+        <button id="reset">Återställ demo</button>
+      </div>
+      <p class="muted small">All data sparas lokalt i din webbläsare.</p>
+    </section>
+  </main>
 
-// Tabs
-function switchTab(panelId){
-  $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.panel===panelId));
-  $$('.panel').forEach(p => p.classList.toggle('active', p.id===panelId));
-}
+  <template id="card-tpl">
+    <article class="card">
+      <h4 class="title"></h4>
+      <p class="ingress"></p>
+      <div class="actions">
+        <button class="save">Spara</button>
+        <button class="open">Öppna</button>
+      </div>
+    </article>
+  </template>
 
-// Prefs
-function savePrefs(){
-  const s = store.load();
-  s.prefs = { focus: $('#focus').value, tone: $('#tone').value, privacy: $('#privacyMode')?.checked || false };
-  store.save(s);
-  const el = $('#saveStatus'); el.textContent = 'Sparat!'; setTimeout(()=> el.textContent='', 1200);
-  renderFeed(); renderSaved();
-}
-function resetDemo(){ localStorage.removeItem(store.key); applyThemeFromState(); renderFeed(); renderSaved(); }
+  <dialog id="modal">
+    <article class="card">
+      <h3 id="modalTitle"></h3>
+      <p id="modalIngress" class="muted"></p>
+      <div id="modalBody"></div>
+      <button id="closeModal">Stäng</button>
+    </article>
+  </dialog>
 
-// Init
-document.addEventListener('DOMContentLoaded', () => {
-  $$('.tab').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.panel)));
-  $('#savePrefs').addEventListener('click', savePrefs);
-  $('#privacyMode').addEventListener('change', savePrefs);
-  $('#applyTheme').addEventListener('click', () => { saveTheme(); applyThemeFromState(); });
-  $('#reset').addEventListener('click', resetDemo);
-  $('#closeModal').addEventListener('click', ()=> $('#modal').close());
-  $('#doSearch').addEventListener('click', search);
-  $('#search').addEventListener('keydown', e => { if(e.key==='Enter') search(); });
+  <footer class="footer">
+    <span>BN v0.2 alpha — frontend only</span>
+  </footer>
 
-  applyThemeFromState();
-  renderFeed();
-  renderSaved();
-});
+  <script src="app.js"></script>
+</body>
+</html>
