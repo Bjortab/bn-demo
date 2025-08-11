@@ -1,126 +1,46 @@
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BN — v0.2 alpha</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28">
-          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#06B6D4"/>
-          </linearGradient></defs>
-          <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#g)"/>
-          <text x="32" y="40" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="26" text-anchor="middle" fill="white" font-weight="700">BN</text>
-        </svg>
-      </span>
-      <span class="name">BN</span>
-      <span class="tag">v0.2 alpha</span>
-    </div>
-    <nav class="tabs" role="tablist" aria-label="Huvudnavigering">
-      <button class="tab active" data-panel="home">Hem</button>
-      <button class="tab" data-panel="explore">Utforska</button>
-      <button class="tab" data-panel="saved">Sparat</button>
-      <button class="tab" data-panel="settings">Inställningar</button>
-    </nav>
-  </header>
+:root{
+  --primary:#6366F1;
+  --secondary:#06B6D4;
+  --accent:#22C55E;
+  --text:#0b1220;
+  --muted:#667085;
+  --bg:#ffffff;
+  --panel:#f8fafc;
+  --border:#e5e7eb;
+}
 
-  <main>
-    <section id="home" class="panel active" role="tabpanel">
-      <div class="hero">
-        <h1>Välkommen till BN</h1>
-        <p class="muted">v0.2-fokus: tema/brand, artikelmotor (20 st), fulltextsök & sparat.</p>
-        <form id="onboarding" class="card">
-          <h3>Snabbstart</h3>
-          <label>Fokusområde
-            <select id="focus">
-              <option>Relation & kommunikation</option>
-              <option>Intimitet & närhet</option>
-              <option>Wellness & självkänsla</option>
-              <option>Allt</option>
-            </select>
-          </label>
-          <label>Ton & språk
-            <select id="tone">
-              <option>Varm & rak</option>
-              <option>Neutral & informativ</option>
-              <option>Lekfull</option>
-            </select>
-          </label>
-          <button type="button" id="savePrefs">Spara preferenser</button>
-          <span id="saveStatus" class="status" aria-live="polite"></span>
-        </form>
-      </div>
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: var(--panel); color: var(--text); }
 
-      <div class="feed">
-        <h3>Ditt flöde</h3>
-        <div id="cards" class="grid"></div>
-      </div>
-    </section>
+.topbar { position: sticky; top: 0; background: #0f172a; color: #fff; padding: 12px 16px; box-shadow: 0 2px 8px rgba(0,0,0,.25); z-index: 10; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing:.2px; }
+.brand .name { font-size: 18px; }
+.tag { font-size: 12px; background: var(--accent); color: #0a0a0a; border-radius: 6px; padding: 2px 6px; margin-left: 8px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.tab { background: #1f2937; color: #d1d5db; border: 1px solid #334155; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.tab.active { background: #e5e7eb; color: #111827; border-color: #e5e7eb; }
 
-    <section id="explore" class="panel" role="tabpanel">
-      <div class="toolbar">
-        <input id="search" type="search" placeholder="Sök i alla artiklar (titel, ingress, brödtext)..." aria-label="Sök" />
-        <button id="doSearch" title="Sök">Sök</button>
-      </div>
-      <div id="results" class="grid"></div>
-    </section>
+main { padding: 20px; max-width: 980px; margin: 0 auto; }
+.hero { margin-bottom: 20px; }
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,.05); }
 
-    <section id="saved" class="panel" role="tabpanel">
-      <h3>Sparade artiklar</h3>
-      <div id="savedList" class="grid"></div>
-    </section>
+label { display: grid; gap: 6px; margin: 10px 0; }
+button { border: 1px solid #11182720; background: #111827; color: white; padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+button:hover { opacity: .95; }
+.status { margin-left: 10px; font-size: 12px; color: #059669; }
 
-    <section id="settings" class="panel" role="tabpanel">
-      <h3>Inställningar</h3>
-      <div class="card">
-        <label class="toggle">
-          <input type="checkbox" id="privacyMode" />
-          <span>Integritetsläge (dölj känsliga rubriker)</span>
-        </label>
-        <details>
-          <summary>Tema</summary>
-          <div class="theme-grid">
-            <label>Primär <input type="color" id="primaryColor" value="#6366F1"></label>
-            <label>Sekundär <input type="color" id="secondaryColor" value="#06B6D4"></label>
-            <label>Accent <input type="color" id="accentColor" value="#22C55E"></label>
-            <button id="applyTheme" type="button">Spara tema</button>
-          </div>
-        </details>
-        <button id="reset">Återställ demo</button>
-      </div>
-      <p class="muted small">All data sparas lokalt i din webbläsare.</p>
-    </section>
-  </main>
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.panel { display: none; }
+.panel.active { display: block; }
+.toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+input[type="search"], select, input[type='color'] { padding: 8px; border-radius: 8px; border: 1px solid #d1d5db; width: 100%; background: #fff; }
+.actions { display: flex; gap: 8px; margin-top: 8px; }
 
-  <template id="card-tpl">
-    <article class="card">
-      <h4 class="title"></h4>
-      <p class="ingress"></p>
-      <div class="actions">
-        <button class="save">Spara</button>
-        <button class="open">Öppna</button>
-      </div>
-    </article>
-  </template>
+footer.footer { padding: 24px; text-align: center; color: #6b7280; }
+dialog { border: none; border-radius: 12px; padding: 0; max-width: 720px; width: 95vw; }
+dialog::backdrop { background: rgba(0,0,0,.3); backdrop-filter: blur(2px); }
 
-  <dialog id="modal">
-    <article class="card">
-      <h3 id="modalTitle"></h3>
-      <p id="modalIngress" class="muted"></p>
-      <div id="modalBody"></div>
-      <button id="closeModal">Stäng</button>
-    </article>
-  </dialog>
-
-  <footer class="footer">
-    <span>BN v0.2 alpha — frontend only</span>
-  </footer>
-
-  <script src="app.js"></script>
-</body>
-</html>
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; padding-top: 8px; }
