@@ -1,0 +1,46 @@
+export default {
+  async fetch(req, env) {
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'content-type',
+    };
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+    if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: CORS });
+
+    try {
+      const { prompt, level } = await req.json();
+      const systemPrompt = `
+Du skriver korta svenska, sensuella och romantiska berättelser.
+Respektera nivå:
+1 = mjuk/oskuldig (antydan), 3 = mellan (mer suggestiv), 5 = intensiv men ej grafisk.
+180–260 ord. Avsluta med lugn eftervård.`;
+
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.95,
+          max_tokens: 500,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `Nivå: ${level}. Idé: ${prompt}` }
+          ]
+        })
+      });
+
+      if (!r.ok) {
+        const t = await r.text();
+        return new Response(JSON.stringify({ error: t }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+      const data = await r.json();
+      const text = data.choices?.[0]?.message?.content?.trim() || "Kunde inte skapa text just nu.";
+      return new Response(JSON.stringify({ text }), { status: 200, headers: { ...CORS, "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+  }
+};
