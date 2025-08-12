@@ -1,0 +1,90 @@
+// En liten hjälpare
+const $ = s => document.querySelector(s);
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Elements
+  const connect = $('#connect');
+  $('#openConnect').addEventListener('click', ()=> connect.setAttribute('aria-hidden','false'));
+  $('#closeConnect').addEventListener('click', ()=> connect.setAttribute('aria-hidden','true'));
+
+  // Level buttons
+  document.querySelectorAll('.lvl').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.lvl').forEach(b=> b.setAttribute('aria-pressed','false'));
+      btn.setAttribute('aria-pressed','true');
+      // här kan vi spara nivån i localStorage om du vill
+      localStorage.setItem('bn-level', btn.dataset.level);
+    });
+  });
+
+  // TTS (röstprov)
+  const synth = window.speechSynthesis;
+  const playBtn = $('#playPause');
+  const seek = $('#seek');
+  const title = $('#storyTitle');
+  const desc = $('#storyDesc');
+
+  let speaking = false;
+  let progressTimer = null;
+
+  function pickVoice(){
+    if(!('speechSynthesis' in window)) return null;
+    const vs = synth.getVoices();
+    const sv = vs.filter(v=>/sv-SE/i.test(v.lang));
+    return sv[0] || vs.find(v=>/sv/i.test(v.lang)) || vs[0] || null;
+  }
+
+  function speak(text){
+    if(!('speechSynthesis' in window)){ alert('Din webbläsare saknar talsyntes.'); return; }
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice();
+    if(v) u.voice = v;
+    u.lang = (v && v.lang) || 'sv-SE';
+    u.rate = 0.95; u.pitch = 1.05;
+    u.onstart = startProgress;
+    u.onend   = ()=> stopProgress(true);
+    synth.speak(u);
+  }
+
+  function startProgress(){
+    speaking = true;
+    playBtn.textContent = '⏸';
+    seek.value = 0;
+    clearInterval(progressTimer);
+    progressTimer = setInterval(()=>{ seek.value = Math.min(100, +seek.value + 2); }, 200);
+  }
+  function stopProgress(done=false){
+    speaking = false;
+    clearInterval(progressTimer); progressTimer=null;
+    playBtn.textContent = '▶';
+    if(done) seek.value = 0;
+  }
+
+  const SAMPLE = "Det här är ett kort, sensuellt röstprov. Luta dig tillbaka, andas mjukt, och låt orden landa långsamt.";
+
+  playBtn.addEventListener('click', ()=>{
+    if(speaking && !synth.paused){ synth.pause(); playBtn.textContent='▶'; return; }
+    if(synth.paused){ synth.resume(); playBtn.textContent='⏸'; return; }
+    title.textContent = 'Röstprov spelas';
+    desc.textContent  = 'Sensuell provläsning via talsyntes';
+    speak(SAMPLE);
+  });
+
+  // (Seek är bara visuell progress i TTS-läget)
+  $('#generateStory').addEventListener('click', ()=>{
+    const prompt = $('#customPrompt').value.trim();
+    if(!prompt) return alert('Skriv något först!');
+    $('#dialogTitle').textContent = 'Din berättelse';
+    $('#dialogContent').textContent = `Skapad utifrån: "${prompt}"\n\n(Här kommer AI-text + röst i nästa steg)`;
+    $('#storyDialog').showModal();
+  });
+  $('#closeDialog').addEventListener('click', ()=> $('#storyDialog').close());
+
+  // Säkerställ att röster laddas (iOS/Safari laddar asynkront)
+  if('speechSynthesis' in window){
+    const ping = ()=> window.speechSynthesis.getVoices();
+    window.speechSynthesis.onvoiceschanged = ping;
+    setTimeout(ping, 200);
+  }
+});
