@@ -1,0 +1,52 @@
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0f1117;color:#f5f5f5;padding-bottom:68px}
+
+/* Top */
+.top{position:sticky;top:0;z-index:10;background:#151921;padding:.6rem 1rem;border-bottom:1px solid #1f2430}
+.top .row{display:flex;justify-content:space-between;align-items:center}
+.logo{font-weight:800}
+.ghost{background:none;color:#f5f5f5;border:1px solid #2b3244;border-radius:8px;padding:.4rem .7rem}
+.sm{font-size:.9rem}
+.levels{display:flex;gap:.5rem;padding:.6rem 1rem}
+.lvl{width:36px;height:36px;border-radius:999px;background:#2a3142;color:#fff;border:1px solid #3a4153}
+.lvl[aria-pressed="true"]{background:#ff4081;border-color:#ff4081}
+
+/* Cards & layout */
+.container{padding:1rem}
+.card{background:#1a1f29;border:1px solid #23293a;border-radius:12px;padding:1rem;margin:1rem}
+.grid{display:grid;gap:1rem}
+.muted{color:#aab}
+.small{font-size:.88rem}
+
+/* Player */
+.controls{display:flex;align-items:center;gap:.6rem;margin-top:.6rem}
+.controls button{background:#ff4081;color:#fff;border:none;border-radius:10px;padding:.45rem .7rem}
+.controls input[type=range]{flex:1}
+
+/* Bottom nav */
+.bottom{position:fixed;left:0;right:0;bottom:0;display:flex;gap:.5rem;justify-content:space-around;padding:.5rem;background:#151921;border-top:1px solid #23293a}
+.bottom button{background:none;color:#f5f5f5}
+.bottom button.active{color:#ff4081}
+
+/* Connect sheet (slide-in) */
+#connect{position:fixed;inset:0;left:100%;background:rgba(15,17,23,.98);transition:left .25s ease;overflow:auto}
+#connect[aria-hidden="false"]{left:0}
+.sheet{padding:1rem}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem}
+.pref{margin:.8rem 0}
+.pref.two{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.toggle{display:flex;gap:.4rem;align-items:center}
+.people{display:grid;gap:.8rem}
+.person{background:#1a1f29;border:1px solid #23293a;border-radius:10px;padding:.7rem}
+.p-top{display:flex;justify-content:space-between}
+.p-alias{font-weight:700}
+.p-badge{color:#ff4081}
+
+/* Inputs & buttons */
+textarea{width:100%;min-height:90px;background:#2a3142;color:#fff;border:1px solid #3a4153;border-radius:10px;padding:.6rem}
+.btn{background:#ff4081;color:#fff;border:none;border-radius:10px;padding:.5rem .9rem;margin-top:.6rem}
+
+/* Dialog */
+dialog{border:none;background:transparent}
+dialog .card{max-width:520px;margin:10% auto}
