@@ -1,0 +1,123 @@
+document.addEventListener("DOMContentLoaded", () => {
+  const openConnectBtn = document.getElementById("openConnect");
+  const closeConnectBtn = document.getElementById("closeConnect");
+  const connectPanel = document.getElementById("connect");
+  const playPauseBtn = document.getElementById("playPause");
+  const seekBar = document.getElementById("seek");
+  const storyTitle = document.getElementById("storyTitle");
+  const storyDesc = document.getElementById("storyDesc");
+  const generateBtn = document.getElementById("generateStory");
+  const customPrompt = document.getElementById("customPrompt");
+  const storyDialog = document.getElementById("storyDialog");
+  const dialogTitle = document.getElementById("dialogTitle");
+  const dialogContent = document.getElementById("dialogContent");
+  const closeDialogBtn = document.getElementById("closeDialog");
+
+  // ====== BlushConnect öppna/stäng ======
+  openConnectBtn.addEventListener("click", () => connectPanel.setAttribute("aria-hidden", "false"));
+  closeConnectBtn.addEventListener("click", () => connectPanel.setAttribute("aria-hidden", "true"));
+
+  // ====== TTS: sensuell provtext (svenska) ======
+  const synth = window.speechSynthesis;
+  let speaking = false;
+  let progressTimer = null;
+  const sampleText =
+    "Det här är ett kort, sensuellt röstprov. Luta dig tillbaka, andas mjukt, och låt orden landa långsamt.";
+
+  function pickVoice() {
+    const voices = synth.getVoices();
+    const sv = voices.filter(v => /sv-SE/i.test(v.lang));
+    // prioritera svensk kvinnlig/naturlig röst om möjligt
+    return sv[0] || voices.find(v => /sv/i.test(v.lang)) || voices[0] || null;
+  }
+
+  function speak(text) {
+    if (!("speechSynthesis" in window)) {
+      alert("Din webbläsare saknar talsyntes.");
+      return;
+    }
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice();
+    if (v) u.voice = v;
+    u.lang = (v && v.lang) || "sv-SE";
+    u.rate = 0.95;   // lite långsammare
+    u.pitch = 1.05;  // lite varmare
+    u.onstart = () => startProgress();
+    u.onend = () => stopProgress(true);
+    synth.speak(u);
+  }
+
+  function startProgress() {
+    speaking = true;
+    playPauseBtn.textContent = "⏸";
+    seekBar.value = 0;
+    clearInterval(progressTimer);
+    progressTimer = setInterval(() => {
+      const val = Math.min(100, (+seekBar.value + 2));
+      seekBar.value = val;
+    }, 200);
+  }
+
+  function stopProgress(done = false) {
+    speaking = false;
+    clearInterval(progressTimer);
+    progressTimer = null;
+    playPauseBtn.textContent = "▶";
+    if (done) seekBar.value = 0;
+  }
+
+  // Play/Pause-knappen styr TTS
+  playPauseBtn.addEventListener("click", () => {
+    if (speaking && !synth.paused) {
+      synth.pause();
+      playPauseBtn.textContent = "▶";
+    } else if (synth.paused) {
+      synth.resume();
+      playPauseBtn.textContent = "⏸";
+    } else {
+      storyTitle.textContent = "Röstprov spelas";
+      storyDesc.textContent = "Sensuell provläsning via talsyntes";
+      speak(sampleText);
+    }
+  });
+
+  // Sökreglaget är bara visuell progress för TTS i demot
+  seekBar.addEventListener("input", () => { /* no-op i TTS-läge */ });
+
+  // ====== Skapa egen berättelse (placeholder) ======
+  generateBtn.addEventListener("click", () => {
+    const prompt = customPrompt.value.trim();
+    if (!prompt) return alert("Skriv något först!");
+    dialogTitle.textContent = "Din berättelse";
+    dialogContent.textContent = `Skapad utifrån: "${prompt}"\n\n(Här kommer AI-text och uppläsning i nästa steg)`;
+    storyDialog.showModal();
+  });
+
+  closeDialogBtn.addEventListener("click", () => storyDialog.close());
+
+  // ====== Exempelpersoner i BlushConnect ======
+  const peopleList = document.getElementById("peopleList");
+  [
+    { name: "Luna", level: "3" },
+    { name: "Adrian", level: "5" },
+    { name: "Mika", level: "1" }
+  ].forEach(p => {
+    const div = document.createElement("div");
+    div.className = "person";
+    div.innerHTML = `
+      <div class="p-top">
+        <span class="p-alias">${p.name}</span>
+        <span class="p-badge">Nivå ${p.level}</span>
+      </div>
+    `;
+    peopleList.appendChild(div);
+  });
+
+  // Ladda röster (vissa webbläsare fyller listan asynkront)
+  if ("speechSynthesis" in window) {
+    const tryPopulate = () => synth.getVoices(); // bara trigg
+    window.speechSynthesis.onvoiceschanged = tryPopulate;
+    setTimeout(tryPopulate, 200);
+  }
+});
