@@ -7,82 +7,83 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Top -->
-  <header class="top">
-    <div class="row">
-      <div class="logo">Blush Narratives</div>
-      <button class="ghost sm" id="openConnect" type="button">BlushConnect</button>
-    </div>
-    <div class="levels" id="levelBar" role="group" aria-label="Erotiknivå">
-      <button class="lvl" data-level="1" aria-pressed="true" type="button">1</button>
-      <button class="lvl" data-level="3" aria-pressed="false" type="button">3</button>
-      <button class="lvl" data-level="5" aria-pressed="false" type="button">5</button>
-    </div>
+  <header class="topbar">
+    <h1 class="logo">Blush Narratives</h1>
+    <nav class="nav">
+      <a class="nav__link is-active" href="#">Hem</a>
+      <a class="nav__link" href="#">Favoriter</a>
+      <a class="nav__link" href="#" id="openConnect">Connect</a>
+    </nav>
   </header>
 
-  <!-- Spelare -->
-  <section class="player card">
-    <div class="meta">
-      <h2 id="storyTitle">Välkommen till Blush Narratives</h2>
-      <p class="muted small" id="storyDesc">Välj nivå och tryck play för röstprov.</p>
-    </div>
-    <div class="controls">
-      <button id="playPause" type="button" aria-label="Spela/Pausa">▶</button>
-      <input id="seek" type="range" min="0" max="100" value="0" />
-    </div>
-  </section>
-
-  <!-- Skapa egen -->
-  <section id="createBox" class="container card">
-    <h3>Skapa egen berättelse</h3>
-    <textarea id="customPrompt" placeholder="Skriv din idé..."></textarea>
-    <button class="btn sm" id="generateStory" type="button">Skapa</button>
-  </section>
-
-  <!-- Bottennav -->
-  <nav class="bottom">
-    <button class="active" data-tab="home" type="button">Hem</button>
-    <button data-tab="favorites" type="button">Favoriter</button>
-    <button data-tab="profile" type="button">Profil</button>
-  </nav>
-
-  <!-- BlushConnect -->
-  <section id="connect" aria-hidden="true">
-    <div class="sheet">
-      <div class="sheet-head">
-        <h2>BlushConnect</h2>
-        <button id="closeConnect" class="ghost sm" type="button">Stäng</button>
+  <main class="container">
+    <section class="card">
+      <h2>Välj nivå</h2>
+      <div class="levels" role="group" aria-label="Nivå">
+        <button class="chip is-selected" data-level="1">1</button>
+        <button class="chip" data-level="3">3</button>
+        <button class="chip" data-level="5">5</button>
       </div>
 
-      <div class="pref">
-        <label for="connectLevel">Föredragen nivå</label>
-        <select id="connectLevel">
-          <option value="1">1 - Oskyldig</option>
-          <option value="3">3 - Mellan</option>
-          <option value="5">5 - Ingående</option>
-        </select>
+      <div class="row">
+        <label for="voiceSel">Röst (om tillgänglig):</label>
+        <select id="voiceSel"></select>
+        <button id="previewVoice" class="btn">Lyssna röst</button>
       </div>
 
-      <div class="pref two">
-        <label class="toggle"><input type="checkbox" id="showProfile" checked /> Visa profil</label>
-        <label class="toggle"><input type="checkbox" id="acceptMsgs" checked /> Tillåt meddelanden</label>
+      <div class="player">
+        <button id="playIntro" class="btn btn--primary">▶ Spela introduktion</button>
+        <input id="rate" type="range" min="0.8" max="1.3" step="0.05" value="1" />
+        <label for="rate">Tempo</label>
       </div>
+    </section>
 
-      <h3>Personer online</h3>
-      <div class="people" id="peopleList"></div>
-    </div>
-  </section>
+    <section class="card">
+      <h2>Skapa egen berättelse</h2>
+      <p class="muted">Skriv några rader (plats, stämning, relation). Tryck “Skapa” — texten genereras och läses upp.</p>
+      <textarea id="idea" rows="5" placeholder="Ex: mjuk kväll på balkongen, långsam rytm, värme i rösten…"></textarea>
+      <div class="actions">
+        <button id="createBtn" class="btn btn--primary">Skapa</button>
+        <button id="stopTTS" class="btn">Stoppa uppläsning</button>
+      </div>
+      <div id="status" class="status"></div>
+      <article id="output" class="output" hidden>
+        <h3>Din berättelse</h3>
+        <pre id="storyText"></pre>
+      </article>
+    </section>
+  </main>
 
-  <!-- Dialog -->
-  <dialog id="storyDialog">
-    <div class="card">
-      <h2 id="dialogTitle"></h2>
-      <p id="dialogContent"></p>
-      <button class="btn sm" id="closeDialog" type="button">Stäng</button>
-    </div>
+  <!-- BlushConnect (enkel mockup) -->
+  <dialog id="connectDlg">
+    <article class="card">
+      <h2>BlushConnect</h2>
+      <p class="muted">Demo-läge: lokala preferenser. Riktig matchning kräver backend, kommer senare.</p>
+      <div class="row">
+        <label>Alias <input id="alias" placeholder="Ditt alias" /></label>
+        <label>Favoritnivå
+          <select id="favLevel">
+            <option value="1">1</option>
+            <option value="3">3</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="saveConnect" class="btn btn--primary">Spara</button>
+        <button id="closeConnect" class="btn">Stäng</button>
+      </div>
+    </article>
   </dialog>
 
-  <!-- Script sist (säkerställer att allt finns i DOM) -->
-  <script src="app.js"></script>
+  <footer class="footer">
+    <small>BN • demo med AI + TTS</small>
+  </footer>
+
+  <script>
+    /* === Ange din Worker-URL här när du skapat den i Cloudflare === */
+    window.BN_PROXY_URL = "https://<din-worker>.workers.dev";
+  </script>
+  <script src="script.js"></script>
 </body>
 </html>
