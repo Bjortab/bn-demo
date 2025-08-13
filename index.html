@@ -1,89 +1,124 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives</title>
+  <title>Blush Narratives — demo</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1 class="logo">Blush Narratives</h1>
-    <nav class="nav">
-      <a class="nav__link is-active" href="#">Hem</a>
-      <a class="nav__link" href="#">Favoriter</a>
-      <a class="nav__link" href="#" id="openConnect">Connect</a>
-    </nav>
+    <div class="brand">Blush <span>Narratives</span></div>
+    <button id="btnConnect" class="ghost">BlushConnect</button>
   </header>
 
-  <main class="container">
-    <section class="card">
-      <h2>Välj nivå</h2>
-      <div class="levels" role="group" aria-label="Nivå">
-        <button class="chip is-selected" data-level="1">1</button>
-        <button class="chip" data-level="3">3</button>
-        <button class="chip" data-level="5">5</button>
-      </div>
+  <nav class="tabs">
+    <button class="tab active" data-tab="home">Hem</button>
+    <button class="tab" data-tab="favs">Favoriter</button>
+    <button class="tab" data-tab="profile">Profil</button>
+  </nav>
 
-      <div class="row">
-        <label for="voiceSel">Röst (om tillgänglig):</label>
-        <select id="voiceSel"></select>
-        <button id="previewVoice" class="btn">Lyssna röst</button>
-      </div>
+  <main>
+    <!-- HEM -->
+    <section id="tab-home" class="view active">
+      <div class="panel">
+        <h1>Välkommen till <span>Blush Narratives</span></h1>
+        <p class="sub">Välj nivå och spela upp en berättelse.</p>
 
-      <div class="player">
-        <button id="playIntro" class="btn btn--primary">▶ Spela introduktion</button>
-        <input id="rate" type="range" min="0.8" max="1.3" step="0.05" value="1" />
-        <label for="rate">Tempo</label>
+        <div class="levels">
+          <button class="level active" data-level="1">1</button>
+          <button class="level" data-level="3">3</button>
+          <button class="level" data-level="5">5</button>
+        </div>
+
+        <div class="actions-row">
+          <button id="btnIntro" class="primary">Spela introduktion</button>
+          <div id="ttsStatus" class="muted small"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h2>Skapa egen berättelse</h2>
+        <div class="composer">
+          <textarea id="idea" rows="4" placeholder="Skriv din idé..."></textarea>
+          <button id="btnCompose" class="primary">Skapa smakprov</button>
+        </div>
+
+        <div id="storyCard" class="card hidden">
+          <div class="card-head">
+            <h3 id="storyTitle">Smakprov</h3>
+            <div class="chip" id="levelChip">Nivå 1</div>
+          </div>
+          <p id="storyText"></p>
+          <div class="player">
+            <button id="btnPlay" class="circle">▶</button>
+            <button id="btnStop" class="circle">■</button>
+            <button id="btnFav" class="ghost">Spara i favoriter</button>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>Skapa egen berättelse</h2>
-      <p class="muted">Skriv några rader (plats, stämning, relation). Tryck “Skapa” — texten genereras och läses upp.</p>
-      <textarea id="idea" rows="5" placeholder="Ex: mjuk kväll på balkongen, långsam rytm, värme i rösten…"></textarea>
-      <div class="actions">
-        <button id="createBtn" class="btn btn--primary">Skapa</button>
-        <button id="stopTTS" class="btn">Stoppa uppläsning</button>
+    <!-- FAVORITER -->
+    <section id="tab-favs" class="view">
+      <div class="panel">
+        <h2>Dina favoriter</h2>
+        <div id="favsList" class="list empty">
+          <p class="muted">Inga favoriter ännu.</p>
+        </div>
       </div>
-      <div id="status" class="status"></div>
-      <article id="output" class="output" hidden>
-        <h3>Din berättelse</h3>
-        <pre id="storyText"></pre>
-      </article>
+    </section>
+
+    <!-- PROFIL -->
+    <section id="tab-profile" class="view">
+      <div class="panel">
+        <h2>Profil</h2>
+        <p class="muted small">Här kommer sedan fler profilinställningar, röstval m.m.</p>
+        <div class="grid two">
+          <label class="field">
+            <span>Visningsnamn</span>
+            <input id="displayName" type="text" placeholder="Din alias..." />
+          </label>
+          <label class="field">
+            <span>Standardnivå</span>
+            <select id="defaultLevel">
+              <option value="1">1 (oskyldig)</option>
+              <option value="3">3 (mellan)</option>
+              <option value="5">5 (ingående)</option>
+            </select>
+          </label>
+        </div>
+        <button id="btnSaveProfile" class="primary">Spara profil</button>
+      </div>
     </section>
   </main>
 
-  <!-- BlushConnect (enkel mockup) -->
+  <!-- BLUSHCONNECT MODAL -->
   <dialog id="connectDlg">
-    <article class="card">
-      <h2>BlushConnect</h2>
-      <p class="muted">Demo-läge: lokala preferenser. Riktig matchning kräver backend, kommer senare.</p>
-      <div class="row">
-        <label>Alias <input id="alias" placeholder="Ditt alias" /></label>
-        <label>Favoritnivå
-          <select id="favLevel">
-            <option value="1">1</option>
-            <option value="3">3</option>
-            <option value="5">5</option>
-          </select>
-        </label>
-      </div>
-      <div class="actions">
-        <button id="saveConnect" class="btn btn--primary">Spara</button>
-        <button id="closeConnect" class="btn">Stäng</button>
-      </div>
-    </article>
+    <form method="dialog" class="panel">
+      <h3>BlushConnect</h3>
+      <p class="muted small">Enkel demo av dina preferenser. Sparas lokalt.</p>
+      <label class="field">
+        <span>Önskad nivå för matchning</span>
+        <select id="connectLevel">
+          <option value="1">1 (oskyldig)</option>
+          <option value="3">3 (mellan)</option>
+          <option value="5">5 (ingående)</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Stad (frivilligt)</span>
+        <input id="connectCity" type="text" placeholder="t.ex. Stockholm" />
+      </label>
+      <menu class="right">
+        <button value="cancel" class="ghost">Stäng</button>
+        <button id="btnSaveConnect" value="default" class="primary">Spara</button>
+      </menu>
+    </form>
   </dialog>
 
-  <footer class="footer">
-    <small>BN • demo med AI + TTS</small>
-  </footer>
+  <footer class="foot muted small">BN v0.2 demo — frontend only</footer>
 
-  <script>
-    /* === Ange din Worker-URL här när du skapat den i Cloudflare === */
-    window.BN_PROXY_URL = "https://<din-worker>.workers.dev";
-  </script>
-  <script src="script.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
