@@ -1,90 +1,227 @@
-// En liten hjälpare
-const $ = s => document.querySelector(s);
+/* BN demo – helt client-side.
+   Funktioner:
+   - nivå 1/3/5
+   - generera kort text lokalt
+   - TTS via Web Speech API (om tillgängligt)
+   - favoriter i localStorage
+   - enkel profil + BlushConnect inställningar
+*/
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Elements
-  const connect = $('#connect');
-  $('#openConnect').addEventListener('click', ()=> connect.setAttribute('aria-hidden','false'));
-  $('#closeConnect').addEventListener('click', ()=> connect.setAttribute('aria-hidden','true'));
+const state = {
+  level: parseInt(localStorage.getItem('bn.level') || '1', 10),
+  ttsOk: 'speechSynthesis' in window,
+  currentStory: null,
+};
 
-  // Level buttons
-  document.querySelectorAll('.lvl').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.lvl').forEach(b=> b.setAttribute('aria-pressed','false'));
-      btn.setAttribute('aria-pressed','true');
-      // här kan vi spara nivån i localStorage om du vill
-      localStorage.setItem('bn-level', btn.dataset.level);
-    });
+const els = {
+  tabs: document.querySelectorAll('.tab'),
+  views: {
+    home: document.getElementById('tab-home'),
+    favs: document.getElementById('tab-favs'),
+    profile: document.getElementById('tab-profile'),
+  },
+  levels: document.querySelectorAll('.level'),
+  levelChip: document.getElementById('levelChip'),
+  idea: document.getElementById('idea'),
+  btnCompose: document.getElementById('btnCompose'),
+  storyCard: document.getElementById('storyCard'),
+  storyTitle: document.getElementById('storyTitle'),
+  storyText: document.getElementById('storyText'),
+  btnPlay: document.getElementById('btnPlay'),
+  btnStop: document.getElementById('btnStop'),
+  btnFav: document.getElementById('btnFav'),
+  favsList: document.getElementById('favsList'),
+  btnIntro: document.getElementById('btnIntro'),
+  ttsStatus: document.getElementById('ttsStatus'),
+  // profile
+  displayName: document.getElementById('displayName'),
+  defaultLevel: document.getElementById('defaultLevel'),
+  btnSaveProfile: document.getElementById('btnSaveProfile'),
+  // connect
+  btnConnect: document.getElementById('btnConnect'),
+  dlgConnect: document.getElementById('connectDlg'),
+  connectLevel: document.getElementById('connectLevel'),
+  connectCity: document.getElementById('connectCity'),
+  btnSaveConnect: document.getElementById('btnSaveConnect'),
+};
+
+// ============ NAV
+els.tabs.forEach(btn => {
+  btn.addEventListener('click', () => {
+    els.tabs.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    els.views[tab].classList.add('active');
+    if (tab === 'favs') renderFavs();
   });
-
-  // TTS (röstprov)
-  const synth = window.speechSynthesis;
-  const playBtn = $('#playPause');
-  const seek = $('#seek');
-  const title = $('#storyTitle');
-  const desc = $('#storyDesc');
-
-  let speaking = false;
-  let progressTimer = null;
-
-  function pickVoice(){
-    if(!('speechSynthesis' in window)) return null;
-    const vs = synth.getVoices();
-    const sv = vs.filter(v=>/sv-SE/i.test(v.lang));
-    return sv[0] || vs.find(v=>/sv/i.test(v.lang)) || vs[0] || null;
-  }
-
-  function speak(text){
-    if(!('speechSynthesis' in window)){ alert('Din webbläsare saknar talsyntes.'); return; }
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    const v = pickVoice();
-    if(v) u.voice = v;
-    u.lang = (v && v.lang) || 'sv-SE';
-    u.rate = 0.95; u.pitch = 1.05;
-    u.onstart = startProgress;
-    u.onend   = ()=> stopProgress(true);
-    synth.speak(u);
-  }
-
-  function startProgress(){
-    speaking = true;
-    playBtn.textContent = '⏸';
-    seek.value = 0;
-    clearInterval(progressTimer);
-    progressTimer = setInterval(()=>{ seek.value = Math.min(100, +seek.value + 2); }, 200);
-  }
-  function stopProgress(done=false){
-    speaking = false;
-    clearInterval(progressTimer); progressTimer=null;
-    playBtn.textContent = '▶';
-    if(done) seek.value = 0;
-  }
-
-  const SAMPLE = "Det här är ett kort, sensuellt röstprov. Luta dig tillbaka, andas mjukt, och låt orden landa långsamt.";
-
-  playBtn.addEventListener('click', ()=>{
-    if(speaking && !synth.paused){ synth.pause(); playBtn.textContent='▶'; return; }
-    if(synth.paused){ synth.resume(); playBtn.textContent='⏸'; return; }
-    title.textContent = 'Röstprov spelas';
-    desc.textContent  = 'Sensuell provläsning via talsyntes';
-    speak(SAMPLE);
-  });
-
-  // (Seek är bara visuell progress i TTS-läget)
-  $('#generateStory').addEventListener('click', ()=>{
-    const prompt = $('#customPrompt').value.trim();
-    if(!prompt) return alert('Skriv något först!');
-    $('#dialogTitle').textContent = 'Din berättelse';
-    $('#dialogContent').textContent = `Skapad utifrån: "${prompt}"\n\n(Här kommer AI-text + röst i nästa steg)`;
-    $('#storyDialog').showModal();
-  });
-  $('#closeDialog').addEventListener('click', ()=> $('#storyDialog').close());
-
-  // Säkerställ att röster laddas (iOS/Safari laddar asynkront)
-  if('speechSynthesis' in window){
-    const ping = ()=> window.speechSynthesis.getVoices();
-    window.speechSynthesis.onvoiceschanged = ping;
-    setTimeout(ping, 200);
-  }
 });
+
+// ============ NIVÅ
+function syncLevelUI(){
+  els.levels.forEach(b=>{
+    b.classList.toggle('active', parseInt(b.dataset.level,10) === state.level);
+  });
+  els.levelChip.textContent = `Nivå ${state.level}`;
+}
+els.levels.forEach(b=>{
+  b.addEventListener('click', ()=>{
+    state.level = parseInt(b.dataset.level,10);
+    localStorage.setItem('bn.level', String(state.level));
+    syncLevelUI();
+  });
+});
+syncLevelUI();
+
+// ============ INTRO (TTS)
+function speak(text){
+  if(!state.ttsOk) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'sv-SE';
+  u.rate = 1.02;
+  u.pitch = 1.0;
+  window.speechSynthesis.speak(u);
+}
+
+function introText(){
+  switch(state.level){
+    case 1: return "Välkommen till Blush Narratives. Nivå ett är lätt och oskyldig, med värme och romantik.";
+    case 3: return "Välkommen till Blush Narratives. Nivå tre bjuder på flörtig stämning och mer detaljer.";
+    case 5: return "Välkommen till Blush Narratives. Nivå fem är mest uttrycksfull, med tydliga, vuxna detaljer.";
+  }
+}
+els.btnIntro.addEventListener('click', ()=>{
+  if(!state.ttsOk){
+    els.ttsStatus.textContent = "TTS saknas i webbläsaren – text läses inte upp.";
+    return;
+  }
+  els.ttsStatus.textContent = "";
+  speak(introText());
+});
+
+// ============ GENERERA TEXT (lokal demo)
+function generateStory(idea, level){
+  const base = idea && idea.trim().length ? idea.trim() : "En oväntad kväll";
+  const tones = {
+    1: ["varma blickar", "lätta beröringar", "romantisk ton"],
+    3: ["pirrig nyfikenhet", "långsamma andetag", "förväntansfull stämning"],
+    5: ["otålig lust", "handfasta rörelser", "nakna erkännanden"]
+  };
+  const tone = tones[level];
+  const para1 = `${base}. I skymningen möttes ni, där ${tone[0]} sa mer än ord.`;
+  const para2 = `Rummet fylldes av ${tone[1]}, och ni vågade stanna upp, nära.`;
+  const para3 = `Med ${tone[2]} närvarande, tog kvällen sin egen riktning.`;
+  const text = [para1, para2, para3].join(" ");
+  return {
+    title: `${base} — nivå ${level}`,
+    text
+  };
+}
+
+els.btnCompose.addEventListener('click', ()=>{
+  const idea = els.idea.value;
+  const story = generateStory(idea, state.level);
+  state.currentStory = story;
+  els.storyTitle.textContent = story.title;
+  els.storyText.textContent = story.text;
+  els.storyCard.classList.remove('hidden');
+  // auto-read om TTS finns
+  if(state.ttsOk) speak(story.text);
+});
+
+els.btnPlay.addEventListener('click', ()=>{
+  if(!state.currentStory) return;
+  if(state.ttsOk) speak(state.currentStory.text);
+});
+els.btnStop.addEventListener('click', ()=>{
+  if(state.ttsOk) window.speechSynthesis.cancel();
+});
+
+// ============ FAVORITER (localStorage)
+function getFavs(){
+  try{
+    return JSON.parse(localStorage.getItem('bn.favs') || '[]');
+  }catch{ return []; }
+}
+function setFavs(list){
+  localStorage.setItem('bn.favs', JSON.stringify(list));
+}
+els.btnFav.addEventListener('click', ()=>{
+  if(!state.currentStory) return;
+  const list = getFavs();
+  list.unshift({
+    id: Date.now(),
+    level: state.level,
+    title: state.currentStory.title,
+    text: state.currentStory.text
+  });
+  setFavs(list);
+  els.btnFav.textContent = "Sparad ✓";
+  setTimeout(()=> els.btnFav.textContent = "Spara i favoriter", 1200);
+});
+function renderFavs(){
+  const list = getFavs();
+  const box = els.favsList;
+  box.innerHTML = "";
+  if(list.length === 0){
+    box.classList.add('empty');
+    box.innerHTML = `<p class="muted">Inga favoriter ännu.</p>`;
+    return;
+  }
+  box.classList.remove('empty');
+  list.forEach(item=>{
+    const row = document.createElement('div');
+    row.className = 'fav';
+    row.innerHTML = `
+      <h4>${item.title}</h4>
+      <p class="muted small" style="margin:.2rem 0 .6rem">Nivå ${item.level}</p>
+      <p>${item.text}</p>
+      <div class="player" style="margin-top:8px">
+        <button class="circle play">▶</button>
+        <button class="circle del">🗑</button>
+      </div>
+    `;
+    row.querySelector('.play').addEventListener('click', ()=>{
+      if(state.ttsOk) speak(item.text);
+    });
+    row.querySelector('.del').addEventListener('click', ()=>{
+      const after = getFavs().filter(f=>f.id !== item.id);
+      setFavs(after);
+      renderFavs();
+    });
+    box.appendChild(row);
+  });
+}
+
+// ============ PROFIL
+(function initProfile(){
+  els.displayName.value = localStorage.getItem('bn.displayName') || '';
+  els.defaultLevel.value = localStorage.getItem('bn.defaultLevel') || String(state.level);
+})();
+els.btnSaveProfile.addEventListener('click', ()=>{
+  localStorage.setItem('bn.displayName', els.displayName.value.trim());
+  localStorage.setItem('bn.defaultLevel', els.defaultLevel.value);
+  state.level = parseInt(els.defaultLevel.value,10);
+  localStorage.setItem('bn.level', String(state.level));
+  syncLevelUI();
+  alert('Profil sparad.');
+});
+
+// ============ BLUSHCONNECT (placeholder)
+els.btnConnect.addEventListener('click', ()=>{
+  els.connectLevel.value = localStorage.getItem('bn.connect.level') || String(state.level);
+  els.connectCity.value = localStorage.getItem('bn.connect.city') || '';
+  els.dlgConnect.showModal();
+});
+els.btnSaveConnect.addEventListener('click', (e)=>{
+  e.preventDefault();
+  localStorage.setItem('bn.connect.level', els.connectLevel.value);
+  localStorage.setItem('bn.connect.city', els.connectCity.value.trim());
+  els.dlgConnect.close();
+});
+
+// ============ TTS-status
+if(!state.ttsOk){
+  els.ttsStatus.textContent = "Ingen TTS i webbläsaren – uppläsning hoppas över.";
+}
