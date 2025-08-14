@@ -3,96 +3,92 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives — stabil demo</title>
+  <title>Blush Narratives</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Topbar -->
   <header class="topbar">
-    <div class="brand">Blush <span>Narratives</span></div>
+    <div class="brand">Blush Narratives</div>
+    <nav class="topnav" aria-label="Huvudnavigation">
+      <a href="#home" class="navlink active">Hem</a>
+      <a href="#favorites" class="navlink soon">Favoriter</a>
+      <a href="#profile" class="navlink soon">Profil</a>
+    </nav>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="home">Hem</button>
-    <button class="tab" data-tab="favs">Favoriter</button>
-    <button class="tab" data-tab="profile">Profil</button>
-  </nav>
+  <main id="home" class="container">
+    <!-- Nivåval + intro -->
+    <section class="card">
+      <div class="card-header">
+        <h1>Välkommen till <span class="accent">Blush Narratives</span></h1>
+        <p>Välj nivå och spela upp en berättelse.</p>
+      </div>
 
-  <main>
-    <!-- HEM -->
-    <section id="tab-home" class="view active">
-      <div class="panel">
-        <h1>Välj nivå & skapa en berättelse</h1>
-        <p class="muted">Stabil grund: inga externa API:er, funkar helt i webbläsaren.</p>
+      <div class="level-row" role="group" aria-label="Välj intensitetsnivå">
+        <button class="chip level-chip selected" data-level="1" aria-pressed="true">1</button>
+        <button class="chip level-chip" data-level="3" aria-pressed="false">3</button>
+        <button class="chip level-chip" data-level="5" aria-pressed="false">5</button>
 
-        <div class="levels">
-          <button class="level active" data-level="1">1</button>
-          <button class="level" data-level="3">3</button>
-          <button class="level" data-level="5">5</button>
-        </div>
+        <div class="spacer"></div>
 
-        <div class="actions-row">
-          <button id="btnIntro" class="primary">Spela introduktion</button>
-          <div id="ttsStatus" class="muted small"></div>
-        </div>
+        <button id="introBtn" class="btn primary ghost" data-soon>
+          Spela introduktion
+        </button>
+      </div>
 
-        <div class="divider"></div>
-
-        <h2>Skapa egen berättelse</h2>
-        <div class="composer">
-          <textarea id="idea" rows="4" placeholder="Skriv din idé..."></textarea>
-          <button id="btnCompose" class="primary">Skapa smakprov</button>
-        </div>
-
-        <div id="storyCard" class="card hidden">
-          <div class="card-head">
-            <h3 id="storyTitle">Smakprov</h3>
-            <div class="chip" id="levelChip">Nivå 1</div>
-          </div>
-          <p id="storyText"></p>
-          <div class="player">
-            <button id="btnPlay" class="circle" title="Spela">▶</button>
-            <button id="btnStop" class="circle" title="Stoppa">■</button>
-            <button id="btnFav" class="ghost">Spara i favoriter</button>
-          </div>
-        </div>
+      <div class="controls">
+        <label for="volume" class="sr-only">Volym</label>
+        <input type="range" id="volume" min="0" max="100" value="60" />
+        <span class="range-badge" aria-hidden="true"><span id="volOut">60</span>%</span>
       </div>
     </section>
 
-    <!-- FAVORITER -->
-    <section id="tab-favs" class="view">
-      <div class="panel">
-        <h2>Dina favoriter</h2>
-        <div id="favsList" class="list empty">
-          <p class="muted">Inga favoriter ännu.</p>
-        </div>
+    <!-- Skapa egen berättelse -->
+    <section class="card" id="create">
+      <h2>Skapa egen berättelse</h2>
+      <p class="muted">Skriv en idé så läser vi upp ett smakprov.</p>
+
+      <label for="idea" class="sr-only">Din idé</label>
+      <textarea id="idea" rows="5" placeholder="Skriv din idé..."></textarea>
+
+      <div class="row">
+        <button id="createBtn" class="btn primary">
+          <span class="btn-label">Skapa smakprov</span>
+          <span class="spinner" aria-hidden="true"></span>
+        </button>
+
+        <button id="connectBtn" class="btn secondary" data-soon>
+          BlushConnect
+        </button>
       </div>
+
+      <div id="result" class="result" hidden></div>
     </section>
 
-    <!-- PROFIL -->
-    <section id="tab-profile" class="view">
-      <div class="panel">
-        <h2>Profil</h2>
-        <p class="muted small">Sparas lokalt i din webbläsare.</p>
-        <div class="grid two">
-          <label class="field">
-            <span>Visningsnamn</span>
-            <input id="displayName" type="text" placeholder="Ditt alias..." />
-          </label>
-          <label class="field">
-            <span>Standardnivå</span>
-            <select id="defaultLevel">
-              <option value="1">1 (oskyldig)</option>
-              <option value="3">3 (mellan)</option>
-              <option value="5">5 (ingående)</option>
-            </select>
-          </label>
-        </div>
-        <button id="btnSaveProfile" class="primary">Spara profil</button>
-      </div>
+    <!-- Sektioner som kommer senare (ankare) -->
+    <section id="favorites" class="card shallow">
+      <h2>Favoriter</h2>
+      <p class="muted">Kommer snart.</p>
+    </section>
+
+    <section id="profile" class="card shallow">
+      <h2>Profil</h2>
+      <p class="muted">Kommer snart.</p>
     </section>
   </main>
 
-  <footer class="foot muted small">BN — stabil demobas (client-only)</footer>
+  <!-- Toast -->
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Modal för "Kommer snart" -->
+  <dialog id="soonModal" class="modal">
+    <h3>Kommer snart</h3>
+    <p>Den här funktionen är inte klar ännu. Vi jobbar på den!</p>
+    <div class="row right">
+      <button class="btn" id="closeSoon">OK</button>
+    </div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>
