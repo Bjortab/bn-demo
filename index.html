@@ -12,12 +12,13 @@
     <div class="brand">Blush Narratives</div>
     <nav class="topnav" aria-label="Huvudnavigation">
       <a href="#home" class="navlink active">Hem</a>
-      <a href="#favorites" class="navlink soon">Favoriter</a>
+      <a href="#favorites" class="navlink">Favoriter</a>
       <a href="#profile" class="navlink soon">Profil</a>
     </nav>
-    <button id="connectBtnTop" class="btn primary ghost" data-soon>
-      BlushConnect
-    </button>
+    <div class="status-wrap">
+      <span id="aiStatus" class="status-chip offline">AI: Lokal</span>
+      <button id="connectBtnTop" class="btn primary ghost" data-soon>BlushConnect</button>
+    </div>
   </header>
 
   <main id="home" class="container">
@@ -81,18 +82,27 @@
           <span class="btn-label">Skapa berättelse</span>
           <span class="spinner" aria-hidden="true"></span>
         </button>
-        <button id="readBtn" class="btn" disabled>Läs upp</button>
       </div>
 
       <div id="result" class="result" hidden></div>
+
+      <div id="actionsBar" class="row actions-bar" hidden>
+        <button id="readBtn" class="btn">Läs upp</button>
+        <button id="copyBtn" class="btn">Kopiera text</button>
+        <button id="downloadBtn" class="btn">Ladda ner .txt</button>
+        <button id="favBtn" class="btn">Spara som favorit</button>
+      </div>
     </section>
 
-    <!-- Kommande sektioner -->
-    <section id="favorites" class="card shallow">
+    <!-- Favoriter -->
+    <section id="favorites" class="card">
       <h2>Favoriter</h2>
-      <p class="muted">Kommer snart.</p>
+      <div id="favsList" class="list empty">
+        <p class="muted">Inga favoriter ännu.</p>
+      </div>
     </section>
 
+    <!-- Profil (placeholder) -->
     <section id="profile" class="card shallow">
       <h2>Profil</h2>
       <p class="muted">Kommer snart.</p>
