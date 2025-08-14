@@ -15,58 +15,85 @@
       <a href="#favorites" class="navlink soon">Favoriter</a>
       <a href="#profile" class="navlink soon">Profil</a>
     </nav>
+    <button id="connectBtnTop" class="btn primary ghost" data-soon>
+      BlushConnect
+    </button>
   </header>
 
   <main id="home" class="container">
-    <!-- Nivåval + intro -->
+    <!-- Nivå + detaljnivå + TTS-kontroller -->
     <section class="card">
       <div class="card-header">
-        <h1>Välkommen till <span class="accent">Blush Narratives</span></h1>
-        <p>Välj nivå och spela upp en berättelse.</p>
+        <h1>Välj nivå & röst</h1>
+        <p class="muted">Gratis TTS via webbläsaren. När BN börjar dra in pengar kopplar vi på premiumröster.</p>
       </div>
 
       <div class="level-row" role="group" aria-label="Välj intensitetsnivå">
         <button class="chip level-chip selected" data-level="1" aria-pressed="true">1</button>
         <button class="chip level-chip" data-level="3" aria-pressed="false">3</button>
         <button class="chip level-chip" data-level="5" aria-pressed="false">5</button>
-
         <div class="spacer"></div>
-
-        <button id="introBtn" class="btn primary ghost" data-soon>
-          Spela introduktion
-        </button>
+        <div class="tts-inline">
+          <label for="voiceSelect" class="control-label">Röst</label>
+          <select id="voiceSelect"></select>
+          <button id="testVoice" class="btn">Förhandslyssna</button>
+        </div>
       </div>
 
       <div class="controls">
-        <label for="volume" class="sr-only">Volym</label>
-        <input type="range" id="volume" min="0" max="100" value="60" />
-        <span class="range-badge" aria-hidden="true"><span id="volOut">60</span>%</span>
+        <div class="control">
+          <label for="detail" class="control-label">Detaljnivå (snuskighet)</label>
+          <input type="range" id="detail" min="0" max="100" value="50" />
+          <span class="range-badge"><span id="detailOut">50</span>%</span>
+        </div>
+
+        <div class="control">
+          <label for="rate" class="control-label">Talhastighet</label>
+          <input type="range" id="rate" min="0.8" max="1.3" step="0.05" value="1.00" />
+          <span class="range-badge"><span id="rateOut">1.00</span>x</span>
+        </div>
+
+        <div class="control">
+          <label for="volume" class="control-label">Volym (spelare)</label>
+          <input type="range" id="volume" min="0" max="100" value="60" />
+          <span class="range-badge"><span id="volOut">60</span>%</span>
+        </div>
       </div>
     </section>
 
-    <!-- Skapa egen berättelse -->
+    <!-- Skapa berättelse -->
     <section class="card" id="create">
       <h2>Skapa egen berättelse</h2>
-      <p class="muted">Skriv en idé så läser vi upp ett smakprov.</p>
+      <p class="muted">Skriv en idé. Välj längd. Vi skapar text som matchar nivån & dina detaljer.</p>
 
-      <label for="idea" class="sr-only">Din idé</label>
-      <textarea id="idea" rows="5" placeholder="Skriv din idé..."></textarea>
+      <div class="grid two">
+        <label class="field">
+          <span>Din idé</span>
+          <textarea id="idea" rows="5" placeholder="Ex: Sjuksköterskan med blont hår förförde mig när jag besökte sjukhuset…"></textarea>
+        </label>
+        <label class="field">
+          <span>Längd</span>
+          <select id="duration">
+            <option value="5">≈ 5 minuter</option>
+            <option value="10">≈ 10 minuter</option>
+            <option value="15">≈ 15 minuter</option>
+          </select>
+          <small class="muted">Räknar på ~170 ord/min ≈ 850 ord per 5 min.</small>
+        </label>
+      </div>
 
       <div class="row">
         <button id="createBtn" class="btn primary">
-          <span class="btn-label">Skapa smakprov</span>
+          <span class="btn-label">Skapa berättelse</span>
           <span class="spinner" aria-hidden="true"></span>
         </button>
-
-        <button id="connectBtn" class="btn secondary" data-soon>
-          BlushConnect
-        </button>
+        <button id="readBtn" class="btn" disabled>Läs upp</button>
       </div>
 
       <div id="result" class="result" hidden></div>
     </section>
 
-    <!-- Sektioner som kommer senare (ankare) -->
+    <!-- Kommande sektioner -->
     <section id="favorites" class="card shallow">
       <h2>Favoriter</h2>
       <p class="muted">Kommer snart.</p>
@@ -81,7 +108,7 @@
   <!-- Toast -->
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <!-- Modal för "Kommer snart" -->
+  <!-- Modal “Kommer snart” -->
   <dialog id="soonModal" class="modal">
     <h3>Kommer snart</h3>
     <p>Den här funktionen är inte klar ännu. Vi jobbar på den!</p>
