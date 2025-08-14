@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives — demo</title>
+  <title>Blush Narratives — stabil demo</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">Blush <span>Narratives</span></div>
-    <button id="btnConnect" class="ghost">BlushConnect</button>
   </header>
 
   <nav class="tabs">
@@ -22,8 +21,8 @@
     <!-- HEM -->
     <section id="tab-home" class="view active">
       <div class="panel">
-        <h1>Välkommen till <span>Blush Narratives</span></h1>
-        <p class="sub">Välj nivå och spela upp en berättelse.</p>
+        <h1>Välj nivå & skapa en berättelse</h1>
+        <p class="muted">Stabil grund: inga externa API:er, funkar helt i webbläsaren.</p>
 
         <div class="levels">
           <button class="level active" data-level="1">1</button>
@@ -51,8 +50,8 @@
           </div>
           <p id="storyText"></p>
           <div class="player">
-            <button id="btnPlay" class="circle">▶</button>
-            <button id="btnStop" class="circle">■</button>
+            <button id="btnPlay" class="circle" title="Spela">▶</button>
+            <button id="btnStop" class="circle" title="Stoppa">■</button>
             <button id="btnFav" class="ghost">Spara i favoriter</button>
           </div>
         </div>
@@ -73,11 +72,11 @@
     <section id="tab-profile" class="view">
       <div class="panel">
         <h2>Profil</h2>
-        <p class="muted small">Här kommer sedan fler profilinställningar, röstval m.m.</p>
+        <p class="muted small">Sparas lokalt i din webbläsare.</p>
         <div class="grid two">
           <label class="field">
             <span>Visningsnamn</span>
-            <input id="displayName" type="text" placeholder="Din alias..." />
+            <input id="displayName" type="text" placeholder="Ditt alias..." />
           </label>
           <label class="field">
             <span>Standardnivå</span>
@@ -93,31 +92,7 @@
     </section>
   </main>
 
-  <!-- BLUSHCONNECT MODAL -->
-  <dialog id="connectDlg">
-    <form method="dialog" class="panel">
-      <h3>BlushConnect</h3>
-      <p class="muted small">Enkel demo av dina preferenser. Sparas lokalt.</p>
-      <label class="field">
-        <span>Önskad nivå för matchning</span>
-        <select id="connectLevel">
-          <option value="1">1 (oskyldig)</option>
-          <option value="3">3 (mellan)</option>
-          <option value="5">5 (ingående)</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Stad (frivilligt)</span>
-        <input id="connectCity" type="text" placeholder="t.ex. Stockholm" />
-      </label>
-      <menu class="right">
-        <button value="cancel" class="ghost">Stäng</button>
-        <button id="btnSaveConnect" value="default" class="primary">Spara</button>
-      </menu>
-    </form>
-  </dialog>
-
-  <footer class="foot muted small">BN v0.2 demo — frontend only</footer>
+  <footer class="foot muted small">BN — stabil demobas (client-only)</footer>
 
   <script src="app.js"></script>
 </body>
