@@ -1,12 +1,4 @@
-/* BN demo – helt client-side.
-   Funktioner:
-   - nivå 1/3/5
-   - generera kort text lokalt
-   - TTS via Web Speech API (om tillgängligt)
-   - favoriter i localStorage
-   - enkel profil + BlushConnect inställningar
-*/
-
+/* Stabil BN-demobas: ingen backend, allt i webbläsaren */
 const state = {
   level: parseInt(localStorage.getItem('bn.level') || '1', 10),
   ttsOk: 'speechSynthesis' in window,
@@ -37,15 +29,9 @@ const els = {
   displayName: document.getElementById('displayName'),
   defaultLevel: document.getElementById('defaultLevel'),
   btnSaveProfile: document.getElementById('btnSaveProfile'),
-  // connect
-  btnConnect: document.getElementById('btnConnect'),
-  dlgConnect: document.getElementById('connectDlg'),
-  connectLevel: document.getElementById('connectLevel'),
-  connectCity: document.getElementById('connectCity'),
-  btnSaveConnect: document.getElementById('btnSaveConnect'),
 };
 
-// ============ NAV
+// Nav
 els.tabs.forEach(btn => {
   btn.addEventListener('click', () => {
     els.tabs.forEach(b => b.classList.remove('active'));
@@ -57,12 +43,12 @@ els.tabs.forEach(btn => {
   });
 });
 
-// ============ NIVÅ
+// Nivå
 function syncLevelUI(){
   els.levels.forEach(b=>{
     b.classList.toggle('active', parseInt(b.dataset.level,10) === state.level);
   });
-  els.levelChip.textContent = `Nivå ${state.level}`;
+  if (els.levelChip) els.levelChip.textContent = `Nivå ${state.level}`;
 }
 els.levels.forEach(b=>{
   b.addEventListener('click', ()=>{
@@ -73,90 +59,69 @@ els.levels.forEach(b=>{
 });
 syncLevelUI();
 
-// ============ INTRO (TTS)
+// TTS
 function speak(text){
   if(!state.ttsOk) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'sv-SE';
-  u.rate = 1.02;
-  u.pitch = 1.0;
+  u.lang = 'sv-SE'; u.rate = 1.02; u.pitch = 1.0;
   window.speechSynthesis.speak(u);
 }
-
 function introText(){
   switch(state.level){
-    case 1: return "Välkommen till Blush Narratives. Nivå ett är lätt och oskyldig, med värme och romantik.";
-    case 3: return "Välkommen till Blush Narratives. Nivå tre bjuder på flörtig stämning och mer detaljer.";
-    case 5: return "Välkommen till Blush Narratives. Nivå fem är mest uttrycksfull, med tydliga, vuxna detaljer.";
+    case 1: return "Välkommen till Blush Narratives. Nivå ett är lätt och romantisk.";
+    case 3: return "Välkommen till Blush Narratives. Nivå tre är mer suggestiv och pirrig.";
+    case 5: return "Välkommen till Blush Narratives. Nivå fem är mest uttrycksfull.";
   }
 }
 els.btnIntro.addEventListener('click', ()=>{
   if(!state.ttsOk){
-    els.ttsStatus.textContent = "TTS saknas i webbläsaren – text läses inte upp.";
+    els.ttsStatus.textContent = "Ingen TTS i webbläsaren – uppläsning hoppas över.";
     return;
   }
   els.ttsStatus.textContent = "";
   speak(introText());
 });
 
-// ============ GENERERA TEXT (lokal demo)
+// Generator (lokal)
 function generateStory(idea, level){
-  const base = idea && idea.trim().length ? idea.trim() : "En oväntad kväll";
+  const base = idea && idea.trim() ? idea.trim() : "En oväntad kväll";
   const tones = {
     1: ["varma blickar", "lätta beröringar", "romantisk ton"],
     3: ["pirrig nyfikenhet", "långsamma andetag", "förväntansfull stämning"],
     5: ["otålig lust", "handfasta rörelser", "nakna erkännanden"]
-  };
-  const tone = tones[level];
-  const para1 = `${base}. I skymningen möttes ni, där ${tone[0]} sa mer än ord.`;
-  const para2 = `Rummet fylldes av ${tone[1]}, och ni vågade stanna upp, nära.`;
-  const para3 = `Med ${tone[2]} närvarande, tog kvällen sin egen riktning.`;
-  const text = [para1, para2, para3].join(" ");
-  return {
-    title: `${base} — nivå ${level}`,
-    text
-  };
+  }[level];
+  const p1 = `${base}. I skymningen möttes ni, där ${tones[0]} sa mer än ord.`;
+  const p2 = `Rummet fylldes av ${tones[1]}, och ni vågade stanna upp, nära.`;
+  const p3 = `Med ${tones[2]} närvarande, tog kvällen sin egen riktning.`;
+  return { title: `${base} — nivå ${level}`, text: [p1,p2,p3].join(" ") };
 }
 
-els.btnCompose.addEventListener('click', ()=>{
+document.getElementById('btnCompose').addEventListener('click', ()=>{
   const idea = els.idea.value;
   const story = generateStory(idea, state.level);
   state.currentStory = story;
   els.storyTitle.textContent = story.title;
   els.storyText.textContent = story.text;
   els.storyCard.classList.remove('hidden');
-  // auto-read om TTS finns
   if(state.ttsOk) speak(story.text);
 });
 
 els.btnPlay.addEventListener('click', ()=>{
-  if(!state.currentStory) return;
-  if(state.ttsOk) speak(state.currentStory.text);
+  if(state.currentStory && state.ttsOk) speak(state.currentStory.text);
 });
 els.btnStop.addEventListener('click', ()=>{
   if(state.ttsOk) window.speechSynthesis.cancel();
 });
 
-// ============ FAVORITER (localStorage)
-function getFavs(){
-  try{
-    return JSON.parse(localStorage.getItem('bn.favs') || '[]');
-  }catch{ return []; }
-}
-function setFavs(list){
-  localStorage.setItem('bn.favs', JSON.stringify(list));
-}
+// Favoriter
+function getFavs(){ try{return JSON.parse(localStorage.getItem('bn.favs')||'[]')}catch{ return [] } }
+function setFavs(list){ localStorage.setItem('bn.favs', JSON.stringify(list)); }
 els.btnFav.addEventListener('click', ()=>{
   if(!state.currentStory) return;
   const list = getFavs();
-  list.unshift({
-    id: Date.now(),
-    level: state.level,
-    title: state.currentStory.title,
-    text: state.currentStory.text
-  });
-  setFavs(list);
+  list.unshift({ id:Date.now(), level:state.level, ...state.currentStory });
+  setFavs(list.slice(0,100));
   els.btnFav.textContent = "Sparad ✓";
   setTimeout(()=> els.btnFav.textContent = "Spara i favoriter", 1200);
 });
@@ -164,11 +129,7 @@ function renderFavs(){
   const list = getFavs();
   const box = els.favsList;
   box.innerHTML = "";
-  if(list.length === 0){
-    box.classList.add('empty');
-    box.innerHTML = `<p class="muted">Inga favoriter ännu.</p>`;
-    return;
-  }
+  if(list.length === 0){ box.classList.add('empty'); box.innerHTML = '<p class="muted">Inga favoriter ännu.</p>'; return; }
   box.classList.remove('empty');
   list.forEach(item=>{
     const row = document.createElement('div');
@@ -180,48 +141,28 @@ function renderFavs(){
       <div class="player" style="margin-top:8px">
         <button class="circle play">▶</button>
         <button class="circle del">🗑</button>
-      </div>
-    `;
-    row.querySelector('.play').addEventListener('click', ()=>{
-      if(state.ttsOk) speak(item.text);
-    });
+      </div>`;
+    row.querySelector('.play').addEventListener('click', ()=> state.ttsOk && speak(item.text));
     row.querySelector('.del').addEventListener('click', ()=>{
       const after = getFavs().filter(f=>f.id !== item.id);
-      setFavs(after);
-      renderFavs();
+      setFavs(after); renderFavs();
     });
     box.appendChild(row);
   });
 }
 
-// ============ PROFIL
+// Profil (lokalt)
 (function initProfile(){
-  els.displayName.value = localStorage.getItem('bn.displayName') || '';
-  els.defaultLevel.value = localStorage.getItem('bn.defaultLevel') || String(state.level);
+  const name = localStorage.getItem('bn.displayName') || '';
+  const defLvl = localStorage.getItem('bn.defaultLevel') || String(state.level);
+  document.getElementById('displayName').value = name;
+  document.getElementById('defaultLevel').value = defLvl;
 })();
-els.btnSaveProfile.addEventListener('click', ()=>{
-  localStorage.setItem('bn.displayName', els.displayName.value.trim());
-  localStorage.setItem('bn.defaultLevel', els.defaultLevel.value);
-  state.level = parseInt(els.defaultLevel.value,10);
+document.getElementById('btnSaveProfile').addEventListener('click', ()=>{
+  localStorage.setItem('bn.displayName', document.getElementById('displayName').value.trim());
+  localStorage.setItem('bn.defaultLevel', document.getElementById('defaultLevel').value);
+  state.level = parseInt(document.getElementById('defaultLevel').value,10);
   localStorage.setItem('bn.level', String(state.level));
   syncLevelUI();
   alert('Profil sparad.');
 });
-
-// ============ BLUSHCONNECT (placeholder)
-els.btnConnect.addEventListener('click', ()=>{
-  els.connectLevel.value = localStorage.getItem('bn.connect.level') || String(state.level);
-  els.connectCity.value = localStorage.getItem('bn.connect.city') || '';
-  els.dlgConnect.showModal();
-});
-els.btnSaveConnect.addEventListener('click', (e)=>{
-  e.preventDefault();
-  localStorage.setItem('bn.connect.level', els.connectLevel.value);
-  localStorage.setItem('bn.connect.city', els.connectCity.value.trim());
-  els.dlgConnect.close();
-});
-
-// ============ TTS-status
-if(!state.ttsOk){
-  els.ttsStatus.textContent = "Ingen TTS i webbläsaren – uppläsning hoppas över.";
-}
