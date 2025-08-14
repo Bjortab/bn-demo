@@ -1,116 +1,91 @@
-const WORDS_PER_MIN = 170;
+// functions/api/generate.js
+export async function onRequestPost(context) {
+  const { request, env } = context;
 
-function buildSystemPrompt() {
-  return [
-    "Du är en skicklig berättarröst som skriver sensuella, vuxna noveller för Blush Narratives.",
-    "Alltid strikt 18+ och samtycke. Inga minderåriga, inga verkliga, identifierbara personer.",
-    "Undvik överdriven vulgaritet; håll det stilfullt och sensuellt. Dialog och detaljer ska kännas mänskliga.",
-    "Följ nivåpolicy:",
-    "• Nivå 1: lätt, romantisk ton med antydningar.",
-    "• Nivå 3: tydligare sensualitet, mer detaljer men balanserat.",
-    "• Nivå 5: mest uttrycksfull med vuxna detaljer, respektfullt språk.",
-  ].join("\n");
-}
+  // Enkla CORS-rubriker (justera Origin om du vill låsa ner)
+  const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors });
+  }
 
-function buildUserPrompt({ prompt, level, detail, minutes }) {
-  const wordsTarget = Math.max(400, Math.round((minutes || 5) * WORDS_PER_MIN));
-  const detailGuide = [
-    "Detalj 0–20: antydningar, mjuk stämning.",
-    "Detalj 30–60: märkbar sensualitet, balans känsla/kropp.",
-    "Detalj 70–100: vuxna, konkreta detaljer med samtycke."
-  ].join("\n");
-
-  return [
-    `ANVÄNDARENS IDÉ: ${prompt}`,
-    `MÅL: ca ${wordsTarget} ord (±10%).`,
-    "Struktur: början (krok), mitt (uppbyggnad), slut (tillfredsställande).",
-    "Språk: svenska, naturligt, med dialog där det passar.",
-    `Nivå: ${level}.`,
-    `Detaljnivå: ${detail}/100 (${detailGuide}).`,
-    "Krav: 18+, samtycke, inga riktiga personer/kändisar, inget våld/tvång/olagligt.",
-    "Svara endast med novelltexten.",
-  ].join("\n");
-}
-
-async function generateWithOpenAI(env, promptText, systemText) {
-  const apiKey = env?.OPENAI_API_KEY;
-  if (!apiKey) return null;
-  const model = env.OPENAI_MODEL || "gpt-4o-mini";
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.9,
-      messages: [
-        { role: "system", content: systemText },
-        { role: "user", content: promptText }
-      ]
-    }),
-  });
-
-  if (!res.ok) throw new Error(`OpenAI fel: ${res.status}`);
-  const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content?.trim();
-  return text || null;
-}
-
-function fallbackText({ prompt, level, detail, minutes }) {
-  const wordsTarget = Math.max(400, Math.round((minutes || 5) * WORDS_PER_MIN));
-  const p = prompt.trim() || "En stilla kväll mellan två vuxna.";
-  const toneL1 = ["varma blickar", "lätta beröringar", "romantisk ton"];
-  const toneL3 = ["pirrig nyfikenhet", "långsamma andetag", "förväntan i kroppen"];
-  const toneL5 = ["otålig lust", "handfasta rörelser", "intim närhet"];
-  const tone = level >= 5 ? toneL5 : level >= 3 ? toneL3 : toneL1;
-
-  const base = `${p} Allt beskrevs i vuxna, samtyckande drag. ${tone[0]} ledde till ${tone[1]}, och ${tone[2]} formade stämningen.`;
-  let out = base;
-  while (out.split(/\s+/).length < wordsTarget) out += " …";
-  return out.replace(/\s+…/g, " …");
-}
-
-export async function onRequest(context) {
   try {
-    const { request, env } = context;
-    if (request.method !== "POST") {
-      return new Response(JSON.stringify({ ok:false, error:"Use POST" }), {
-        status: 405, headers: { "content-type": "application/json" }
+    if (!env.OPENAI_API_KEY) {
+      return new Response(JSON.stringify({ error: "Missing OPENAI_API_KEY" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...cors },
       });
     }
 
-    const body = await request.json().catch(()=> ({}));
-    let { prompt = "", level = 3, detail = 50, minutes = 5 } = body;
+    const { prompt, level = 1, spice = 0, length = "kort" } = await request.json();
 
-    // Basvalidering
-    prompt = String(prompt || "").slice(0, 2000);
-    level = Math.max(1, Math.min(5, Number(level || 3)));
-    detail = Math.max(0, Math.min(100, Number(detail || 50)));
-    minutes = Math.max(3, Math.min(30, Number(minutes || 5)));
-
-    const systemText = buildSystemPrompt();
-    const userText = buildUserPrompt({ prompt, level, detail, minutes });
-
-    let text = null;
-    let source = "fallback";
-    try {
-      const maybe = await generateWithOpenAI(env, userText, systemText);
-      if (maybe) { text = maybe; source = "ai"; }
-    } catch {
-      // fall back
+    if (!prompt || typeof prompt !== "string") {
+      return new Response(JSON.stringify({ error: "prompt saknas" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...cors },
+      });
     }
-    if (!text) text = fallbackText({ prompt, level, detail, minutes });
 
-    return new Response(JSON.stringify({ ok:true, source, text }), {
-      headers: { "content-type": "application/json; charset=utf-8" }
+    // Liten “styrtext” som håller berättelserna generella och lyssningsvänliga.
+    const systemMessage =
+      "Du är en skicklig berättare. Skriv engagerande, sammanhängande, hyggligt ofarliga berättelser utan explicit innehåll. Håll tonen mänsklig och naturlig.";
+
+    // Översätt val till nåt modellen förstår
+    const lengthMap = {
+      kort: "cirka 1–2 minuter",
+      mellan: "cirka 3–5 minuter",
+      lång: "cirka 8–10 minuter",
+    };
+    const targetLen = lengthMap[length] || "cirka 1–2 minuter";
+    const spiceHint =
+      spice <= 0 ? "låg intensitet" : spice >= 4 ? "hög intensitet (men icke-explicit)" : "måttlig intensitet";
+
+    const userMessage = `
+Skriv en berättelse på ${targetLen}, nivå ${level}, med ${spiceHint}.
+Utgå från idén: "${prompt}".
+Skriv i jag-form och gör dialogerna levande. Avsluta med en naturlig avrundning.
+`;
+
+    const body = {
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemMessage },
+        { role: "user", content: userMessage },
+      ],
+      temperature: 0.9,
+    };
+
+    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     });
 
-  } catch (e) {
-    return new Response(JSON.stringify({ ok:false, error:String(e) }), {
-      status: 500, headers: { "content-type": "application/json" }
+    if (!resp.ok) {
+      const errTxt = await resp.text().catch(() => "");
+      return new Response(JSON.stringify({ error: "OpenAI error", details: errTxt }), {
+        status: 502,
+        headers: { "Content-Type": "application/json", ...cors },
+      });
+    }
+
+    const data = await resp.json();
+    const story = data?.choices?.[0]?.message?.content?.trim() || "";
+
+    return new Response(JSON.stringify({ story }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...cors },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: "Server error", details: String(err) }), {
+      status: 500,
+      headers: { "Content-Type": "application/json", ...cors },
     });
   }
 }
