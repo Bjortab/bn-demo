@@ -1,11 +1,16 @@
-/* BN – gratis TTS i browsern + backend-anrop (om aktiverat).
-   Hastighetsreglaget är borttaget. Vi styr bara röst + volym. */
+/* BN – UI-förbättringar:
+   - AI-statusmärke (Lokal/Online)
+   - Efter-genereringsåtgärder: Läs upp, Kopiera, Ladda ner, Favorit
+   - Favoriter-fliken aktiv
+   - Sparar val (nivå, detalj, röst, volym) i localStorage
+*/
 
-let currentLevel = 1;
-let detail = 50;       // 0–100
-let volume = 0.6;      // 0–1
-let currentVoice = null;
+let currentLevel = Number(localStorage.getItem('bn.level') || 1);
+let detail = Number(localStorage.getItem('bn.detail') || 50);   // 0–100
+let volume = Number(localStorage.getItem('bn.volume') || 0.6);  // 0–1
+let currentVoice = localStorage.getItem('bn.voice') || null;
 let lastStoryText = '';
+let aiOnline = false; // uppdateras efter lyckat backend-svar
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -32,44 +37,74 @@ $$('.topnav .navlink').forEach((a) => {
       document.querySelector(href)?.scrollIntoView({ behavior: 'smooth' });
       $$('.navlink').forEach(n => n.classList.remove('active'));
       a.classList.add('active');
+      if (href === '#favorites') renderFavs();
     }
   });
 });
 
+// ---- AI status chip
+function setAIStatus(online){
+  aiOnline = online;
+  const chip = $('#aiStatus');
+  chip.textContent = online ? 'AI: Online' : 'AI: Lokal';
+  chip.classList.toggle('online', online);
+  chip.classList.toggle('offline', !online);
+}
+
 // ---- Nivå
+function syncLevelUI(){
+  $$('.level-chip').forEach(b=>{
+    const sel = Number(b.dataset.level) === currentLevel;
+    b.classList.toggle('selected', sel);
+    b.setAttribute('aria-pressed', sel ? 'true' : 'false');
+  });
+}
+syncLevelUI();
 $$('.level-chip').forEach((btn) => {
   btn.addEventListener('click', () => {
-    $$('.level-chip').forEach(b => {
-      b.classList.toggle('selected', b === btn);
-      b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
-    });
     currentLevel = Number(btn.dataset.level);
+    localStorage.setItem('bn.level', String(currentLevel));
+    syncLevelUI();
     toast(`Nivå ${currentLevel} vald`);
   });
 });
 
 // ---- Reglage
 const detailEl = $('#detail'); const detailOut = $('#detailOut');
-detailEl.addEventListener('input', (e) => { detail = Number(e.target.value); detailOut.textContent = detail; });
+detailEl.value = detail; detailOut.textContent = detail;
+detailEl.addEventListener('input', (e) => {
+  detail = Number(e.target.value);
+  localStorage.setItem('bn.detail', String(detail));
+  detailOut.textContent = detail;
+});
 
 const volEl = $('#volume'); const volOut = $('#volOut');
-volEl.addEventListener('input', (e) => { volume = Number(e.target.value)/100; volOut.textContent = e.target.value; });
+volEl.value = Math.round(volume*100); volOut.textContent = volEl.value;
+volEl.addEventListener('input', (e) => {
+  volume = Number(e.target.value)/100;
+  localStorage.setItem('bn.volume', String(volume));
+  volOut.textContent = e.target.value;
+});
 
 // ---- TTS (webbläsarens inbyggda)
 const voiceSelect = $('#voiceSelect');
 const testVoiceBtn = $('#testVoice');
 
 function loadVoices(){
-  const voices = speechSynthesis.getVoices().filter(v => v.lang?.toLowerCase().startsWith('sv') || v.lang?.toLowerCase().startsWith('en'));
+  const all = speechSynthesis.getVoices();
+  const voices = all.filter(v => v.lang?.toLowerCase().startsWith('sv') || v.lang?.toLowerCase().startsWith('en'));
   voiceSelect.innerHTML = '';
   voices.forEach((v) => {
     const opt = document.createElement('option');
     opt.value = v.name; opt.textContent = `${v.name} (${v.lang})`;
     voiceSelect.appendChild(opt);
   });
-  const sv = voices.find(v => v.lang?.toLowerCase().startsWith('sv'));
-  currentVoice = sv || voices[0] || null;
-  if (currentVoice) voiceSelect.value = currentVoice.name;
+  let chosen = voices.find(v => v.name === currentVoice);
+  if (!chosen) {
+    chosen = voices.find(v => v.lang?.toLowerCase().startsWith('sv')) || voices[0] || null;
+  }
+  currentVoice = chosen?.name || null;
+  if (currentVoice) voiceSelect.value = currentVoice;
 }
 if ('speechSynthesis' in window) {
   speechSynthesis.onvoiceschanged = loadVoices;
@@ -81,16 +116,17 @@ if ('speechSynthesis' in window) {
 }
 
 voiceSelect.addEventListener('change', ()=>{
-  const v = speechSynthesis.getVoices().find(x => x.name === voiceSelect.value);
-  if (v) currentVoice = v;
+  currentVoice = voiceSelect.value;
+  localStorage.setItem('bn.voice', currentVoice);
 });
 
 function speak(text){
   if (!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  if (currentVoice) u.voice = currentVoice;
-  u.lang = (currentVoice?.lang || 'sv-SE');
+  const v = speechSynthesis.getVoices().find(x => x.name === currentVoice);
+  if (v) u.voice = v;
+  u.lang = (v?.lang || 'sv-SE');
   u.volume = volume;
   window.speechSynthesis.speak(u);
 }
@@ -111,15 +147,6 @@ function blendTone(level, detailPct) {
 
 function targetWordCount(mins){ return Math.round(mins * 170); }
 
-// ---- Skapa berättelse
-const ideaEl = $('#idea');
-const durationEl = $('#duration');
-const createBtn = $('#createBtn');
-const resultEl = $('#result');
-const readBtn = $('#readBtn');
-
-function setLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
-
 function localDraftFromPrompt(prompt, level, detailPct, mins){
   const words = targetWordCount(mins);
   const [a,b,c] = blendTone(level, detailPct);
@@ -130,6 +157,19 @@ function localDraftFromPrompt(prompt, level, detailPct, mins){
   return `${[p1,p2,p3].join(' ')}\n\n[Demo – mållängd ≈ ${words} ord. Backend fyller ut hela texten när AI är på.]`;
 }
 
+// ---- Skapa berättelse
+const ideaEl = $('#idea');
+const durationEl = $('#duration');
+const createBtn = $('#createBtn');
+const resultEl = $('#result');
+const actionsBar = $('#actionsBar');
+const readBtn = $('#readBtn');
+const copyBtn = $('#copyBtn');
+const downloadBtn = $('#downloadBtn');
+const favBtn = $('#favBtn');
+
+function setLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
+
 async function handleCreate(){
   const idea = ideaEl.value.trim();
   if(!idea){ ideaEl.focus(); toast('Skriv en idé först.'); return; }
@@ -139,7 +179,8 @@ async function handleCreate(){
 
   const mins = Number(durationEl.value || '5');
 
-  // Försök backend (om aktiv). Om det faller – visa lokal draft.
+  // Försök backend; om det faller – lokal draft
+  let usedBackend = false;
   try {
     const res = await fetch('/api/generate', {
       method: 'POST',
@@ -148,15 +189,17 @@ async function handleCreate(){
     });
     if (!res.ok) throw new Error('Backend svarade inte OK');
     const data = await res.json();
-    if (!data?.text) throw new Error('Saknar text i backend-svar');
-    lastStoryText = data.text;
-    resultEl.textContent = data.text;
-  } catch (e) {
-    const local = localDraftFromPrompt(idea, currentLevel, detail, mins);
-    lastStoryText = local;
-    resultEl.textContent = local;
+    lastStoryText = data?.text || '';
+    if (!lastStoryText) throw new Error('Saknar text');
+    resultEl.textContent = lastStoryText;
+    usedBackend = data?.source === 'ai';
+  } catch {
+    lastStoryText = localDraftFromPrompt(idea, currentLevel, detail, mins);
+    resultEl.textContent = lastStoryText;
   }
 
+  setAIStatus(usedBackend); // uppdatera status-chip
+  actionsBar.hidden = false;
   readBtn.disabled = false;
   setLoading(createBtn, false);
   toast('Berättelse klar.');
@@ -169,8 +212,73 @@ ideaEl.addEventListener('keydown', (e)=>{
   }
 });
 
-// Läs upp
+// Efter-generering: Läs, Kopiera, Ladda ner, Favorit
 readBtn.addEventListener('click', ()=> {
   if (!lastStoryText) { toast('Skapa en berättelse först.'); return; }
   speak(lastStoryText);
 });
+copyBtn.addEventListener('click', async ()=>{
+  if (!lastStoryText) return;
+  try { await navigator.clipboard.writeText(lastStoryText); toast('Text kopierad.'); }
+  catch { toast('Kunde inte kopiera.'); }
+});
+downloadBtn.addEventListener('click', ()=>{
+  if (!lastStoryText) return;
+  const blob = new Blob([lastStoryText], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'blush-narratives.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+
+// Favoriter
+function getFavs(){ try{return JSON.parse(localStorage.getItem('bn.favs')||'[]')}catch{ return [] } }
+function setFavs(list){ localStorage.setItem('bn.favs', JSON.stringify(list)); }
+favBtn.addEventListener('click', ()=>{
+  if (!lastStoryText) return;
+  const list = getFavs();
+  list.unshift({
+    id: Date.now(),
+    level: currentLevel,
+    detail,
+    text: lastStoryText.slice(0, 2000), // begränsa storlek
+    ts: new Date().toISOString()
+  });
+  setFavs(list.slice(0, 200)); // max 200 lokalt
+  toast('Sparad i favoriter.');
+  renderFavs();
+});
+
+const favsList = $('#favsList');
+function renderFavs(){
+  const list = getFavs();
+  favsList.innerHTML = '';
+  if (list.length === 0){
+    favsList.classList.add('empty');
+    favsList.innerHTML = '<p class="muted">Inga favoriter ännu.</p>';
+    return;
+  }
+  favsList.classList.remove('empty');
+
+  list.forEach(item=>{
+    const wrap = document.createElement('div');
+    wrap.className = 'fav';
+    const title = (item.text.split('\n')[0] || 'Berättelse').slice(0, 80);
+    wrap.innerHTML = `
+      <h4>${title}</h4>
+      <div class="meta">Nivå ${item.level} • Detalj ${item.detail}% • ${new Date(item.ts).toLocaleString()}</div>
+      <p>${item.text}</p>
+      <div class="row">
+        <button class="btn play">Läs upp</button>
+        <button class="btn del">Ta bort</button>
+      </div>
+    `;
+    wrap.querySelector('.play').addEventListener('click', ()=> speak(item.text));
+    wrap.querySelector('.del').addEventListener('click', ()=>{
+      const after = getFavs().filter(f => f.id !== item.id);
+      setFavs(after); renderFavs();
+    });
+    favsList.appendChild(wrap);
+  });
+}
