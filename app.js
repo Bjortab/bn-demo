@@ -1,9 +1,8 @@
-/* BN – fokus: mänskligt ljud (gratis TTS i browsern) + “sanningsenlig” prompt → text
-   Nu: allting funkar lokalt, utan nycklar. Backend-stub kommer separat. */
+/* BN – gratis TTS i browsern + backend-anrop (om aktiverat).
+   Hastighetsreglaget är borttaget. Vi styr bara röst + volym. */
 
 let currentLevel = 1;
 let detail = 50;       // 0–100
-let rate = 1.00;       // 0.8–1.3
 let volume = 0.6;      // 0–1
 let currentVoice = null;
 let lastStoryText = '';
@@ -53,25 +52,21 @@ $$('.level-chip').forEach((btn) => {
 const detailEl = $('#detail'); const detailOut = $('#detailOut');
 detailEl.addEventListener('input', (e) => { detail = Number(e.target.value); detailOut.textContent = detail; });
 
-const rateEl = $('#rate'); const rateOut = $('#rateOut');
-rateEl.addEventListener('input', (e) => { rate = Number(e.target.value); rateOut.textContent = rate.toFixed(2); });
-
 const volEl = $('#volume'); const volOut = $('#volOut');
 volEl.addEventListener('input', (e) => { volume = Number(e.target.value)/100; volOut.textContent = e.target.value; });
 
-// ---- TTS (webbläsarens inbyggda) – gratis, varierar i kvalitet mellan enheter
+// ---- TTS (webbläsarens inbyggda)
 const voiceSelect = $('#voiceSelect');
 const testVoiceBtn = $('#testVoice');
 
 function loadVoices(){
   const voices = speechSynthesis.getVoices().filter(v => v.lang?.toLowerCase().startsWith('sv') || v.lang?.toLowerCase().startsWith('en'));
   voiceSelect.innerHTML = '';
-  voices.forEach((v, i) => {
+  voices.forEach((v) => {
     const opt = document.createElement('option');
     opt.value = v.name; opt.textContent = `${v.name} (${v.lang})`;
     voiceSelect.appendChild(opt);
   });
-  // välj gärna en svensk röst om den finns
   const sv = voices.find(v => v.lang?.toLowerCase().startsWith('sv'));
   currentVoice = sv || voices[0] || null;
   if (currentVoice) voiceSelect.value = currentVoice.name;
@@ -96,7 +91,6 @@ function speak(text){
   const u = new SpeechSynthesisUtterance(text);
   if (currentVoice) u.voice = currentVoice;
   u.lang = (currentVoice?.lang || 'sv-SE');
-  u.rate = rate;
   u.volume = volume;
   window.speechSynthesis.speak(u);
 }
@@ -104,7 +98,7 @@ testVoiceBtn.addEventListener('click', ()=>{
   speak('Detta är en förhandslyssning av vald röst i Blush Narratives.');
 });
 
-// ---- Textgenerator (lokal) – anpassar ton efter nivå + detalj
+// ---- Text-ton (lokal)
 function blendTone(level, detailPct) {
   const base = {
     1: ["varma blickar", "lätta beröringar", "romantisk ton"],
@@ -115,21 +109,7 @@ function blendTone(level, detailPct) {
   return [ base[0], detailPct < 50 ? base[1] : base[ix], base[ix] ];
 }
 
-function targetWordCount(mins){
-  // ca 170 ord/min med TTS
-  return Math.round(mins * 170);
-}
-
-function localDraftFromPrompt(prompt, level, detailPct, mins){
-  const words = targetWordCount(mins);
-  const [a,b,c] = blendTone(level, detailPct);
-  // Lokal, ofarlig demo: 3 stycken och “fortsätt…”-markör (riktig AI kommer från backend)
-  const p1 = `${prompt.trim()} I skymningen möttes ni, där ${a} sa mer än ord.`;
-  const p2 = `Rummet fylldes av ${b}, och ni vågade stanna upp, nära, låta tempot sjunka ned i något eget.`;
-  const p3 = `Med ${c} närvarande tog kvällen sin riktning – detaljer låter vi växa naturligt, i det tempo ni väljer.`;
-  const draft = [p1,p2,p3].join(' ');
-  return `${draft}\n\n[Demo – mållängd ≈ ${words} ord. Backend fyller ut hela texten när vi kopplar på AI.]`;
-}
+function targetWordCount(mins){ return Math.round(mins * 170); }
 
 // ---- Skapa berättelse
 const ideaEl = $('#idea');
@@ -140,6 +120,16 @@ const readBtn = $('#readBtn');
 
 function setLoading(btn, on) { btn.classList.toggle('loading', on); btn.disabled = on; }
 
+function localDraftFromPrompt(prompt, level, detailPct, mins){
+  const words = targetWordCount(mins);
+  const [a,b,c] = blendTone(level, detailPct);
+  const base = prompt.trim() || "En oväntad kväll";
+  const p1 = `${base}. I skymningen möttes ni, där ${a} sa mer än ord.`;
+  const p2 = `Rummet fylldes av ${b}, och ni vågade stanna upp, nära.`;
+  const p3 = `Med ${c} närvarande tog kvällen sin riktning – detaljer växer naturligt.`;
+  return `${[p1,p2,p3].join(' ')}\n\n[Demo – mållängd ≈ ${words} ord. Backend fyller ut hela texten när AI är på.]`;
+}
+
 async function handleCreate(){
   const idea = ideaEl.value.trim();
   if(!idea){ ideaEl.focus(); toast('Skriv en idé först.'); return; }
@@ -147,29 +137,29 @@ async function handleCreate(){
   resultEl.hidden = false;
   resultEl.textContent = 'Skapar berättelse...';
 
-  // STEG A: lokal draft (omedelbar feedback)
   const mins = Number(durationEl.value || '5');
-  const local = localDraftFromPrompt(idea, currentLevel, detail, mins);
-  lastStoryText = local;
-  resultEl.textContent = local;
 
-  // STEG B: (valfritt) backend – när vi kopplar på AI:
-  // try {
-  //   const res = await fetch('/api/generate', {
-  //     method: 'POST',
-  //     headers: { 'content-type': 'application/json' },
-  //     body: JSON.stringify({ prompt: idea, level: currentLevel, detail, minutes: mins })
-  //   });
-  //   const data = await res.json();
-  //   lastStoryText = data.text;
-  //   resultEl.textContent = data.text;
-  // } catch(e) {
-  //   console.warn('Backend fel, visar lokal draft istället', e);
-  // }
+  // Försök backend (om aktiv). Om det faller – visa lokal draft.
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: idea, level: currentLevel, detail, minutes: mins })
+    });
+    if (!res.ok) throw new Error('Backend svarade inte OK');
+    const data = await res.json();
+    if (!data?.text) throw new Error('Saknar text i backend-svar');
+    lastStoryText = data.text;
+    resultEl.textContent = data.text;
+  } catch (e) {
+    const local = localDraftFromPrompt(idea, currentLevel, detail, mins);
+    lastStoryText = local;
+    resultEl.textContent = local;
+  }
 
   readBtn.disabled = false;
   setLoading(createBtn, false);
-  toast('Berättelse klar (demo).');
+  toast('Berättelse klar.');
 }
 
 createBtn.addEventListener('click', handleCreate);
