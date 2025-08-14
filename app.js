@@ -1,16 +1,15 @@
-/* BN – UI-förbättringar:
-   - AI-statusmärke (Lokal/Online)
-   - Efter-genereringsåtgärder: Läs upp, Kopiera, Ladda ner, Favorit
-   - Favoriter-fliken aktiv
-   - Sparar val (nivå, detalj, röst, volym) i localStorage
+/* BN – förbättrad TTS:
+   - chunkad uppläsning (funkar bättre i iOS/Safari på långa texter)
+   - Stoppa-knapp
+   - resten: samma UI som du redan kör
 */
 
 let currentLevel = Number(localStorage.getItem('bn.level') || 1);
-let detail = Number(localStorage.getItem('bn.detail') || 50);   // 0–100
-let volume = Number(localStorage.getItem('bn.volume') || 0.6);  // 0–1
+let detail = Number(localStorage.getItem('bn.detail') || 50);
+let volume = Number(localStorage.getItem('bn.volume') || 0.6);
 let currentVoice = localStorage.getItem('bn.voice') || null;
 let lastStoryText = '';
-let aiOnline = false; // uppdateras efter lyckat backend-svar
+let aiOnline = false;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -23,12 +22,12 @@ function toast(msg) {
   t._timer = setTimeout(() => (t.hidden = true), 2400);
 }
 
-// ---- Modal “Kommer snart”
+// Modal “Kommer snart”
 const soonDlg = $('#soonModal');
 $('#closeSoon')?.addEventListener('click', () => soonDlg.close());
 $$('[data-soon]').forEach(el => el.addEventListener('click', () => !soonDlg.open && soonDlg.showModal()));
 
-// ---- Nav smooth scroll
+// Nav smooth scroll + favs render
 $$('.topnav .navlink').forEach((a) => {
   a.addEventListener('click', (e) => {
     const href = a.getAttribute('href');
@@ -42,7 +41,7 @@ $$('.topnav .navlink').forEach((a) => {
   });
 });
 
-// ---- AI status chip
+// AI status chip
 function setAIStatus(online){
   aiOnline = online;
   const chip = $('#aiStatus');
@@ -51,7 +50,7 @@ function setAIStatus(online){
   chip.classList.toggle('offline', !online);
 }
 
-// ---- Nivå
+// Nivå
 function syncLevelUI(){
   $$('.level-chip').forEach(b=>{
     const sel = Number(b.dataset.level) === currentLevel;
@@ -69,7 +68,7 @@ $$('.level-chip').forEach((btn) => {
   });
 });
 
-// ---- Reglage
+// Reglage
 const detailEl = $('#detail'); const detailOut = $('#detailOut');
 detailEl.value = detail; detailOut.textContent = detail;
 detailEl.addEventListener('input', (e) => {
@@ -86,12 +85,12 @@ volEl.addEventListener('input', (e) => {
   volOut.textContent = e.target.value;
 });
 
-// ---- TTS (webbläsarens inbyggda)
+// TTS – röstval
 const voiceSelect = $('#voiceSelect');
 const testVoiceBtn = $('#testVoice');
 
 function loadVoices(){
-  const all = speechSynthesis.getVoices();
+  const all = 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
   const voices = all.filter(v => v.lang?.toLowerCase().startsWith('sv') || v.lang?.toLowerCase().startsWith('en'));
   voiceSelect.innerHTML = '';
   voices.forEach((v) => {
@@ -120,33 +119,67 @@ voiceSelect.addEventListener('change', ()=>{
   localStorage.setItem('bn.voice', currentVoice);
 });
 
-function speak(text){
+// ---- Ny: chunkad uppläsning + Stoppa
+let speakingQueue = [];
+let speakingActive = false;
+
+function stopSpeaking(){
   if (!('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  const v = speechSynthesis.getVoices().find(x => x.name === currentVoice);
-  if (v) u.voice = v;
-  u.lang = (v?.lang || 'sv-SE');
-  u.volume = volume;
-  window.speechSynthesis.speak(u);
+  speakingQueue = [];
+  speakingActive = false;
+  window.speechSynthesis.cancel();
 }
+
+function speakChunked(text){
+  if (!('speechSynthesis' in window)) { toast('Ingen TTS i denna webbläsare.'); return; }
+  stopSpeaking(); // rensa ev. tidigare
+  // Dela upp i meningar/lagom bitar
+  const parts = text
+    .replace(/\n+/g, ' ')
+    .split(/([.!?…]+)\s+/) // behåll skiljetecken
+    .reduce((acc, cur, i, arr)=>{
+      if (i % 2 === 0) {
+        const sentence = (cur + (arr[i+1] || '')).trim();
+        if (sentence) acc.push(sentence);
+      }
+      return acc;
+    }, [])
+    .flatMap(s => s.length > 280 ? s.match(/.{1,280}(\s|$)/g).map(x=>x.trim()) : [s]); // max ~280 tecken per del
+
+  speakingQueue = parts;
+  speakingActive = true;
+
+  const v = speechSynthesis.getVoices().find(x => x.name === currentVoice);
+  const speakNext = () => {
+    if (!speakingActive || speakingQueue.length === 0) { speakingActive = false; return; }
+    const chunk = speakingQueue.shift();
+    const u = new SpeechSynthesisUtterance(chunk);
+    if (v) u.voice = v;
+    u.lang = (v?.lang || 'sv-SE');
+    u.volume = volume;
+    u.onend = () => setTimeout(speakNext, 40); // liten paus
+    u.onerror = () => setTimeout(speakNext, 80);
+    // Safari/iOS hack: lite delay efter cancel innan start
+    setTimeout(()=> window.speechSynthesis.speak(u), 20);
+  };
+  speakNext();
+}
+
 testVoiceBtn.addEventListener('click', ()=>{
-  speak('Detta är en förhandslyssning av vald röst i Blush Narratives.');
+  speakChunked('Detta är en förhandslyssning av vald röst i Blush Narratives.');
 });
 
-// ---- Text-ton (lokal)
+// Text-ton (lokal) + verktyg
 function blendTone(level, detailPct) {
   const base = {
     1: ["varma blickar", "lätta beröringar", "romantisk ton"],
     3: ["pirrig nyfikenhet", "långsamma andetag", "förväntansfull stämning"],
     5: ["otålig lust", "handfasta rörelser", "nakna erkännanden"]
   }[level];
-  const ix = Math.min(2, Math.floor(detailPct / 50)); // 0..2
+  const ix = Math.min(2, Math.floor(detailPct / 50));
   return [ base[0], detailPct < 50 ? base[1] : base[ix], base[ix] ];
 }
-
 function targetWordCount(mins){ return Math.round(mins * 170); }
-
 function localDraftFromPrompt(prompt, level, detailPct, mins){
   const words = targetWordCount(mins);
   const [a,b,c] = blendTone(level, detailPct);
@@ -157,13 +190,14 @@ function localDraftFromPrompt(prompt, level, detailPct, mins){
   return `${[p1,p2,p3].join(' ')}\n\n[Demo – mållängd ≈ ${words} ord. Backend fyller ut hela texten när AI är på.]`;
 }
 
-// ---- Skapa berättelse
+// Skapa berättelse
 const ideaEl = $('#idea');
 const durationEl = $('#duration');
 const createBtn = $('#createBtn');
 const resultEl = $('#result');
 const actionsBar = $('#actionsBar');
 const readBtn = $('#readBtn');
+const stopBtn = $('#stopBtn');
 const copyBtn = $('#copyBtn');
 const downloadBtn = $('#downloadBtn');
 const favBtn = $('#favBtn');
@@ -179,7 +213,6 @@ async function handleCreate(){
 
   const mins = Number(durationEl.value || '5');
 
-  // Försök backend; om det faller – lokal draft
   let usedBackend = false;
   try {
     const res = await fetch('/api/generate', {
@@ -198,7 +231,7 @@ async function handleCreate(){
     resultEl.textContent = lastStoryText;
   }
 
-  setAIStatus(usedBackend); // uppdatera status-chip
+  setAIStatus(usedBackend);
   actionsBar.hidden = false;
   readBtn.disabled = false;
   setLoading(createBtn, false);
@@ -212,11 +245,13 @@ ideaEl.addEventListener('keydown', (e)=>{
   }
 });
 
-// Efter-generering: Läs, Kopiera, Ladda ner, Favorit
+// Efter-generering
 readBtn.addEventListener('click', ()=> {
   if (!lastStoryText) { toast('Skapa en berättelse först.'); return; }
-  speak(lastStoryText);
+  speakChunked(lastStoryText);
 });
+stopBtn.addEventListener('click', stopSpeaking);
+
 copyBtn.addEventListener('click', async ()=>{
   if (!lastStoryText) return;
   try { await navigator.clipboard.writeText(lastStoryText); toast('Text kopierad.'); }
@@ -242,10 +277,10 @@ favBtn.addEventListener('click', ()=>{
     id: Date.now(),
     level: currentLevel,
     detail,
-    text: lastStoryText.slice(0, 2000), // begränsa storlek
+    text: lastStoryText.slice(0, 20000),
     ts: new Date().toISOString()
   });
-  setFavs(list.slice(0, 200)); // max 200 lokalt
+  setFavs(list.slice(0, 200));
   toast('Sparad i favoriter.');
   renderFavs();
 });
@@ -274,7 +309,7 @@ function renderFavs(){
         <button class="btn del">Ta bort</button>
       </div>
     `;
-    wrap.querySelector('.play').addEventListener('click', ()=> speak(item.text));
+    wrap.querySelector('.play').addEventListener('click', ()=> speakChunked(item.text));
     wrap.querySelector('.del').addEventListener('click', ()=>{
       const after = getFavs().filter(f => f.id !== item.id);
       setFavs(after); renderFavs();
