@@ -9,6 +9,7 @@
   --chip:#1f2230;
   --chip-sel:#2a2e42;
   --focus:#7aa2f7;
+  --ok:#2ecc71; --warn:#f0b429;
 }
 
 *{box-sizing:border-box}
@@ -34,7 +35,14 @@ body{
 .navlink{ text-decoration:none; color:var(--muted); padding:6px 10px; border-radius:8px }
 .navlink.active{ color:var(--text); background:var(--chip)}
 .navlink:hover{ color:var(--text)}
-.topbar .btn{margin-left:8px}
+
+.status-wrap{display:flex; align-items:center; gap:10px}
+.status-chip{
+  padding:6px 10px; border-radius:999px; font-size:.85rem;
+  border:1px solid var(--border); background:#202433; color:var(--muted);
+}
+.status-chip.online{ border-color:#274734; background:#17341f; color:#a6efc6 }
+.status-chip.offline{ border-color:#41322a; background:#2a1f16; color:#f5d3b0 }
 
 .container{max-width:900px; margin:24px auto; padding:0 16px}
 .card{
@@ -46,7 +54,6 @@ body{
 .muted{color:var(--muted)}
 .accent{color:var(--accent)}
 
-/* Controls */
 .level-row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 .chip{
   background:var(--chip); border:1px solid var(--border); color:var(--text);
@@ -61,7 +68,7 @@ body{
 .controls{
   display:grid; grid-template-columns:1fr; gap:12px; margin-top:12px;
 }
-@media (min-width:900px){ .controls{grid-template-columns:1fr 1fr 1fr;} }
+@media (min-width:900px){ .controls{grid-template-columns:1fr 1fr;} }
 .control{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
 .control-label{min-width:170px; color:var(--muted)}
 input[type="range"]{flex:1}
@@ -97,7 +104,9 @@ select{ background:#0f1118; color:var(--text); border:1px solid var(--border); b
 .btn.primary{background:var(--accent); border-color:transparent; color:white}
 .btn[disabled]{opacity:.6; cursor:not-allowed}
 
+/* Result + actions */
 .result{ margin-top:12px; padding:12px; border:1px dashed #2b3148; border-radius:12px; background:var(--card-weak) }
+.actions-bar{flex-wrap:wrap}
 
 /* Spinner */
 .spinner{
@@ -107,6 +116,12 @@ select{ background:#0f1118; color:var(--text); border:1px solid var(--border); b
 }
 .btn.loading .spinner{display:inline-block}
 .btn.loading .btn-label{opacity:.7}
+
+/* List (favoriter) */
+.list .fav{background:#141a25;padding:12px;border:1px solid #22283a;border-radius:12px;margin:10px 0}
+.list .fav h4{margin:0 0 6px}
+.list .meta{color:var(--muted); font-size:.85rem; margin-bottom:8px}
+.list .row{margin-top:8px}
 
 /* Modal + Toast */
 .modal{ padding:0; border:1px solid var(--border); border-radius:14px; background:var(--card); color:var(--text) }
