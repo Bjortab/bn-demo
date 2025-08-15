@@ -7,62 +7,63 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="top">
-    <div class="brand">Blush <span>Narratives</span></div>
-    <nav>
-      <a href="#" class="active">Hem</a>
-      <a href="#">Favoriter</a>
-      <a href="#">Profil</a>
+  <header class="topbar">
+    <div class="brand"><span class="blush">Blush</span> Narratives</div>
+    <nav class="nav">
+      <a href="#" aria-label="Hem">Hem</a>
+      <a href="#" aria-label="Favoriter">Favoriter</a>
+      <a href="#" aria-label="Profil">Profil</a>
     </nav>
   </header>
 
   <main class="container">
-    <section class="card">
+    <section class="panel">
       <h1>Välkommen till Blush Narratives</h1>
       <p>Välj nivå och spela upp en berättelse.</p>
 
-      <div class="grid-2">
+      <div class="grid">
         <label>
           Längd
           <select id="length">
             <option value="5">5 minuter</option>
-            <option value="3">3 minuter</option>
+            <option value="8">8 minuter</option>
             <option value="10">10 minuter</option>
           </select>
-          <small>≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</small>
+          <small id="words">≈ 170 ord/min → ca 850 ord per 5 min.</small>
         </label>
 
         <label>
           Snusk-nivå
-          <input id="spice" type="range" min="1" max="5" value="3" />
-          <small>1 = mild / 5 = hetare språk</small>
+          <input id="spice" type="range" min="1" max="5" value="2" />
+          <small>1 = mild / 5 = hetare språk (alltid icke-grafiskt).</small>
         </label>
 
         <label>
           Röst
           <select id="voice">
             <option value="alloy">Alloy (neutral)</option>
-            <option value="aria">Aria (mjuk)</option>
-            <option value="verse">Verse (varm)</option>
+            <option value="aria">Aria (varm)</option>
+            <option value="verse">Verse (mjuk)</option>
+            <option value="breeze">Breeze (lugn)</option>
           </select>
           <small>Gratis test-röster via OpenAI TTS.</small>
         </label>
       </div>
     </section>
 
-    <section class="card">
+    <section class="panel">
       <h2>Skapa egen berättelse</h2>
-      <textarea id="prompt" rows="5" placeholder="Skriv din idé…"></textarea>
+      <textarea id="idea" rows="4" placeholder="Skriv din idé…"></textarea>
 
       <div class="actions">
-        <button id="btnPreview" class="ghost">Förhandslyssna</button>
+        <button id="btnPreview" class="secondary">Förhandslyssna</button>
         <button id="btnRead" class="primary">Läs upp</button>
         <button id="btnDownload" class="ghost">Ladda ner .txt</button>
       </div>
 
-      <p id="status" class="status"></p>
+      <div id="status" class="status"></div>
 
-      <audio id="player" controls></audio>
+      <audio id="player" controls preload="none"></audio>
 
       <h3>Utdrag</h3>
       <div id="excerpt" class="excerpt"></div>
@@ -70,9 +71,9 @@
   </main>
 
   <footer class="footer">
-    © Blush Narratives · <a href="status.html">Status</a>
+    © Blush Narratives · <a id="statusLink" href="/api/health" target="_blank" rel="noopener">Status</a>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js" type="module"></script>
 </body>
 </html>
