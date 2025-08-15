@@ -7,121 +7,127 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-light">Blush</span><span class="brand-accent"> Narratives</span></div>
+  <header class="site-header">
+    <div class="brand"><span>Blush</span> Narratives</div>
     <nav class="nav">
-      <a href="#" data-view="home">Hem</a>
-      <a href="#" data-view="compose">Skapa</a>
-      <a href="#" data-view="library">Bibliotek</a>
-      <a id="blushConnect" href="#" data-view="connect" class="connect">BlushConnect</a>
+      <a href="?view=compose">Skapa</a>
+      <a href="#" aria-disabled="true">Hem</a>
+      <a href="#" aria-disabled="true">Favoriter</a>
+      <a href="#" aria-disabled="true">Profil</a>
     </nav>
   </header>
 
-  <main class="container">
-    <!-- Hem -->
-    <section id="view-home" class="view active">
+  <!-- Välkomstvy -->
+  <main class="bn-welcome">
+    <section class="card">
       <h1>Välkommen</h1>
-      <p class="sub">Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
-      <div class="gate panel">
-        <label><input type="checkbox" id="ageConfirm" /> Jag intygar 18+ och samtycke mellan vuxna.</label>
+      <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
+
+      <label class="consent">
+        <input id="consent" type="checkbox" />
+        Jag intygar 18+ och samtycke mellan vuxna.
+      </label>
+
+      <div class="actions">
+        <a id="btnStart" href="#" class="btn primary">Skapa berättelse</a>
+        <a id="btnOpenBC" href="?view=compose" class="btn ghost">Öppna BlushConnect</a>
       </div>
-      <div class="buttons">
-        <button class="primary" data-view="compose">Skapa berättelse</button>
-        <button data-view="connect">Öppna BlushConnect</button>
+
+      <footer class="muted">
+        © Blush Narratives · <a id="statusLink" href="/api/health" target="_blank" rel="noopener">Status</a>
+      </footer>
+    </section>
+  </main>
+
+  <!-- Skapa-vy -->
+  <main class="bn-compose">
+    <section class="panel">
+      <div class="controls">
+        <div class="field">
+          <label for="length">Längd</label>
+          <select id="length">
+            <option value="5">5 minuter</option>
+            <option value="3">3 minuter</option>
+            <option value="1">1 minut</option>
+          </select>
+          <div class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</div>
+        </div>
+
+        <div class="field">
+          <label for="spice">Snusk-nivå</label>
+          <input id="spice" type="range" min="1" max="5" value="2" />
+          <div class="hint">1 = mild / 5 = hetare språk (alltid icke-grafiskt).</div>
+        </div>
+
+        <div class="field">
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <option value="alloy">Alloy (neutral)</option>
+            <option value="verse">Verse (varm)</option>
+            <option value="aria">Aria (mjuk)</option>
+          </select>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+        </div>
       </div>
     </section>
 
-    <!-- Skapa -->
-    <section id="view-compose" class="view">
+    <section class="panel">
       <h2>Skapa egen berättelse</h2>
-
-      <div class="panel">
-        <div class="row">
-          <label for="length">Längd</label>
-          <select id="length">
-            <option value="1">1 min</option>
-            <option value="3">3 min</option>
-            <option value="5" selected>5 min</option>
-            <option value="10">10 min</option>
-          </select>
-          <span class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord</span>
-        </div>
-
-        <div class="row">
-          <label for="spice">Snusk-nivå</label>
-          <input id="spice" type="range" min="1" max="5" step="1" value="2" />
-          <span id="spiceBadge" class="badge lvl-2">Nivå 2</span>
-          <span id="spiceDesc" class="hint">sensuellt men smakfullt</span>
-        </div>
-
-        <div class="row">
-          <label for="voice">Röst</label>
-          <select id="voice">
-            <option value="verse" selected>Verse (varm)</option>
-            <option value="alloy">Alloy (neutral)</option>
-            <option value="aria">Aria (mjuk)</option>
-          </select>
-          <span class="hint">Optimerad för naturligt flyt.</span>
-        </div>
-      </div>
-
-      <textarea id="prompt" rows="4" placeholder="Skriv din idé (plats, stämning, roller, tempo)…"></textarea>
+      <textarea id="prompt" rows="5" placeholder="Skriv din idé…"></textarea>
 
       <div class="buttons">
-        <button id="btnPreview" class="ghost">Förhandsvisa text</button>
-        <button id="btnRead" class="primary">Läs upp</button>
-        <button id="btnFav" class="ghost">Spara favorit</button>
+        <button id="btnPreview" class="btn">Förhandslyssna</button>
+        <button id="btnRead" class="btn primary">Läs upp</button>
+        <button id="btnDownload" class="btn ghost">Ladda ner .txt</button>
       </div>
 
       <div id="status" class="status"></div>
+
       <audio id="player" controls preload="none"></audio>
 
       <h3>Utdrag</h3>
-      <div id="excerpt" class="excerpt">—</div>
+      <div id="excerpt" class="excerpt"></div>
     </section>
-
-    <!-- Bibliotek (placeholder – instant play när vi lägger in färdiga texter) -->
-    <section id="view-library" class="view">
-      <h2>Bibliotek</h2>
-      <p class="sub">Färdiga noveller för omedelbar uppspelning. (Jag fyller på härnäst.)</p>
-      <div id="libList" class="cards"></div>
-    </section>
-
-    <!-- Connect -->
-    <section id="view-connect" class="view">
-      <h2>BlushConnect</h2>
-      <div class="panel">
-        <div id="authBox">
-          <h3>Logga in</h3>
-          <input id="email" type="email" placeholder="E-post" />
-          <input id="pw" type="password" placeholder="Lösenord" />
-          <div class="row">
-            <button id="btnLogin" class="primary">Logga in</button>
-            <button id="btnRegister" class="ghost">Skapa konto</button>
-          </div>
-          <p class="hint">Betalning med kort kopplas här (CCBill/SegPay).</p>
-        </div>
-
-        <div id="dashBox" class="hidden">
-          <div class="dash-row">
-            <div>
-              <div class="you">Inloggad som <span id="meMail"></span></div>
-              <div class="substat">Abonnemang: <span id="subName">Gratis</span></div>
-            </div>
-            <div class="row">
-              <button id="btnManage" class="primary">Betala med kort</button>
-              <button id="btnLogout" class="ghost">Logga ut</button>
-            </div>
-          </div>
-          <h3>Dina favoriter</h3>
-          <div id="favs" class="cards"></div>
-        </div>
-      </div>
-    </section>
-
-    <p class="foot">© Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a></p>
   </main>
 
-  <script defer src="app.js"></script>
+  <!-- Lilla “perma-fix”-scriptet för vy-växling -->
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      if (params.get('view') === 'compose') {
+        document.documentElement.classList.add('bn-view-compose');
+      }
+
+      function qs(sel) { return document.querySelector(sel); }
+      const consent = qs('#consent');
+      const startBtn = qs('#btnStart');
+
+      if (startBtn) {
+        startBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (consent && !consent.checked) {
+            alert('Bocka i att du är 18+ och att samtycke gäller.');
+            return;
+          }
+          const url = new URL(location.href);
+          url.searchParams.set('view', 'compose');
+          location.href = url.toString();
+        });
+      }
+
+      // Fallback-länk om något segar
+      const header = document.querySelector('header');
+      if (header && !document.querySelector('#bn-fallback-compose')) {
+        const a = document.createElement('a');
+        a.id = 'bn-fallback-compose';
+        a.href = '?view=compose';
+        a.textContent = 'Öppna BlushConnect';
+        a.className = 'fallback';
+        header.appendChild(a);
+      }
+    })();
+  </script>
+
+  <script src="app.js"></script>
 </body>
 </html>
