@@ -4,49 +4,47 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives – Minimal</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css?v=bn3">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Blush Narratives</div>
+    <div class="brand">Blush <span>Narratives</span></div>
     <nav class="nav">
-      <a href="#" class="nav-link active">Hem</a>
-      <a href="#" class="nav-link">Favoriter</a>
-      <a href="#" class="nav-link">Profil</a>
+      <a href="#" id="homeLink">Hem</a>
+      <a href="#" id="favoritesLink">Favoriter</a>
+      <a href="#" id="profileLink">Profil</a>
     </nav>
   </header>
 
-  <main class="container">
+  <main class="wrap">
     <section class="panel">
-      <h1>Välkommen till <span class="accent">Blush Narratives</span></h1>
+      <h1>Välkommen till Blush Narratives</h1>
       <p class="muted">Välj nivå och spela upp en berättelse.</p>
 
-      <div class="grid">
-        <div class="field">
-          <label for="minutesSelect">Längd</label>
-          <select id="minutesSelect">
-            <option value="3">3 minuter</option>
-            <option value="5" selected>5 minuter</option>
+      <div class="controls grid">
+        <div class="control">
+          <label for="length">Längd</label>
+          <select id="length">
+            <option value="5">5 minuter</option>
             <option value="8">8 minuter</option>
             <option value="10">10 minuter</option>
           </select>
-          <div class="hint">≈ 170 ord/min → ca 850 ord per 5 min.</div>
+          <div class="hint">≈ 170 ord/min → ca <span id="wordsHint">850</span> ord per val.</div>
         </div>
 
-        <div class="field">
-          <label for="spiceRange">Snusk-nivå</label>
-          <input id="spiceRange" type="range" min="1" max="5" value="3" />
+        <div class="control">
+          <label for="spice">Snusk-nivå</label>
+          <input id="spice" type="range" min="1" max="5" step="1" value="3" />
           <div class="hint">1 = mild / 5 = hetare språk</div>
         </div>
 
-        <div class="field">
-          <label for="voiceSelect">Röst</label>
-          <select id="voiceSelect">
-            <option value="alloy" selected>Alloy (neutral)</option>
-            <option value="verse">Verse (varm)</option>
-            <option value="aria">Aria (ljus)</option>
-            <option value="sage">Sage (mjuk)</option>
-            <option value="narrator">Narrator (berättare)</option>
+        <div class="control">
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <!-- Dessa namn måste matcha det du använder i /functions/api/tts.js -->
+            <option value="alloy">Alloy (neutral)</option>
+            <option value="verse">Verse (mjuk)</option>
+            <option value="aria">Aria (varm)</option>
           </select>
           <div class="hint">Gratis test-röster via OpenAI TTS.</div>
         </div>
@@ -55,32 +53,28 @@
 
     <section class="panel">
       <h2>Skapa egen berättelse</h2>
-      <label for="ideaInput" class="sr-only">Din idé</label>
-      <textarea id="ideaInput" rows="6" placeholder="Skriv en idé (t.ex. plats, stämning, karaktärer)…"></textarea>
+      <textarea id="prompt" rows="6" placeholder="Skriv din idé..."></textarea>
 
       <div class="actions">
-        <button id="createBtn" class="btn primary">Skapa berättelse</button>
-        <button id="stopBtn" class="btn" disabled>Avbryt</button>
+        <button id="btnPreview" class="ghost">Förhandslyssna</button>
+        <button id="btnSpeak" class="primary">Läs upp</button>
+        <button id="btnDownload" class="ghost">Ladda ner .txt</button>
+        <button id="btnSaveFav" class="ghost">Spara som favorit</button>
       </div>
 
-      <div id="statusText" class="status"></div>
+      <div id="status" class="status"></div>
+      <audio id="player" controls class="audio" preload="none"></audio>
 
-      <h3>Resultat</h3>
-      <pre id="storyText" class="story"></pre>
-
-      <audio id="audioPlayer" controls preload="auto"></audio>
-
-      <div class="row">
-        <button id="copyBtn" class="btn">Kopiera text</button>
-        <button id="downloadTxtBtn" class="btn">Ladda ner .txt</button>
-      </div>
+      <h3>Utdrag</h3>
+      <pre id="excerpt" class="excerpt"></pre>
     </section>
   </main>
 
   <footer class="footer">
-    <span class="muted">BN Minimal – demo</span>
+    <span>© Blush Narratives</span>
+    <a href="/api/health" target="_blank" class="muted">Status</a>
   </footer>
 
-  <script src="/app.js" defer></script>
+  <script src="app.js?v=bn3" defer></script>
 </body>
 </html>
