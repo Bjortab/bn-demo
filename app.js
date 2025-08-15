@@ -1,5 +1,5 @@
 // ======= Ställ in din Cloudflare Pages-bas här =======
-const API_BASE = 'https://DIN-CLOUDFLARE-PAGES.DOMÄN'; // ex: https://bn-demo01.pages.dev
+const API_BASE = 'https//:bn-demo01.pages.dev';
 // =====================================================
 
 const els = {
@@ -84,3 +84,4 @@ els.btnDownload.addEventListener('click', async ()=>{
     a.click();
   }catch(e){ uiStatus('Download failed: '+e.message, true); }
 });
+
