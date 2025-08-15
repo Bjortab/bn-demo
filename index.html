@@ -3,78 +3,76 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives – Minimal</title>
-  <link rel="stylesheet" href="styles.css?v=bn3">
+  <title>Blush Narratives</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
+  <header class="top">
     <div class="brand">Blush <span>Narratives</span></div>
-    <nav class="nav">
-      <a href="#" id="homeLink">Hem</a>
-      <a href="#" id="favoritesLink">Favoriter</a>
-      <a href="#" id="profileLink">Profil</a>
+    <nav>
+      <a href="#" class="active">Hem</a>
+      <a href="#">Favoriter</a>
+      <a href="#">Profil</a>
     </nav>
   </header>
 
-  <main class="wrap">
-    <section class="panel">
+  <main class="container">
+    <section class="card">
       <h1>Välkommen till Blush Narratives</h1>
-      <p class="muted">Välj nivå och spela upp en berättelse.</p>
+      <p>Välj nivå och spela upp en berättelse.</p>
 
-      <div class="controls grid">
-        <div class="control">
-          <label for="length">Längd</label>
+      <div class="grid-2">
+        <label>
+          Längd
           <select id="length">
             <option value="5">5 minuter</option>
-            <option value="8">8 minuter</option>
+            <option value="3">3 minuter</option>
             <option value="10">10 minuter</option>
           </select>
-          <div class="hint">≈ 170 ord/min → ca <span id="wordsHint">850</span> ord per val.</div>
-        </div>
+          <small>≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</small>
+        </label>
 
-        <div class="control">
-          <label for="spice">Snusk-nivå</label>
-          <input id="spice" type="range" min="1" max="5" step="1" value="3" />
-          <div class="hint">1 = mild / 5 = hetare språk</div>
-        </div>
+        <label>
+          Snusk-nivå
+          <input id="spice" type="range" min="1" max="5" value="3" />
+          <small>1 = mild / 5 = hetare språk</small>
+        </label>
 
-        <div class="control">
-          <label for="voice">Röst</label>
+        <label>
+          Röst
           <select id="voice">
-            <!-- Dessa namn måste matcha det du använder i /functions/api/tts.js -->
             <option value="alloy">Alloy (neutral)</option>
-            <option value="verse">Verse (mjuk)</option>
-            <option value="aria">Aria (varm)</option>
+            <option value="aria">Aria (mjuk)</option>
+            <option value="verse">Verse (varm)</option>
           </select>
-          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
-        </div>
+          <small>Gratis test-röster via OpenAI TTS.</small>
+        </label>
       </div>
     </section>
 
-    <section class="panel">
+    <section class="card">
       <h2>Skapa egen berättelse</h2>
-      <textarea id="prompt" rows="6" placeholder="Skriv din idé..."></textarea>
+      <textarea id="prompt" rows="5" placeholder="Skriv din idé…"></textarea>
 
       <div class="actions">
         <button id="btnPreview" class="ghost">Förhandslyssna</button>
-        <button id="btnSpeak" class="primary">Läs upp</button>
+        <button id="btnRead" class="primary">Läs upp</button>
         <button id="btnDownload" class="ghost">Ladda ner .txt</button>
-        <button id="btnSaveFav" class="ghost">Spara som favorit</button>
       </div>
 
-      <div id="status" class="status"></div>
-      <audio id="player" controls class="audio" preload="none"></audio>
+      <p id="status" class="status"></p>
+
+      <audio id="player" controls></audio>
 
       <h3>Utdrag</h3>
-      <pre id="excerpt" class="excerpt"></pre>
+      <div id="excerpt" class="excerpt"></div>
     </section>
   </main>
 
   <footer class="footer">
-    <span>© Blush Narratives</span>
-    <a href="/api/health" target="_blank" class="muted">Status</a>
+    © Blush Narratives · <a href="status.html">Status</a>
   </footer>
 
-  <script src="app.js?v=bn3" defer></script>
+  <script src="app.js"></script>
 </body>
 </html>
