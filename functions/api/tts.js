@@ -1,47 +1,62 @@
-// TTS: konverterar text → tal via OpenAI TTS
-function cors(h = {}) {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    ...h,
-  };
-}
+// Putsar texten för bättre prosodi och använder en uttrycksfull standardröst
+export async function onRequestPost(context) {
+  try {
+    const { request, env } = context;
+    const { text, voice, rate } = await request.json();
 
-export async function onRequestOptions() {
-  return new Response(null, { status: 204, headers: cors() });
-}
+    if (!env.OPENAI_API_KEY) return err(500, "Saknar OPENAI_API_KEY i Cloudflare.");
+    if (!text || !text.trim()) return err(400, "Ingen text att läsa upp.");
 
-export async function onRequestPost(ctx) {
-  try{
-    const { text = "", voice = "alloy" } = await ctx.request.json();
-    if (!text) return new Response("Missing text", { status: 400, headers: cors() });
-
-    const body = {
-      model: "gpt-4o-mini-tts",   // TTS-modell
-      voice,                      // alloy | aria | verse | breeze
-      input: text,
-      format: "mp3"
+    const cleaned = tidy(text);
+    const payload = {
+      model: "gpt-4o-mini-tts",
+      voice: voice || "verse",
+      input: cleaned,
+      format: "mp3",
+      speed: Number(rate || 1.0)
     };
 
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
+    const r = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${ctx.env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(payload)
     });
 
-    if (!res.ok){
-      const t = await res.text();
-      return new Response(`OpenAI TTS error ${res.status}: ${t}`, { status: 502, headers: cors({"Content-Type":"text/plain"}) });
+    if (!r.ok) {
+      const t = await r.text().catch(()=>r.statusText);
+      return err(r.status, `TTS error: ${t}`);
     }
 
-    // Proxy:a vidare ljudet som binär ström
-    const headers = cors({ "Content-Type": "audio/mpeg", "Cache-Control": "no-store" });
-    return new Response(res.body, { status: 200, headers });
-  }catch(err){
-    return new Response(`TTS failed: ${String(err?.message || err)}`, { status: 500, headers: cors({"Content-Type":"text/plain"}) });
+    const buf = await r.arrayBuffer();
+    return new Response(buf, {
+      headers: { "Content-Type": "audio/mpeg" },
+      status: 200
+    });
+
+  } catch (e) {
+    return err(500, e.message || "Okänt fel.");
   }
+}
+
+function tidy(s){
+  let out = s.replace(/—/g, ", ").replace(/([^\.\!\?])\n/g,"$1.\n");
+  out = out.split(/\n+/).map(line => {
+    const parts = line.split(/(?<=[\.\!\?])\s+/);
+    return parts.map(p => p.trim()).filter(Boolean).map(p => {
+      if(p.length>220){ return p.replace(/, /g,". ").replace(/\s{2,}/g," "); }
+      return p;
+    }).join(" ");
+  }).join("\n");
+  out = out.replace(/“/g,'"').replace(/”/g,'"').replace(/"([^"]+)"/g,'"$1."');
+  return out.trim();
+}
+
+function err(status, message){
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
 }
