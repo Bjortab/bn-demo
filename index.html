@@ -1,126 +1,86 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Blush Narratives – Minimal</title>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- Topbar -->
   <header class="topbar">
     <div class="brand">Blush Narratives</div>
-    <nav class="topnav" aria-label="Huvudnavigation">
-      <a href="#home" class="navlink active">Hem</a>
-      <a href="#favorites" class="navlink">Favoriter</a>
-      <a href="#profile" class="navlink soon">Profil</a>
+    <nav class="nav">
+      <a href="#" class="nav-link active">Hem</a>
+      <a href="#" class="nav-link">Favoriter</a>
+      <a href="#" class="nav-link">Profil</a>
     </nav>
-    <div class="status-wrap">
-      <span id="aiStatus" class="status-chip offline">AI: Lokal</span>
-      <button id="connectBtnTop" class="btn primary ghost" data-soon>BlushConnect</button>
-    </div>
   </header>
 
-  <main id="home" class="container">
-    <!-- Nivå + detaljnivå + TTS-kontroller -->
-    <section class="card">
-      <div class="card-header">
-        <h1>Välj nivå & röst</h1>
-        <p class="muted">Gratis TTS via webbläsaren. Premiumröster kopplas in när BN börjar dra in pengar.</p>
-      </div>
+  <main class="container">
+    <section class="panel">
+      <h1>Välkommen till <span class="accent">Blush Narratives</span></h1>
+      <p class="muted">Välj nivå och spela upp en berättelse.</p>
 
-      <div class="level-row" role="group" aria-label="Välj intensitetsnivå">
-        <button class="chip level-chip selected" data-level="1" aria-pressed="true">1</button>
-        <button class="chip level-chip" data-level="3" aria-pressed="false">3</button>
-        <button class="chip level-chip" data-level="5" aria-pressed="false">5</button>
-        <div class="spacer"></div>
-        <div class="tts-inline">
-          <label for="voiceSelect" class="control-label">Röst</label>
-          <select id="voiceSelect"></select>
-          <button id="testVoice" class="btn">Förhandslyssna</button>
-        </div>
-      </div>
-
-      <div class="controls">
-        <div class="control">
-          <label for="detail" class="control-label">Detaljnivå (snuskighet)</label>
-          <input type="range" id="detail" min="0" max="100" value="50" />
-          <span class="range-badge"><span id="detailOut">50</span>%</span>
+      <div class="grid">
+        <div class="field">
+          <label for="minutesSelect">Längd</label>
+          <select id="minutesSelect">
+            <option value="3">3 minuter</option>
+            <option value="5" selected>5 minuter</option>
+            <option value="8">8 minuter</option>
+            <option value="10">10 minuter</option>
+          </select>
+          <div class="hint">≈ 170 ord/min → ca 850 ord per 5 min.</div>
         </div>
 
-        <div class="control">
-          <label for="volume" class="control-label">Volym (spelare)</label>
-          <input type="range" id="volume" min="0" max="100" value="60" />
-          <span class="range-badge"><span id="volOut">60</span>%</span>
+        <div class="field">
+          <label for="spiceRange">Snusk-nivå</label>
+          <input id="spiceRange" type="range" min="1" max="5" value="3" />
+          <div class="hint">1 = mild / 5 = hetare språk</div>
+        </div>
+
+        <div class="field">
+          <label for="voiceSelect">Röst</label>
+          <select id="voiceSelect">
+            <option value="alloy" selected>Alloy (neutral)</option>
+            <option value="verse">Verse (varm)</option>
+            <option value="aria">Aria (ljus)</option>
+            <option value="sage">Sage (mjuk)</option>
+            <option value="narrator">Narrator (berättare)</option>
+          </select>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
         </div>
       </div>
     </section>
 
-    <!-- Skapa berättelse -->
-    <section class="card" id="create">
+    <section class="panel">
       <h2>Skapa egen berättelse</h2>
-      <p class="muted">Skriv en idé. Välj längd. Vi skapar text som matchar nivån & dina detaljer.</p>
+      <label for="ideaInput" class="sr-only">Din idé</label>
+      <textarea id="ideaInput" rows="6" placeholder="Skriv en idé (t.ex. plats, stämning, karaktärer)…"></textarea>
 
-      <div class="grid two">
-        <label class="field">
-          <span>Din idé</span>
-          <textarea id="idea" rows="5" placeholder="Ex: Sjuksköterskan med blont hår förförde mig när jag besökte sjukhuset…"></textarea>
-        </label>
-        <label class="field">
-          <span>Längd</span>
-          <select id="duration">
-            <option value="5">≈ 5 minuter</option>
-            <option value="10">≈ 10 minuter</option>
-            <option value="15">≈ 15 minuter</option>
-          </select>
-          <small class="muted">≈ 170 ord/min → ca 850 ord per 5 min.</small>
-        </label>
+      <div class="actions">
+        <button id="createBtn" class="btn primary">Skapa berättelse</button>
+        <button id="stopBtn" class="btn" disabled>Avbryt</button>
       </div>
+
+      <div id="statusText" class="status"></div>
+
+      <h3>Resultat</h3>
+      <pre id="storyText" class="story"></pre>
+
+      <audio id="audioPlayer" controls preload="auto"></audio>
 
       <div class="row">
-        <button id="createBtn" class="btn primary">
-          <span class="btn-label">Skapa berättelse</span>
-          <span class="spinner" aria-hidden="true"></span>
-        </button>
-      </div>
-
-      <div id="result" class="result" hidden></div>
-
-      <div id="actionsBar" class="row actions-bar" hidden>
-        <button id="readBtn" class="btn">Läs upp</button>
         <button id="copyBtn" class="btn">Kopiera text</button>
-        <button id="downloadBtn" class="btn">Ladda ner .txt</button>
-        <button id="favBtn" class="btn">Spara som favorit</button>
+        <button id="downloadTxtBtn" class="btn">Ladda ner .txt</button>
       </div>
-    </section>
-
-    <!-- Favoriter -->
-    <section id="favorites" class="card">
-      <h2>Favoriter</h2>
-      <div id="favsList" class="list empty">
-        <p class="muted">Inga favoriter ännu.</p>
-      </div>
-    </section>
-
-    <!-- Profil (placeholder) -->
-    <section id="profile" class="card shallow">
-      <h2>Profil</h2>
-      <p class="muted">Kommer snart.</p>
     </section>
   </main>
 
-  <!-- Toast -->
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <footer class="footer">
+    <span class="muted">BN Minimal – demo</span>
+  </footer>
 
-  <!-- Modal “Kommer snart” -->
-  <dialog id="soonModal" class="modal">
-    <h3>Kommer snart</h3>
-    <p>Den här funktionen är inte klar ännu. Vi jobbar på den!</p>
-    <div class="row right">
-      <button class="btn" id="closeSoon">OK</button>
-    </div>
-  </dialog>
-
-  <script src="app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>
