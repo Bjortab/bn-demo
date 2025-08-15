@@ -1,91 +1,105 @@
 // functions/api/generate.js
+// Skapar berättelsetext + TTS-ljud (mp3 data-URL) i ett anrop.
+
 export async function onRequestPost(context) {
-  const { request, env } = context;
-
-  // Enkla CORS-rubriker (justera Origin om du vill låsa ner)
-  const cors = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: cors });
-  }
-
   try {
-    if (!env.OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "Missing OPENAI_API_KEY" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...cors },
-      });
+    const { request, env } = context;
+    const { OPENAI_API_KEY } = env;
+    if (!OPENAI_API_KEY) {
+      return json({ error: 'OPENAI_API_KEY saknas i Cloudflare Pages → Settings → Variables' }, 500);
     }
 
-    const { prompt, level = 1, spice = 0, length = "kort" } = await request.json();
+    const body    = await request.json();
+    const prompt  = (body?.prompt ?? '').trim();
+    const minutes = Number(body?.minutes ?? 5);
+    const spice   = Number(body?.spice ?? 3);
+    const voiceIn = (body?.voice ?? 'alloy').toLowerCase();
 
-    if (!prompt || typeof prompt !== "string") {
-      return new Response(JSON.stringify({ error: "prompt saknas" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json", ...cors },
-      });
-    }
+    if (!prompt) return json({ error: 'prompt (string) krävs' }, 400);
 
-    // Liten “styrtext” som håller berättelserna generella och lyssningsvänliga.
-    const systemMessage =
-      "Du är en skicklig berättare. Skriv engagerande, sammanhängande, hyggligt ofarliga berättelser utan explicit innehåll. Håll tonen mänsklig och naturlig.";
+    const allowedVoices = ['alloy', 'verse', 'aria', 'sage', 'narrator'];
+    const safeVoice = allowedVoices.includes(voiceIn) ? voiceIn : 'alloy';
 
-    // Översätt val till nåt modellen förstår
-    const lengthMap = {
-      kort: "cirka 1–2 minuter",
-      mellan: "cirka 3–5 minuter",
-      lång: "cirka 8–10 minuter",
-    };
-    const targetLen = lengthMap[length] || "cirka 1–2 minuter";
-    const spiceHint =
-      spice <= 0 ? "låg intensitet" : spice >= 4 ? "hög intensitet (men icke-explicit)" : "måttlig intensitet";
+    const targetWords = Math.max(60, Math.min(2000, Math.round(minutes * 170)));
+    const temperature = Math.min(1.0, Math.max(0, (spice - 1) / 4));
 
-    const userMessage = `
-Skriv en berättelse på ${targetLen}, nivå ${level}, med ${spiceHint}.
-Utgå från idén: "${prompt}".
-Skriv i jag-form och gör dialogerna levande. Avsluta med en naturlig avrundning.
-`;
-
-    const body = {
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemMessage },
-        { role: "user", content: userMessage },
-      ],
-      temperature: 0.9,
-    };
-
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
+    // --- TEXT ---
+    const textResp = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        input: [
+          {
+            role: 'system',
+            content:
+`Du skriver en engagerande, sensuell men inte explicit berättelse på svenska.
+Skriv naturligt talad prosa som lämpar sig att läsas upp. Undvik listor.
+Mål-längd ungefär ${targetWords} ord.`
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature
+      })
     });
 
-    if (!resp.ok) {
-      const errTxt = await resp.text().catch(() => "");
-      return new Response(JSON.stringify({ error: "OpenAI error", details: errTxt }), {
-        status: 502,
-        headers: { "Content-Type": "application/json", ...cors },
-      });
+    if (!textResp.ok) {
+      const e = await safeText(textResp);
+      return json({ error: `Text-API fel: ${textResp.status} ${e}` }, 500);
     }
 
-    const data = await resp.json();
-    const story = data?.choices?.[0]?.message?.content?.trim() || "";
+    const textData = await textResp.json();
+    const storyText = (textData.output_text ?? '').trim();
+    if (!storyText) return json({ error: 'Tomt textsvar från modellen' }, 500);
 
-    return new Response(JSON.stringify({ story }), {
-      status: 200,
-      headers: { "Content-Type": "application/json", ...cors },
+    // --- TTS ---
+    const ttsResp = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice: safeVoice,
+        input: storyText,
+        format: 'mp3'
+      })
     });
+
+    if (!ttsResp.ok) {
+      const e = await safeText(ttsResp);
+      // returnera åtminstone text om TTS felar
+      return json({ text: storyText, audio: null, voice: safeVoice, warning: `TTS-API fel: ${ttsResp.status} ${e}` }, 200);
+    }
+
+    const audioArrayBuffer = await ttsResp.arrayBuffer();
+    const audioBase64 = arrayBufferToBase64(audioArrayBuffer);
+    const dataUrl = `data:audio/mpeg;base64,${audioBase64}`;
+
+    return json({ text: storyText, audio: dataUrl, voice: safeVoice }, 200);
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Server error", details: String(err) }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", ...cors },
-    });
+    return json({ error: `Serverfel: ${err?.message ?? String(err)}` }, 500);
   }
+}
+
+/* Hjälp-funktioner */
+function arrayBufferToBase64(buf) {
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+async function safeText(res) { try { return await res.text(); } catch { return '<no body>'; } }
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
 }
