@@ -1,52 +1,73 @@
-export const onRequestOptions = () =>
-  new Response(null, {
+// functions/api/tts.js
+// POST { text: string, voice?: string, format?: "mp3"|"wav"|"ogg" }
+export async function onRequestOptions() {
+  return new Response(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-      'Access-Control-Max-Age': '86400',
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
     },
   });
+}
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { text, voice = "alloy" } = await request.json();
-
-    if (!env.OPENAI_API_KEY) {
-      return new Response('OPENAI_API_KEY missing', { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } });
-    }
-    if (!text) {
-      return new Response('Bad request', { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } });
+    const apiKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return new Response("Missing OPENAI_API_KEY", { status: 500 });
     }
 
-    const r = await fetch("https://api.openai.com/v1/audio/speech", {
+    const { text = "", voice = "alloy", format = "mp3" } = await request.json();
+    if (!text || typeof text !== "string") {
+      return cors(new Response("Bad request: 'text' saknas.", { status: 400 }));
+    }
+
+    // OpenAI TTS (Text → Speech)
+    // Modellnamn som fungerar idag: "gpt-4o-mini-tts" (snabb), alternativt "tts-1"
+    const body = {
+      model: "gpt-4o-mini-tts",
+      voice,
+      input: text,
+      format, // "mp3" | "wav" | "ogg"
+    };
+
+    const res = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice,
-        input: text,
-        format: "mp3"
-      })
+      body: JSON.stringify(body),
     });
 
-    if (!r.ok) {
-      const e = await r.text();
-      return new Response(`OpenAI TTS error: ${e}`, { status: r.status, headers: { 'Access-Control-Allow-Origin': '*' } });
+    if (!res.ok) {
+      const t = await res.text();
+      return cors(new Response(`TTS error: ${t}`, { status: 502 }));
     }
 
-    return new Response(r.body, {
+    const audio = await res.arrayBuffer();
+    const mime =
+      format === "wav" ? "audio/wav" :
+      format === "ogg" ? "audio/ogg" :
+      "audio/mpeg"; // mp3 default
+
+    return cors(new Response(audio, {
+      status: 200,
       headers: {
-        'Content-Type': 'audio/mpeg',
-        'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': '*',
+        "Content-Type": mime,
+        "Content-Length": String(audio.byteLength),
+        "Cache-Control": "no-store",
       },
-    });
-  } catch (err) {
-    return new Response(`Server error: ${err}`, { status: 500, headers: { 'Access-Control-Allow-Origin': '*' } });
+    }));
+  } catch (e) {
+    return cors(new Response(`Serverfel: ${String(e)}`, { status: 500 }));
   }
+}
+
+function cors(res) {
+  res.headers.set("Access-Control-Allow-Origin", "*");
+  res.headers.set("Access-Control-Allow-Headers", "Content-Type");
+  res.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  return res;
 }
