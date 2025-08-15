@@ -1,137 +1,161 @@
-// ===== Anropa API:t via Cloudflare Pages (byt om din domän skiljer sig) =====
-const API_BASE = 'https://bn-demo01.pages.dev';
+// ===== Din Pages-bas här (håll tomt för samma domän) =====
+const API_BASE = ""; // ex: ""  → använder samma domän: /api/...
 
-// UI-element
-const els = {
-  length:  document.getElementById('length'),
-  spice:   document.getElementById('spice'),
-  voice:   document.getElementById('voice'),
-  words:   document.getElementById('words'),
-  prompt:  document.getElementById('prompt'),
-  btnPreview:  document.getElementById('btnPreview'),
-  btnRead:     document.getElementById('btnRead'),
-  btnDownload: document.getElementById('btnDownload'),
-  status:  document.getElementById('status'),
-  excerpt: document.getElementById('excerpt'),
-  player:  document.getElementById('player'),
-  spiceBadge: document.getElementById('spiceBadge'),
-  spiceDesc:  document.getElementById('spiceDesc'),
-};
+// ===== Säker DOM-init =====
+document.addEventListener("DOMContentLoaded", () => {
+  const els = {
+    length:     document.getElementById("length"),
+    spice:      document.getElementById("spice"),
+    voice:      document.getElementById("voice"),
+    words:      document.getElementById("words"),
+    spiceNote:  document.getElementById("spiceNote"),
+    prompt:     document.getElementById("prompt"),
+    btnPreview: document.getElementById("btnPreview"),
+    btnRead:    document.getElementById("btnRead"),
+    btnDownload:document.getElementById("btnDownload"),
+    status:     document.getElementById("status"),
+    excerpt:    document.getElementById("excerpt"),
+    player:     document.getElementById("player"),
+    blushConnect: document.getElementById("blushConnect"),
+  };
 
-// Ord/min beräkning
-function calcWords(mins){ return mins*170; }
-function updateWords(){ els.words.textContent = calcWords(Number(els.length.value)); }
-['change','input'].forEach(evt=>els.length.addEventListener(evt, updateWords));
-updateWords();
+  // Kontroll – varna om något saknas (förhindrar null.value-felet)
+  const missing = Object.entries(els)
+    .filter(([k,v]) => !v)
+    .map(([k]) => k);
+  if (missing.length) {
+    console.error("Saknade element i DOM:", missing);
+    alert("Fel i sidan: saknade element: " + missing.join(", "));
+    return;
+  }
 
-// Nivålabel → badge + beskrivning
-const SPICE_TEXT = {
-  1: { badge:'Nivå 1', desc:'romantisk & antydande', cls:'lvl-1' },
-  2: { badge:'Nivå 2', desc:'mild med varm stämning', cls:'lvl-2' },
-  3: { badge:'Nivå 3', desc:'sensuellt, icke-grafiskt', cls:'lvl-3' },
-  4: { badge:'Nivå 4', desc:'hetare men smakfullt', cls:'lvl-4' },
-  5: { badge:'Nivå 5', desc:'intensivt, passionerat', cls:'lvl-5' },
-};
-function renderSpice(){
-  const n = Number(els.spice.value);
-  const t = SPICE_TEXT[n] || SPICE_TEXT[2];
-  els.spiceBadge.textContent = t.badge;
-  els.spiceDesc.textContent  = t.desc;
-  els.spiceBadge.className = `badge ${t.cls}`;
-}
-['change','input'].forEach(evt=>els.spice.addEventListener(evt, renderSpice));
-renderSpice();
+  // —— UI-hjälp —— //
+  function calcWords(mins){ return Math.round(Number(mins) * 170); }
+  function updateWords(){
+    els.words.textContent = `≈ 170 ord/min → ca ${calcWords(els.length.value)} ord`;
+  }
+  function updateSpiceNote(){
+    const s = Number(els.spice.value||2);
+    const map = {
+      1: "Nivå 1 = mild / romantisk.",
+      2: "Nivå 2 = mild med varm stämning.",
+      3: "Nivå 3 = mer laddat språk.",
+      4: "Nivå 4 = explicit (inga minderåriga/icke-samtycke).",
+      5: "Nivå 5 = fullt explicit (t.ex. 'kuk', 'fitta', 'knulla')."
+    };
+    els.spiceNote.textContent = map[s] || map[2];
+  }
+  updateWords();
+  updateSpiceNote();
 
-// Status
-function uiStatus(msg, cls=''){
-  els.status.className = `status ${cls}`;
-  els.status.textContent = msg;
-}
+  // Lyssna på förändringar
+  ["change","input"].forEach(evt => {
+    els.length.addEventListener(evt, updateWords);
+    els.spice.addEventListener(evt, updateSpiceNote);
+  });
 
-// Liten textutjämning för TTS-flyt
-function mergeShortSentences(text){
-  const s = text.replace(/\s+/g,' ')
-                .replace(/([,;:])([^\s])/g, '$1 $2')
-                .replace(/\.{2,}/g,'.');
-  const parts = s.split(/(?<=[.!?])\s+/);
-  const merged = [];
-  for (let i=0;i<parts.length;i++){
-    const p = parts[i].trim();
-    if(!p) continue;
-    if (p.split(' ').length <= 3 && merged.length){
-      merged[merged.length-1] = merged[merged.length-1].replace(/[.!?]$/,'') + ', ' + p.charAt(0).toLowerCase()+p.slice(1);
-    } else {
-      merged.push(p);
+  // Status
+  function uiStatus(msg, type=""){ // type: "", "ok", "err"
+    els.status.textContent = msg;
+    els.status.classList.remove("ok","err");
+    if (type) els.status.classList.add(type);
+  }
+
+  // API helper
+  async function api(path, payload, expectAudio=false){
+    const res = await fetch(`${API_BASE}/api/${path}`,{
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload||{})
+    });
+    if (!res.ok){
+      const txt = await res.text().catch(()=>res.statusText);
+      throw new Error(`${res.status} ${res.statusText}: ${txt}`);
+    }
+    return expectAudio ? res.blob() : res.json();
+  }
+
+  // Generera text
+  let lastStory = "";  // sparar senaste fulla texten
+  async function doGenerate(){
+    const idea  = (els.prompt.value||"").trim();
+    const mins  = Number(els.length.value||5);
+    const spice = Number(els.spice.value||2);
+    const voice = (els.voice.value||"alloy");
+
+    if (!idea){
+      uiStatus("Skriv en idé först.", "err");
+      return null;
+    }
+
+    uiStatus("Genererar text…");
+    const data = await api("generate",{ idea, mins, spice, voice });
+    // Förväntat svar: { text, excerpt }
+    if (!data || !data.text){
+      uiStatus("Kunde inte generera text (tomt svar).","err");
+      return null;
+    }
+    lastStory = data.text;
+    els.excerpt.textContent = data.excerpt || (data.text.slice(0, 300)+"…");
+    uiStatus("Text klar.","ok");
+    return data.text;
+  }
+
+  // Läs upp (TTS)
+  async function doRead(){
+    try{
+      const text = await doGenerate();
+      if (!text) return;
+
+      uiStatus("Skapar röst…");
+      const voice = els.voice.value || "alloy";
+      const blob = await api("tts",{ text, voice }, true); // audio/mpeg
+      const url = URL.createObjectURL(blob);
+      els.player.src = url;
+      els.player.play().catch(()=>{/* användaren kan behöva trycka play */});
+      uiStatus("Klar att spela upp.","ok");
+    }catch(err){
+      console.error(err);
+      uiStatus("Generate failed: " + err.message, "err");
     }
   }
-  return merged.join(' ');
-}
 
-// API anrop (no-cache + cache-buster)
-async function api(path, payload){
-  const ts = Date.now();
-  const res = await fetch(`${API_BASE}/api${path}?ts=${ts}`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json', 'Cache-Control':'no-store' },
-    body: JSON.stringify(payload)
+  // Bara förhandsvisa (ingen röst)
+  async function doPreview(){
+    try{
+      await doGenerate();
+    }catch(err){
+      console.error(err);
+      uiStatus("Förhandsvisning misslyckades: " + err.message, "err");
+    }
+  }
+
+  // Ladda ner texten
+  function doDownload(){
+    if (!lastStory){
+      uiStatus("Ingen text att ladda ner ännu.","err");
+      return;
+    }
+    const blob = new Blob([lastStory], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "berattelse.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    uiStatus("Text nedladdad.","ok");
+  }
+
+  // Koppla knappar
+  els.btnRead.addEventListener("click", doRead);
+  els.btnPreview.addEventListener("click", doPreview);
+  els.btnDownload.addEventListener("click", doDownload);
+
+  // BlushConnect – placeholder (lägg in riktig länk när den finns)
+  els.blushConnect.addEventListener("click", (e)=>{
+    e.preventDefault();
+    uiStatus("BlushConnect kommer snart ✨");
   });
-  if(!res.ok){
-    const t = await res.text();
-    throw new Error(`${res.status} ${t}`);
-  }
-  return res.json();
-}
-
-// Generera + TTS
-async function generateAndSpeak(isPreview=false){
-  try{
-    uiStatus('Skapar text…');
-
-    const mins  = Number(els.length.value);
-    const spice = Number(els.spice.value);
-    const voice = els.voice.value;
-    const idea  = (els.prompt.value || '').trim();
-
-    // Generera text
-    const gen = await api('/generate', { mins, spice, idea, preview: isPreview });
-    const rawText = gen?.text || '';
-    const excerpt = gen?.excerpt || '';
-    const smoothed = mergeShortSentences(rawText);
-
-    // Visa utdrag
-    els.excerpt.textContent = excerpt || smoothed.slice(0, 260) + '…';
-
-    // Rensa ev. gammalt ljud och börja om
-    els.player.pause();
-    els.player.removeAttribute('src');
-    els.player.load();
-
-    uiStatus('Genererar tal…');
-
-    // TTS (server → base64 MP3)
-    const tts = await api('/tts', { text: smoothed, voice, rate: 1.0 });
-    const url = `data:audio/mpeg;base64,${tts.audio}`;
-    els.player.src = url;
-    els.player.currentTime = 0;
-    await els.player.play().catch(()=>{ /* autoplay block iOS */ });
-
-    uiStatus('Klar ✓', 'ok');
-  }catch(err){
-    console.error(err);
-    uiStatus(`Generate failed: ${err.message}`, 'err');
-  }
-}
-
-els.btnPreview.addEventListener('click', () => generateAndSpeak(true));
-els.btnRead.addEventListener('click',    () => generateAndSpeak(false));
-
-els.btnDownload.addEventListener('click', () => {
-  const text = els.excerpt.textContent || (els.prompt.value || '');
-  if (!text.trim()){ uiStatus('Inget att ladda ner ännu.', 'err'); return; }
-  const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'blush-narratives.txt';
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
 });
