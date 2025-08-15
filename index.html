@@ -8,73 +8,118 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <span class="brand-light">Blush</span><span class="brand-accent"> Narratives</span>
-    </div>
+    <div class="brand"><span class="brand-light">Blush</span><span class="brand-accent"> Narratives</span></div>
     <nav class="nav">
-      <a href="#" aria-label="Hem">Hem</a>
-      <a href="#" aria-label="Favoriter">Favoriter</a>
-      <a href="#" aria-label="Profil">Profil</a>
-      <a id="blushConnect" href="#" aria-label="BlushConnect">BlushConnect</a>
+      <a href="#" data-view="home">Hem</a>
+      <a href="#" data-view="compose">Skapa</a>
+      <a href="#" data-view="library">Bibliotek</a>
+      <a id="blushConnect" href="#" data-view="connect" class="connect">BlushConnect</a>
     </nav>
   </header>
 
   <main class="container">
-    <h1>Välkommen till Blush Narratives</h1>
-    <p>Välj nivå och spela upp en berättelse.</p>
-
-    <!-- Kontroller -->
-    <section class="panel">
-      <div class="row">
-        <label for="length">Längd</label>
-        <select id="length">
-          <option value="1">1 minut</option>
-          <option value="3">3 minuter</option>
-          <option value="5" selected>5 minuter</option>
-          <option value="10">10 minuter</option>
-        </select>
-        <span id="words" class="hint">≈ 170 ord/min → ca 850 ord per 5 min.</span>
+    <!-- Hem -->
+    <section id="view-home" class="view active">
+      <h1>Välkommen</h1>
+      <p class="sub">Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
+      <div class="gate panel">
+        <label><input type="checkbox" id="ageConfirm" /> Jag intygar 18+ och samtycke mellan vuxna.</label>
       </div>
-
-      <div class="row">
-        <label for="spice">Snusk‑nivå</label>
-        <input id="spice" type="range" min="1" max="5" step="1" value="2" />
-        <span id="spiceNote" class="hint">Nivå 2 = mild med varm stämning.</span>
-      </div>
-
-      <div class="row">
-        <label for="voice">Röst</label>
-        <select id="voice">
-          <option value="alloy" selected>Alloy (neutral)</option>
-          <option value="verse">Verse (varm)</option>
-          <option value="coral">Coral (ljus)</option>
-        </select>
-        <span class="hint">Gratis test‑röster via OpenAI TTS.</span>
+      <div class="buttons">
+        <button class="primary" data-view="compose">Skapa berättelse</button>
+        <button data-view="connect">Öppna BlushConnect</button>
       </div>
     </section>
 
-    <!-- Skapa egen berättelse -->
-    <section class="panel">
+    <!-- Skapa -->
+    <section id="view-compose" class="view">
       <h2>Skapa egen berättelse</h2>
-      <textarea id="prompt" rows="4" placeholder="Skriv din idé…"></textarea>
 
-      <div class="buttons">
-        <button id="btnPreview" type="button">Förhandslyssna</button>
-        <button id="btnRead" type="button" class="primary">Läs upp</button>
-        <button id="btnDownload" type="button">Ladda ner .txt</button>
+      <div class="panel">
+        <div class="row">
+          <label for="length">Längd</label>
+          <select id="length">
+            <option value="1">1 min</option>
+            <option value="3">3 min</option>
+            <option value="5" selected>5 min</option>
+            <option value="10">10 min</option>
+          </select>
+          <span class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord</span>
+        </div>
+
+        <div class="row">
+          <label for="spice">Snusk-nivå</label>
+          <input id="spice" type="range" min="1" max="5" step="1" value="2" />
+          <span id="spiceBadge" class="badge lvl-2">Nivå 2</span>
+          <span id="spiceDesc" class="hint">sensuellt men smakfullt</span>
+        </div>
+
+        <div class="row">
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <option value="verse" selected>Verse (varm)</option>
+            <option value="alloy">Alloy (neutral)</option>
+            <option value="aria">Aria (mjuk)</option>
+          </select>
+          <span class="hint">Optimerad för naturligt flyt.</span>
+        </div>
       </div>
 
-      <p id="status" role="status" aria-live="polite"></p>
+      <textarea id="prompt" rows="4" placeholder="Skriv din idé (plats, stämning, roller, tempo)…"></textarea>
 
+      <div class="buttons">
+        <button id="btnPreview" class="ghost">Förhandsvisa text</button>
+        <button id="btnRead" class="primary">Läs upp</button>
+        <button id="btnFav" class="ghost">Spara favorit</button>
+      </div>
+
+      <div id="status" class="status"></div>
       <audio id="player" controls preload="none"></audio>
 
       <h3>Utdrag</h3>
-      <div id="excerpt" class="excerpt"></div>
+      <div id="excerpt" class="excerpt">—</div>
     </section>
 
-    <p class="foot">
-      © Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a>
-    </p>
+    <!-- Bibliotek (placeholder – instant play när vi lägger in färdiga texter) -->
+    <section id="view-library" class="view">
+      <h2>Bibliotek</h2>
+      <p class="sub">Färdiga noveller för omedelbar uppspelning. (Jag fyller på härnäst.)</p>
+      <div id="libList" class="cards"></div>
+    </section>
+
+    <!-- Connect -->
+    <section id="view-connect" class="view">
+      <h2>BlushConnect</h2>
+      <div class="panel">
+        <div id="authBox">
+          <h3>Logga in</h3>
+          <input id="email" type="email" placeholder="E-post" />
+          <input id="pw" type="password" placeholder="Lösenord" />
+          <div class="row">
+            <button id="btnLogin" class="primary">Logga in</button>
+            <button id="btnRegister" class="ghost">Skapa konto</button>
+          </div>
+          <p class="hint">Betalning med kort kopplas här (CCBill/SegPay).</p>
+        </div>
+
+        <div id="dashBox" class="hidden">
+          <div class="dash-row">
+            <div>
+              <div class="you">Inloggad som <span id="meMail"></span></div>
+              <div class="substat">Abonnemang: <span id="subName">Gratis</span></div>
+            </div>
+            <div class="row">
+              <button id="btnManage" class="primary">Betala med kort</button>
+              <button id="btnLogout" class="ghost">Logga ut</button>
+            </div>
+          </div>
+          <h3>Dina favoriter</h3>
+          <div id="favs" class="cards"></div>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot">© Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a></p>
   </main>
 
   <script defer src="app.js"></script>
