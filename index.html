@@ -2,77 +2,81 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="pink">Blush</span> Narratives</div>
-    <nav>
-      <a href="#" id="navHome">Hem</a>
-      <a href="#" id="navFavs">Favoriter</a>
-      <a href="#" id="navProfile">Profil</a>
-      <a href="#" id="navConnect" class="connect">BlushConnect</a>
+    <div class="brand">
+      <span class="brand-light">Blush</span><span class="brand-accent"> Narratives</span>
+    </div>
+    <nav class="nav">
+      <a href="#" aria-label="Hem">Hem</a>
+      <a href="#" aria-label="Favoriter">Favoriter</a>
+      <a href="#" aria-label="Profil">Profil</a>
+      <a id="blushConnect" href="#" aria-label="BlushConnect">BlushConnect</a>
     </nav>
   </header>
 
-  <main class="wrap">
+  <main class="container">
     <h1>Välkommen till Blush Narratives</h1>
-    <p class="sub">Välj nivå och spela upp en berättelse.</p>
+    <p>Välj nivå och spela upp en berättelse.</p>
 
-    <section class="controls">
+    <!-- Kontroller -->
+    <section class="panel">
       <div class="row">
         <label for="length">Längd</label>
         <select id="length">
+          <option value="1">1 minut</option>
           <option value="3">3 minuter</option>
           <option value="5" selected>5 minuter</option>
-          <option value="8">8 minuter</option>
+          <option value="10">10 minuter</option>
         </select>
-        <span class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord</span>
+        <span id="words" class="hint">≈ 170 ord/min → ca 850 ord per 5 min.</span>
       </div>
 
-      <div class="row spice-row">
-        <label for="spice">Snusk-nivå</label>
+      <div class="row">
+        <label for="spice">Snusk‑nivå</label>
         <input id="spice" type="range" min="1" max="5" step="1" value="2" />
-        <div class="level-indicator">
-          <span id="spiceBadge" class="badge lvl-2">Nivå 2</span>
-          <span id="spiceDesc" class="desc">mild med varm stämning</span>
-        </div>
+        <span id="spiceNote" class="hint">Nivå 2 = mild med varm stämning.</span>
       </div>
 
       <div class="row">
         <label for="voice">Röst</label>
         <select id="voice">
-          <option value="alloy">Alloy (neutral)</option>
+          <option value="alloy" selected>Alloy (neutral)</option>
           <option value="verse">Verse (varm)</option>
-          <option value="aria">Aria (mjuk)</option>
+          <option value="coral">Coral (ljus)</option>
         </select>
-        <span class="hint">Gratis test-röster via OpenAI TTS.</span>
+        <span class="hint">Gratis test‑röster via OpenAI TTS.</span>
       </div>
     </section>
 
-    <section class="composer">
+    <!-- Skapa egen berättelse -->
+    <section class="panel">
       <h2>Skapa egen berättelse</h2>
-      <textarea id="prompt" rows="4" placeholder="Skriv din idé.."></textarea>
-      <div class="actions">
-        <button id="btnPreview" class="ghost">Förhandslyssna</button>
-        <button id="btnRead" class="primary">Läs upp</button>
-        <button id="btnDownload" class="ghost">Ladda ner .txt</button>
+      <textarea id="prompt" rows="4" placeholder="Skriv din idé…"></textarea>
+
+      <div class="buttons">
+        <button id="btnPreview" type="button">Förhandslyssna</button>
+        <button id="btnRead" type="button" class="primary">Läs upp</button>
+        <button id="btnDownload" type="button">Ladda ner .txt</button>
       </div>
-      <div id="status" class="status"></div>
+
+      <p id="status" role="status" aria-live="polite"></p>
 
       <audio id="player" controls preload="none"></audio>
 
       <h3>Utdrag</h3>
-      <div id="excerpt" class="excerpt">—</div>
+      <div id="excerpt" class="excerpt"></div>
     </section>
+
+    <p class="foot">
+      © Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a>
+    </p>
   </main>
 
-  <footer class="foot">
-    © Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a>
-  </footer>
-
-  <script src="./app.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
