@@ -2,131 +2,88 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="site-header">
+  <header class="top">
     <div class="brand"><span>Blush</span> Narratives</div>
     <nav class="nav">
-      <a href="?view=compose">Skapa</a>
-      <a href="#" aria-disabled="true">Hem</a>
-      <a href="#" aria-disabled="true">Favoriter</a>
-      <a href="#" aria-disabled="true">Profil</a>
+      <a href="#" id="navHome">Hem</a>
+      <a href="#" id="navCreate">Skapa</a>
+      <a href="#" id="navFav">Favoriter</a>
+      <a href="#" id="navProfile">Profil</a>
     </nav>
   </header>
 
-  <!-- Välkomstvy -->
-  <main class="bn-welcome">
-    <section class="card">
-      <h1>Välkommen</h1>
-      <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
-
-      <label class="consent">
-        <input id="consent" type="checkbox" />
+  <main class="container">
+    <section class="gate">
+      <label class="check">
+        <input type="checkbox" id="gateOk" />
         Jag intygar 18+ och samtycke mellan vuxna.
       </label>
-
-      <div class="actions">
-        <a id="btnStart" href="#" class="btn primary">Skapa berättelse</a>
-        <a id="btnOpenBC" href="?view=compose" class="btn ghost">Öppna BlushConnect</a>
+      <div class="gateBtns">
+        <button id="btnStart" class="btn primary" disabled>Skapa berättelse</button>
+        <a class="link" href="#" id="openConnect">Öppna BlushConnect</a>
+        <a class="link" href="/api/health" target="_blank" id="status">Status</a>
       </div>
-
-      <footer class="muted">
-        © Blush Narratives · <a id="statusLink" href="/api/health" target="_blank" rel="noopener">Status</a>
-      </footer>
     </section>
-  </main>
 
-  <!-- Skapa-vy -->
-  <main class="bn-compose">
-    <section class="panel">
-      <div class="controls">
-        <div class="field">
-          <label for="length">Längd</label>
+    <section id="studio" class="studio hidden">
+      <h1>Välkommen till Blush Narratives</h1>
+      <p>Välj nivå och spela upp en berättelse.</p>
+
+      <div class="panel">
+        <div class="row">
+          <label>Längd</label>
           <select id="length">
             <option value="5">5 minuter</option>
             <option value="3">3 minuter</option>
             <option value="1">1 minut</option>
           </select>
-          <div class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</div>
+          <span class="muted">≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</span>
         </div>
 
-        <div class="field">
-          <label for="spice">Snusk-nivå</label>
-          <input id="spice" type="range" min="1" max="5" value="2" />
-          <div class="hint">1 = mild / 5 = hetare språk (alltid icke-grafiskt).</div>
+        <div class="row">
+          <label>Snusk-nivå</label>
+          <input id="spice" type="range" min="1" max="5" step="1" value="2" />
+          <span id="spiceLabel" class="muted">Nivå 2 – mild med varm stämning</span>
         </div>
 
-        <div class="field">
-          <label for="voice">Röst</label>
+        <div class="row">
+          <label>Röst</label>
           <select id="voice">
             <option value="alloy">Alloy (neutral)</option>
-            <option value="verse">Verse (varm)</option>
-            <option value="aria">Aria (mjuk)</option>
+            <option value="verse">Verse (mjuk)</option>
+            <option value="sol">Sol (varm)</option>
           </select>
-          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+          <span class="muted">Gratis test-röster via OpenAI TTS.</span>
         </div>
       </div>
-    </section>
 
-    <section class="panel">
-      <h2>Skapa egen berättelse</h2>
-      <textarea id="prompt" rows="5" placeholder="Skriv din idé…"></textarea>
+      <div class="panel">
+        <h2>Skapa egen berättelse</h2>
+        <textarea id="prompt" rows="5" placeholder="Skriv din idé.."></textarea>
+        <div class="btnRow">
+          <button id="btnPreview" class="btn">Förhandslyssna</button>
+          <button id="btnRead" class="btn primary">Läs upp</button>
+          <button id="btnDownload" class="btn">Ladda ner .txt</button>
+        </div>
 
-      <div class="buttons">
-        <button id="btnPreview" class="btn">Förhandslyssna</button>
-        <button id="btnRead" class="btn primary">Läs upp</button>
-        <button id="btnDownload" class="btn ghost">Ladda ner .txt</button>
+        <div id="status" class="status"></div>
+
+        <audio id="player" controls preload="none"></audio>
+
+        <h3>Utdrag</h3>
+        <div id="excerpt" class="excerpt"></div>
       </div>
-
-      <div id="status" class="status"></div>
-
-      <audio id="player" controls preload="none"></audio>
-
-      <h3>Utdrag</h3>
-      <div id="excerpt" class="excerpt"></div>
     </section>
   </main>
 
-  <!-- Lilla “perma-fix”-scriptet för vy-växling -->
-  <script>
-    (function () {
-      const params = new URLSearchParams(location.search);
-      if (params.get('view') === 'compose') {
-        document.documentElement.classList.add('bn-view-compose');
-      }
-
-      function qs(sel) { return document.querySelector(sel); }
-      const consent = qs('#consent');
-      const startBtn = qs('#btnStart');
-
-      if (startBtn) {
-        startBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          if (consent && !consent.checked) {
-            alert('Bocka i att du är 18+ och att samtycke gäller.');
-            return;
-          }
-          const url = new URL(location.href);
-          url.searchParams.set('view', 'compose');
-          location.href = url.toString();
-        });
-      }
-
-      // Fallback-länk om något segar
-      const header = document.querySelector('header');
-      if (header && !document.querySelector('#bn-fallback-compose')) {
-        const a = document.createElement('a');
-        a.id = 'bn-fallback-compose';
-        a.href = '?view=compose';
-        a.textContent = 'Öppna BlushConnect';
-        a.className = 'fallback';
-        header.appendChild(a);
-      }
-    })();
-  </script>
+  <footer class="foot">
+    © Blush Narratives · <a href="/api/health" target="_blank">Status</a>
+  </footer>
 
   <script src="app.js"></script>
 </body>
