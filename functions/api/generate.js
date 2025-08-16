@@ -1,111 +1,183 @@
-export async function onRequestPost(ctx) {
-  const { env, request } = ctx;
-  const apiKey = env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return Response.json({ error: 'Missing OPENAI_API_KEY' }, { status: 500 });
-  }
+// Cloudflare Pages Function: /api/generate
+// 🔥 Robust textgenerator med fallback: OpenAI → Mistral.
+// – Validerar input
+// – Timeout + tydliga fel
+// – CORS OK
+// – "Snusk-nivå" styr ton (1–5), alltid vuxet, samtycke och icke-grafiskt
 
-  // --- Läs in payload ---
-  let body;
-  try { body = await request.json(); }
-  catch { return Response.json({ error: 'Bad JSON' }, { status: 400 }); }
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Cache-Control": "no-store",
+};
 
-  const ideaRaw = (body.idea ?? '').trim();
-  const minutes = Math.max(2, Math.min(10, Number(body.minutes || 5)));
-  const spice   = Math.max(1, Math.min(5, Number(body.spice || 2)));
-  const voice   = (body.voice || 'alloy').trim().toLowerCase();
-  const readAloud = !!body.readAloud;
+export function onRequestOptions() {
+  return new Response(null, { headers: CORS });
+}
 
-  if (!ideaRaw) {
-    return Response.json({ error: 'Ingen idé inskriven.' }, { status: 400 });
-  }
+export async function onRequestPost({ request, env }) {
+  try {
+    const { idea, minutes, level } = await safeJson(request);
 
-  // --- Prompt med innehållsregler ---
-  const sys = `
-Du skriver en sensuell, samtyckande ljudnovell mellan vuxna.
-Inga minderåriga, inget tvång, inget våld. Språket får vara explicit men inte grafiskt eller våldsamt.
-Nivåer: 1=mjuk, 2=mild, 3=tydligt sensuellt, 4=explicit (ej grafiskt), 5=mest explicit (icke-grafiskt, respektfullt).
-Skriv på svenska. Längd ungefär ${170*minutes} ord (~${minutes} min). Nivå: ${spice}.
-Utgå från idén: ${ideaRaw}
-Avsluta utan cliffhanger. Returnera endast berättelsen (ingen rubrik, ingen metadata).`.trim();
+    // --- Validering ---
+    const text = (idea ?? "").toString().trim();
+    const mins = clamp(Number(minutes) || 5, 1, 30);
+    const lvl  = clamp(Number(level) || 2, 1, 5);
 
-  // --- Hjälpare för att extrahera text från olika OpenAI-svar ---
-  function pickText(json) {
-    // responses API: output_text
-    if (typeof json?.output_text === 'string' && json.output_text.trim()) {
-      return json.output_text.trim();
+    if (!text) return jerr(400, "Tom idé. Skriv vad berättelsen ska handla om.");
+    // Sikta på rimlig längd; håll nere för att ge snabb respons
+    const targetWords = Math.min(Math.round(mins * 170), 1200);
+    const maxTokens  = Math.min(Math.round(targetWords * 1.6), 1800);
+
+    // --- Prompter ---
+    const { system, user } = buildPrompts(text, mins, lvl, targetWords);
+
+    // --- Försök 1: OpenAI ---
+    try {
+      const out = await callOpenAI(env, system, user, maxTokens);
+      return jok({ text: out, excerpt: firstParagraph(out) });
+    } catch (e) {
+      // endast logikfel/blocks => försök Mistral
+      // status 401/403/429/500/>=400 -> prova fallback
+      // console.warn("OpenAI fail:", e?.message);
     }
-    // responses API: output[].content[].text
-    try {
-      const out = json?.output?.[0]?.content?.find?.(c => c.type === 'output_text' || c.type === 'text');
-      if (out?.text?.trim()) return out.text.trim();
-      if (typeof out === 'string' && out.trim()) return out.trim();
-    } catch {}
-    // chat-style (fallback)
-    try {
-      const t = json?.choices?.[0]?.message?.content;
-      if (typeof t === 'string' && t.trim()) return t.trim();
-    } catch {}
-    return '';
-  }
 
-  // --- Generera text ---
-  const textRes = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
+    // --- Försök 2: Mistral (fallback) ---
+    const out2 = await callMistral(env, system, user, maxTokens);
+    return jok({ text: out2, excerpt: firstParagraph(out2) });
+
+  } catch (err) {
+    return jerr(502, err?.message || "Ett oväntat fel inträffade.");
+  }
+}
+
+// ---------- Helpers ----------
+
+async function safeJson(req) {
+  try { return await req.json(); }
+  catch { return {}; }
+}
+
+function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
+
+function toneForLevel(level) {
+  // Håller sig icke-grafiskt men skalar hetta/ordval.
+  const tones = {
+    1: "mycket mild, romantisk, antydande; inga direkta detaljer.",
+    2: "mild med varm stämning; subtil sensualitet, respektfullt språk.",
+    3: "sensuell, tydligare åtrå, fortfarande eleganta formuleringar.",
+    4: "het och djärv, konkreta beskrivningar utan att bli grafisk.",
+    5: "mycket het, direkt och passionerad men fortfarande icke-grafisk och respektfull.",
+  };
+  return tones[level] || tones[2];
+}
+
+function buildPrompts(idea, minutes, level, targetWords) {
+  const system =
+    `Du skriver svenska, vuxna, samtyckande ljudnoveller för uppläsning.
+- Alla medverkande är vuxna och samtyckande.
+- Inga minderåriga, våld, tvång, diskriminering eller grafiska medicinska detaljer.
+- Håll språket levande och naturligt, fokusera på känslor, dofter, beröring, dialog.
+- Nivå: ${toneForLevel(level)}
+- Längd: ungefär ${targetWords} ord (±20%).
+- Skriv i presens, andra person ("du") eller nära tredjeperson, korta stycken för uppläsning.
+- Undvik överdrivet mekaniska beskrivningar.`;
+
+  const user =
+    `Idé: ${idea}
+Önska: en sammanhållen novell för uppläsning på ~${minutes} minut(er).
+Avsluta med en naturlig avrundning (inte abrupt).`;
+
+  return { system, user };
+}
+
+function firstParagraph(s) {
+  const p = s.split(/\n{2,}/).map(x => x.trim()).find(Boolean);
+  return p || s.slice(0, 280);
+}
+
+async function callOpenAI(env, system, user, maxTokens) {
+  if (!env.OPENAI_API_KEY) throw new Error("Saknar OPENAI_API_KEY.");
+  const url = "https://api.openai.com/v1/chat/completions";
+
+  const body = {
+    model: "gpt-4o-mini",
+    temperature: 0.9,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+
+  const res = await fetchWithTimeout(url, {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: 'gpt-5-mini',
-      input: sys
-    })
-  });
+    body: JSON.stringify(body),
+  }, 45000);
 
-  if (!textRes.ok) {
-    const t = await textRes.text().catch(()=> '');
-    return Response.json({ error: `OpenAI text error: ${t}` }, { status: 502 });
-  }
+  if (!res.ok) throw new Error(`OpenAI ${res.status}`);
+  const data = await res.json();
+  const out = data?.choices?.[0]?.message?.content?.trim() || "";
+  if (!out) throw new Error("OpenAI gav tomt svar.");
+  return out;
+}
 
-  const textJson = await textRes.json().catch(()=> ({}));
-  const story = pickText(textJson);
+async function callMistral(env, system, user, maxTokens) {
+  if (!env.MISTRAL_API_KEY) throw new Error("Saknar MISTRAL_API_KEY.");
+  const url = "https://api.mistral.ai/v1/chat/completions";
 
-  if (!story) {
-    return Response.json({ error: 'Textgenereringen gav tomt svar. Försök igen med en annan formulering.' }, { status: 502 });
-  }
+  const body = {
+    model: "mistral-large-latest",
+    temperature: 0.9,
+    max_tokens: maxTokens,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
 
-  const excerpt = story.slice(0, 550) + (story.length > 550 ? ' …' : '');
-
-  // --- Om ingen uppläsning efterfrågas, returnera bara texten ---
-  if (!readAloud) {
-    return Response.json({ excerpt });
-  }
-
-  // --- TTS ---
-  const ttsRes = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
+  const res = await fetchWithTimeout(url, {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
+      "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini-tts',
-      voice: voice || 'alloy',
-      input: story,
-      format: 'mp3'
-    })
-  });
+    body: JSON.stringify(body),
+  }, 45000);
 
-  if (!ttsRes.ok) {
-    const t = await ttsRes.text().catch(()=> '');
-    return Response.json({ error: `OpenAI TTS error: ${t}` }, { status: 502 });
+  if (!res.ok) throw new Error(`Mistral ${res.status}`);
+  const data = await res.json();
+  const out = data?.choices?.[0]?.message?.content?.trim() || "";
+  if (!out) throw new Error("Mistral gav tomt svar.");
+  return out;
+}
+
+async function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort("timeout"), ms || 30000);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    return res;
+  } finally {
+    clearTimeout(t);
   }
+}
 
-  const buf = await ttsRes.arrayBuffer();
-  const bytes = new Uint8Array(buf);
+function jok(obj) {
+  return new Response(JSON.stringify(obj), {
+    status: 200,
+    headers: { "Content-Type": "application/json; charset=utf-8", ...CORS },
+  });
+}
 
-  return Response.json({
-    excerpt,
-    audio: { data: Array.from(bytes) }
+function jerr(code, msg) {
+  return new Response(JSON.stringify({ error: msg }), {
+    status: code,
+    headers: { "Content-Type": "application/json; charset=utf-8", ...CORS },
   });
 }
