@@ -1,109 +1,130 @@
-// functions/api/generate.js
-// Textgenerering via Mistral + robust metod/CORS-hantering
+// /functions/api/generate.js
+// Generera berättelsetext via Mistral (om MISTRAL_API_KEY finns) annars OpenAI.
+// Inkluderar 60s timeout för att undvika "Fetch is aborted".
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
-function json(status, data) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS },
-  });
-}
-
-export async function onRequest({ request, env }) {
-  const { method } = request;
-
-  // Preflight
-  if (method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS });
-  }
-
-  // Tillåt bara POST för riktig körning
-  if (method !== "POST") {
-    return json(405, { error: "method_not_allowed", ok: false });
-  }
-
+export const onRequestPost = async ({ request, env }) => {
   try {
-    const { idea = "", level = 2, minutes = 5 } = await request.json()
-      .catch(() => ({}));
+    const { idea = "", level = 1, minutes = 5 } = await request.json();
 
-    if (!idea || !idea.trim()) {
-      return json(400, { error: "empty_idea", ok: false });
+    if (typeof idea !== "string" || !idea.trim()) {
+      return new Response(JSON.stringify({ error: "empty_idea" }), { status: 400 });
     }
 
-    const apiKey = env.MISTRAL_API_KEY;
-    if (!apiKey) {
-      return json(500, { error: "missing_mistral_key", ok: false });
-    }
+    // Ord/min uppskattning
+    const targetWords = Math.max(140, Math.min(900, Math.round(minutes * 170)));
 
-    // Ord/tempo (≈170 ord/min). Sätt ett tak för att inte dra iväg för mkt i test.
-    const targetWords = Math.max(220, Math.min(900, Math.round(minutes * 170)));
-
-    // Styrning per nivå (1–5). 1 = romantisk/antydande, 5 = het (icke-grafisk).
+    // En enkel styrning av ton baserat på nivå 1–5
     const toneByLevel = {
-      1: "Romantiskt, varmt och antydande. Undvik konkreta sexuella ord; fokusera på stämning, nerv och känslor.",
-      2: "Mild sensualism, varma blickar, nära kroppsspråk. Inga grafiska ord.",
-      3: "Tydlig sensualitet med några konkreta men rumsrena ord. Fortfarande icke-grafiskt.",
-      4: "Hetare tempo, flera explicita men icke-grafiska uttryck. Respektfullt och samtycke.",
-      5: "Maximalt hett (utan grafiska detaljer). Använd ord/fraser från vuxen ordlista: 'lem', 'sköte', 'hans hand runt min midja', 'våt', 'han tränger djupare', 'hon rider honom', 'kyssar längs halsen', etc. Håll det tydligt samtyckande och vuxet.",
+      1: "romantiskt, antydande och icke-grafiskt; undvik explicita ord.",
+      2: "varm och sensuell, lätt antydande; undvik grafiska detaljer.",
+      3: "tydligt sensuell med måttliga detaljer; fortfarande elegant.",
+      4: "hetare, konkreta detaljer i text men utan direkt rå pornografi.",
+      5: "mycket het, vuxen och samtyckande; tillåt explicita svenska ord (t.ex. kuk, fitta, kåt, sköte, lem, slicka, våt, tränga in, suga, rida) men håll det respektfullt och icke-våldsamt."
     };
 
-    const levelDesc = toneByLevel[level] ?? toneByLevel[2];
+    // Lätt viktning för att tvinga in fraser på nivå 5
+    const level5Lexicon = [
+      "hans erigerade lem", "hennes våta sköte", "glida in", "trängde djupt",
+      "slickade mig", "suga av", "rida honom", "stöt efter stöt",
+      "pulserande njutning", "kåt", "våt", "orgasmen byggdes upp", "han kom",
+      "hon kom", "ta mig hårdare", "hennes safter", "känna honom i mig"
+    ];
 
     const systemPrompt = [
-      "Du skriver en svensk, flytande erotiskt laddad ljudnovell där alla parter är vuxna och samtyckande.",
-      "Aldrig minderåriga, aldrig droger/övergrepp, aldrig grafiska kroppsvätske-/våldsdetaljer.",
-      "Skriv naturligt, mänskligt och med musikalisk rytm; undvik klyschig upprepning.",
-    ].join(" ");
-
-    const userPrompt = [
-      `Idé: ${idea.trim()}`,
-      `Längd: cirka ${targetWords} ord (≈${minutes} minuter).`,
-      `Nivå: ${level} — ${levelDesc}`,
-      "Skriv i jag-form eller nära tredjeperson, anpassa så det låter som en berättarröst.",
-      "Avsluta med en mjuk avrundning som låter lyssnaren andas ut (ingen hård tvärstopp).",
+      "Du är en skicklig svensk berättare som skriver sensuella ljudnoveller för vuxna.",
+      "Alltid samtycke. Inga minderåriga. Inget våld. Inga olagligheter.",
+      `Längd: cirka ${targetWords} ord.`,
+      `Ton (nivå ${level}): ${toneByLevel[level] || toneByLevel[1]}`,
+      "Skriv i presens, andhämtning, blickar och beröring, med naturligt flyt.",
+      "Avsluta snyggt – inte tvärt mitt i en mening."
     ].join("\n");
 
-    // Mistral chat completions
-    const resp = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    const userPrompt = [
+      `Idé från användaren: "${idea.trim()}".`,
+      level === 5
+        ? `Använd några av följande uttryck naturligt där det passar (inte alla, men minst 3–6): ${level5Lexicon.join(", ")}.`
+        : "Undvik grovt språk på denna nivå.",
+      "Skriv ihop en sammanhängande berättelse, inte punktlista."
+    ].join("\n");
+
+    const signal = AbortSignal.timeout(60000); // 60s timeout
+
+    // ---- Mistral först om nyckel finns ----
+    if (env.MISTRAL_API_KEY) {
+      const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          temperature: level >= 4 ? 0.95 : 0.8,
+          top_p: 0.95,
+          max_tokens: 2048,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        }),
+        signal
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        return new Response(JSON.stringify({ error: "mistral_error", detail: text }), { status: 502 });
+      }
+
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content?.trim() || "";
+      if (!text) return new Response(JSON.stringify({ error: "empty_text" }), { status: 502 });
+
+      return new Response(JSON.stringify({ text }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // ---- OpenAI fallback (om du saknar Mistral) ----
+    if (!env.OPENAI_API_KEY) {
+      return new Response(JSON.stringify({ error: "no_provider_key" }), { status: 500 });
+    }
+
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "mistral-small-latest",
+        model: "gpt-4o-mini",
+        temperature: level >= 4 ? 0.95 : 0.8,
+        top_p: 0.95,
+        max_tokens: 2048,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.9,
-        max_tokens: Math.min(2048, Math.round(targetWords * 1.5)),
+          { role: "user", content: userPrompt }
+        ]
       }),
+      signal
     });
 
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => "");
-      return json(502, { ok: false, error: "mistral_error", detail: errText });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return new Response(JSON.stringify({ error: "openai_error", detail: text }), { status: 502 });
     }
 
-    const data = await resp.json().catch(() => ({}));
-    const content =
-      data?.choices?.[0]?.message?.content?.trim?.() || "";
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content?.trim() || "";
+    if (!text) return new Response(JSON.stringify({ error: "empty_text" }), { status: 502 });
 
-    if (!content) {
-      return json(502, { ok: false, error: "empty_model_output" });
-    }
+    return new Response(JSON.stringify({ text }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
 
-    // Litet utdrag för UI
-    const excerpt = content.split(/\s+/).slice(0, 55).join(" ") + " …";
-
-    return json(200, { ok: true, text: content, excerpt });
   } catch (err) {
-    return json(500, { ok: false, error: "server_error", detail: String(err) });
+    const msg = err?.name === "TimeoutError" ? "timeout" : (err?.message || "unknown");
+    return new Response(JSON.stringify({ error: "server_error", detail: msg }), { status: 500 });
   }
-}
+};
