@@ -1,41 +1,51 @@
-// functions/api/tts.js
-module.exports = {
-  async onRequestPost({ request, env }) {
-    try {
-      const { text = "", voice = "alloy", speed = 1.25 } = await request.json();
-      if (!text) return new Response("empty_text", { status: 400 });
-      if (!env.OPENAI_API_KEY) return new Response("missing_openai_key", { status: 500 });
+// Cloudflare Pages Function: POST /api/tts
+// Returnerar MP3 med OpenAI TTS (gratis test-röster hos dig)
 
-      const body = {
-        model: "gpt-4o-mini-tts",
-        voice,
-        input: text,
-        speed
-      };
+export async function onRequestPost({ request, env }) {
+  try {
+    const { text, voice } = await request.json();
 
-      const r = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(body)
-      });
-
-      if (!r.ok) {
-        const err = await r.text();
-        return new Response(`tts_error:${err}`, { status: 502 });
-      }
-
-      const buf = await r.arrayBuffer();
-      return new Response(buf, {
-        headers: {
-          "Content-Type": "audio/mpeg",
-          "Cache-Control": "no-store"
-        }
-      });
-    } catch (e) {
-      return new Response(`tts_crash:${String(e)}`, { status: 500 });
+    if (!text || typeof text !== "string" || !text.trim()) {
+      return new Response(JSON.stringify({ error: "empty_text" }), { status: 400 });
     }
+
+    const OPENAI_API_KEY = env.OPENAI_API_KEY;
+    if (!OPENAI_API_KEY) {
+      return new Response(JSON.stringify({ error: "missing_openai_key" }), { status: 500 });
+    }
+
+    const body = {
+      model: "gpt-4o-mini-tts",        // OpenAI TTS-modell
+      voice: voice || "alloy",         // fallback
+      input: text
+    };
+
+    const resp = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      return new Response(
+        JSON.stringify({ error: "openai_tts_failed", status: resp.status, details: errText?.slice(0, 500) }),
+        { status: 502 }
+      );
+    }
+
+    const arrayBuf = await resp.arrayBuffer();
+    return new Response(arrayBuf, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-store"
+      }
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "tts_exception", message: String(e) }), { status: 500 });
   }
-};
+}
