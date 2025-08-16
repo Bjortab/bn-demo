@@ -1,7 +1,5 @@
-// ===== API-bas (relativ, så det funkar på Pages) =====
 const API_BASE = '/api';
 
-// Elements
 const els = {
   chkConsent: document.getElementById('chkConsent'),
   btnGoCreate: document.getElementById('btnGoCreate'),
@@ -25,12 +23,10 @@ const els = {
   excerpt: document.getElementById('excerpt'),
 };
 
-// Simple router (Hem/Skapa)
 document.querySelectorAll('.navlink').forEach(a=>{
   a.addEventListener('click',(e)=>{
     e.preventDefault();
-    const v = a.dataset.view || 'home';
-    showView(v);
+    showView(a.dataset.view || 'home');
   });
 });
 
@@ -38,27 +34,24 @@ function showView(name){
   const ok = name === 'create' ? els.chkConsent?.checked : true;
   els.viewHome.hidden = !(name === 'home');
   els.viewCreate.hidden = !(name === 'create');
-
   if (name === 'create' && !ok){
-    // Om man försöker gå till skapa utan 18+
     uiStatus('Kryssa i 18+ först.', true);
-    showView('home');
-    return;
+    els.viewHome.hidden = false;
+    els.viewCreate.hidden = true;
+  } else {
+    uiStatus('');
   }
-  uiStatus('');
 }
 
 els.chkConsent?.addEventListener('change',()=>{
   els.btnGoCreate.disabled = !els.chkConsent.checked;
 });
-
 els.btnGoCreate?.addEventListener('click',()=>{
   if (!els.chkConsent.checked) return;
   showView('create');
   window.scrollTo({top:0,behavior:'smooth'});
 });
 
-// Words indicator & spice text
 function calcWords(mins){ return 170 * Number(mins); }
 function setWords(){ els.words.textContent = calcWords(els.length.value); }
 function setSpiceHint(){
@@ -72,13 +65,11 @@ function setSpiceHint(){
   };
   els.spiceHint.textContent = map[v] || '';
 }
-
 [els.length, els.spice].forEach(el=>{
   el.addEventListener('input', ()=>{ setWords(); setSpiceHint(); });
 });
 setWords(); setSpiceHint();
 
-// ===== Helpers =====
 function uiStatus(msg, isErr=false){
   els.status.textContent = msg || '';
   els.status.classList.toggle('error', !!isErr);
@@ -86,9 +77,7 @@ function uiStatus(msg, isErr=false){
 }
 function lockUI(lock){
   [els.btnPreview,els.btnRead,els.btnDownload].forEach(b=>{
-    if (!b) return;
-    b.disabled = lock;
-    b.classList.toggle('isLoading', lock);
+    if (b){ b.disabled = lock; b.classList.toggle('isLoading', lock); }
   });
 }
 function toBlobUrl(uint8, mime='audio/mpeg'){
@@ -96,31 +85,34 @@ function toBlobUrl(uint8, mime='audio/mpeg'){
   return URL.createObjectURL(blob);
 }
 
-// Robust fetch with 60s timeout
 async function api(path, payload, expectBinary=false){
   const ctrl = new AbortController();
   const t = setTimeout(()=>ctrl.abort(), 60000);
-
-  const res = await fetch(`${API_BASE}${path}`, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify(payload || {}),
-    signal: ctrl.signal
-  }).catch(err=>{
-    clearTimeout(t); throw err;
-  });
-  clearTimeout(t);
+  let res;
+  try{
+    res = await fetch(`${API_BASE}${path}`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify(payload || {}),
+      signal: ctrl.signal
+    });
+  } finally { clearTimeout(t); }
 
   if (!res.ok){
-    let detail = await res.text().catch(()=> '');
-    throw new Error(`${res.status} ${res.statusText} :: ${detail}`);
+    // Försök läsa JSON-fel
+    let detail = '';
+    try{
+      const j = await res.json();
+      if (j?.error) detail = j.error;
+    }catch{
+      detail = await res.text().catch(()=> '');
+    }
+    throw new Error(`${res.status} :: ${detail || res.statusText}`);
   }
-
   return expectBinary ? new Uint8Array(await res.arrayBuffer())
                       : await res.json();
 }
 
-// ===== Actions =====
 async function doGenerate(readAloud=false){
   const idea = (els.prompt.value || '').trim();
   if (!idea){ uiStatus('Skriv en idé först.', true); return; }
@@ -139,15 +131,22 @@ async function doGenerate(readAloud=false){
 
     const json = await api('/generate', payload, false);
 
-    // Utdrag + (ev) ljud
-    els.excerpt.value = json.excerpt || '';
-    if (readAloud && json.audio){
+    // JSON kan innehålla {error}
+    if (json?.error) throw new Error(json.error);
+
+    const excerpt = (json?.excerpt || '').trim();
+    els.excerpt.value = excerpt;
+
+    if (readAloud) {
+      if (!json?.audio?.data || !Array.isArray(json.audio.data)) {
+        throw new Error('Ingen ljuddata returnerades.');
+      }
       const bytes = Uint8Array.from(json.audio.data);
       const url = toBlobUrl(bytes, 'audio/mpeg');
       els.player.src = url;
       await els.player.play().catch(()=>{});
       uiStatus('Klart!', false);
-    }else{
+    } else {
       uiStatus('Text klar.', false);
     }
   }catch(err){
@@ -165,7 +164,6 @@ els.btnDownload.addEventListener('click', ()=>{
   if (!text){ uiStatus('Ingen text att spara.', true); return; }
   const blob = new Blob([text], { type:'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'berattelse.txt'; a.click();
+  const a = document.createElement('a'); a.href = url; a.download = 'berattelse.txt'; a.click();
   setTimeout(()=>URL.revokeObjectURL(url), 500);
 });
