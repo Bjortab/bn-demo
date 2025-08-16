@@ -1,0 +1,6 @@
+{
+  "name": "bn-demo",
+  "version": "1.0.0",
+  "description": "Blush Narratives – static site + Cloudflare Pages Functions",
+  "private": true
+}
