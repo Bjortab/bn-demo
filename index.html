@@ -2,157 +2,97 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- NAV -->
   <header class="topbar">
-    <a class="brand" href="/">Blush <span>Narratives</span></a>
-    <nav>
-      <a href="/" class="nav">Hem</a>
-      <a href="#app" class="nav">Skapa</a>
-      <a href="#" id="openConnect" class="nav">BlushConnect</a>
+    <div class="brand"><span>Blush</span> <strong>Narratives</strong></div>
+    <nav class="nav">
+      <a href="#" data-view="home" class="navlink">Hem</a>
+      <a href="#" data-view="create" class="navlink">Skapa</a>
+      <a href="#" class="navlink">BlushConnect</a>
     </nav>
   </header>
 
-  <!-- GATE (förstasidan) -->
-  <main id="gate" class="card gate">
-    <h2>Välkommen</h2>
-    <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
+  <main id="app" class="container">
+    <!-- HERO / Välkommen + 18+ -->
+    <section class="card hero" id="view-home">
+      <div class="heroGrid">
+        <div class="heroCopy">
+          <h1>Välkommen</h1>
+          <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
+        </div>
+        <div class="heroAction">
+          <label class="check">
+            <input type="checkbox" id="chkConsent" />
+            <span>Jag intygar 18+ och samtycke mellan vuxna.</span>
+          </label>
+          <div class="heroBtns">
+            <button id="btnGoCreate" class="btn btnPrimary" disabled>Skapa berättelse</button>
+            <a class="btn btnGhost" href="#">Öppna BlushConnect</a>
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <label class="checkline">
-      <input id="age-ok" type="checkbox" />
-      <span>Jag intygar 18+ och samtycke mellan vuxna.</span>
-    </label>
+    <!-- Skapa -->
+    <section class="card" id="view-create" hidden>
+      <h2>Skapa egen berättelse</h2>
 
-    <div class="gate-actions">
-      <a id="btn-enter" href="#app" class="btn primary" aria-disabled="true">Skapa berättelse</a>
-      <a id="btn-connect" href="#" class="btn">Öppna BlushConnect</a>
-    </div>
+      <div class="controls">
+        <div class="ctrl">
+          <label for="length">Längd</label>
+          <select id="length">
+            <option value="5" selected>5 minuter</option>
+            <option value="3">3 minuter</option>
+            <option value="7">7 minuter</option>
+          </select>
+          <div class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</div>
+        </div>
 
-    <p class="muted">© Blush Narratives — <a id="statusLink" href="/api/health">Status</a></p>
+        <div class="ctrl">
+          <label for="spice">Snusk-nivå</label>
+          <input type="range" id="spice" min="1" max="5" value="2" />
+          <div class="hint" id="spiceHint">Nivå 2 – mild med varm stämning.</div>
+        </div>
+
+        <div class="ctrl">
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <option value="alloy" selected>Alloy (neutral)</option>
+            <option value="verse">Verse (mjuk)</option>
+            <option value="spark">Spark (energisk)</option>
+          </select>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+        </div>
+      </div>
+
+      <label for="prompt">Din idé</label>
+      <textarea id="prompt" rows="4" placeholder="Skriv din idé..."></textarea>
+
+      <div class="btnRow">
+        <button id="btnPreview" class="btn">Förhandslyssna</button>
+        <button id="btnRead" class="btn btnPrimary">Läs upp</button>
+        <button id="btnDownload" class="btn btnGhost">Ladda ner .txt</button>
+      </div>
+
+      <div id="status" class="status" aria-live="polite"></div>
+
+      <audio id="player" controls preload="none"></audio>
+
+      <div class="excerptWrap">
+        <h3>Utdrag</h3>
+        <textarea id="excerpt" rows="5" readonly></textarea>
+      </div>
+    </section>
   </main>
 
-  <!-- APP (skärmskroll hit när gate släpper igenom) -->
-  <section id="app" class="card app" hidden>
-    <h1>Skapa egen berättelse</h1>
+  <footer class="footer">
+    <span>© Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a></span>
+  </footer>
 
-    <div class="grid">
-      <label>Längd
-        <select id="length">
-          <option value="5" selected>5 minuter</option>
-          <option value="3">3 minuter</option>
-          <option value="10">10 minuter</option>
-        </select>
-        <small>≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</small>
-      </label>
-
-      <label>Snusk-nivå
-        <input id="spice" type="range" min="1" max="5" step="1" value="2" />
-        <small>Nivå <span id="spiceLevel">2</span> – mild med varm stämning.</small>
-      </label>
-
-      <label>Röst
-        <select id="voice">
-          <option value="alloy">Alloy (neutral)</option>
-          <option value="verse">Verse (mjuk)</option>
-          <option value="aria">Aria (varm)</option>
-        </select>
-        <small>Gratis test-röster via OpenAI TTS.</small>
-      </label>
-    </div>
-
-    <label for="prompt">Din idé</label>
-    <textarea id="prompt" rows="4" placeholder="Skriv din idé…"></textarea>
-
-    <div class="actions">
-      <button id="btnPreview" class="btn">Förhandslyssna</button>
-      <button id="btnRead" class="btn primary">Läs upp</button>
-      <button id="btnDownload" class="btn">Ladda ner .txt</button>
-    </div>
-
-    <p id="status" class="status"></p>
-
-    <audio id="player" controls preload="none"></audio>
-
-    <h3>Utdrag</h3>
-    <pre id="excerpt" class="excerpt"></pre>
-  </section>
-
-  <!-- Minimal styling om din styles.css inte laddas -->
-  <style>
-    body{background:#0f1216;color:#e8eef2;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0}
-    .topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#11151b;border-bottom:1px solid #202532;position:sticky;top:0}
-    .brand{color:#fff;text-decoration:none;font-weight:700}.brand span{color:#ff4d8d}
-    .nav{color:#9cc6d7;margin-left:16px;text-decoration:none}
-    .card{max-width:920px;margin:28px auto;padding:20px;background:#131823;border:1px solid #22283a;border-radius:10px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-    .btn{background:#23293a;color:#e8eef2;border:1px solid #2f3650;border-radius:8px;padding:10px 14px;cursor:pointer;text-decoration:none;display:inline-block}
-    .btn.primary{background:linear-gradient(90deg,#ff4d8d,#7a5cff)}
-    .btn[aria-disabled="true"]{opacity:.45;pointer-events:none}
-    .muted{color:#98a6b3;font-size:.9rem}
-    .status{min-height:1.2em;color:#9CC6D7}
-    .excerpt{white-space:pre-wrap;background:#0f141e;padding:12px;border-radius:8px;border:1px solid #242c42}
-    .gate-actions{display:flex;gap:12px;margin-top:12px}
-    .checkline{display:flex;gap:8px;align-items:center;margin-top:10px}
-  </style>
-
-  <!-- GATE-HOTFIX: funkar även om app.js inte laddats än -->
-  <script>
-  (function(){
-    const gate    = document.getElementById('gate');
-    const app     = document.getElementById('app');
-    const cb      = document.getElementById('age-ok');
-    const enter   = document.getElementById('btn-enter');
-    const connect = document.getElementById('btn-connect');
-
-    // Om användaren redan godkänt tidigare – gå direkt vidare
-    const ok = localStorage.getItem('bn_age_ok') === '1';
-    if (ok) {
-      gate.hidden = true;
-      app.hidden = false;
-      document.getElementById('prompt')?.focus();
-    }
-
-    function setEnterState(){
-      const allowed = cb?.checked || localStorage.getItem('bn_age_ok')==='1';
-      if (enter) {
-        enter.setAttribute('aria-disabled', allowed ? 'false':'true');
-      }
-    }
-    setEnterState();
-    cb?.addEventListener('change', setEnterState);
-
-    enter?.addEventListener('click', (e)=>{
-      const allowed = cb?.checked || localStorage.getItem('bn_age_ok')==='1';
-      if (!allowed) {
-        e.preventDefault();
-        alert('Bekräfta 18+ och samtycke först.');
-        return;
-      }
-      e.preventDefault();
-      localStorage.setItem('bn_age_ok','1');
-      gate.hidden = true;
-      app.hidden = false;
-      document.getElementById('app')?.scrollIntoView({behavior:'smooth'});
-    });
-
-    connect?.addEventListener('click', (e)=>{
-      e.preventDefault();
-      if (!(cb?.checked || localStorage.getItem('bn_age_ok')==='1')){
-        alert('Bekräfta 18+ och samtycke först.');
-        return;
-      }
-      localStorage.setItem('bn_age_ok','1');
-      // TODO: byt till din riktiga Connect-URL
-      window.location.href = 'https://bn-demo01.pages.dev/connect';
-    });
-  })();
-  </script>
-
-  <!-- Din ordinarie app-logik (med längre timeout) -->
-  <script src="app.js"></script>
+  <script src="/app.js" defer></script>
 </body>
 </html>
