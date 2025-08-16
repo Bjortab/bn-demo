@@ -1,62 +1,51 @@
-// Putsar texten för bättre prosodi och använder en uttrycksfull standardröst
-export async function onRequestPost(context) {
-  try {
-    const { request, env } = context;
-    const { text, voice, rate } = await request.json();
+import { cors, options, notAllowed } from './_utils';
 
-    if (!env.OPENAI_API_KEY) return err(500, "Saknar OPENAI_API_KEY i Cloudflare.");
-    if (!text || !text.trim()) return err(400, "Ingen text att läsa upp.");
+export async function onRequest(context){
+  const { request, env } = context;
+  if(request.method === 'OPTIONS') return options();
+  if(request.method !== 'POST') return notAllowed(['POST','OPTIONS']);
 
-    const cleaned = tidy(text);
-    const payload = {
-      model: "gpt-4o-mini-tts",
-      voice: voice || "verse",
-      input: cleaned,
-      format: "mp3",
-      speed: Number(rate || 1.0)
-    };
-
-    const r = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!r.ok) {
-      const t = await r.text().catch(()=>r.statusText);
-      return err(r.status, `TTS error: ${t}`);
+  try{
+    const { text, voice='alloy' } = await request.json();
+    if(!text || !String(text).trim()){
+      return new Response(JSON.stringify({ error:'Ingen text att läsa upp' }), {
+        status:400,
+        headers: { 'content-type':'application/json', ...cors() }
+      });
     }
 
-    const buf = await r.arrayBuffer();
-    return new Response(buf, {
-      headers: { "Content-Type": "audio/mpeg" },
-      status: 200
+    // OpenAI TTS
+    const resp = await fetch('https://api.openai.com/v1/audio/speech', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'authorization': `Bearer ${env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice,
+        input: text,
+        format: 'mp3'
+      })
     });
 
-  } catch (e) {
-    return err(500, e.message || "Okänt fel.");
+    if(!resp.ok){
+      const err = await resp.text();
+      return new Response(JSON.stringify({ error:`OpenAI TTS: ${resp.status} ${err.slice(0,400)}` }), {
+        status:502,
+        headers:{ 'content-type':'application/json', ...cors() }
+      });
+    }
+
+    // Strömma ut MP3 till klienten
+    const headers = new Headers(cors());
+    headers.set('content-type','audio/mpeg');
+    headers.set('cache-control','no-store');
+    return new Response(resp.body, { status:200, headers });
+  }catch(e){
+    return new Response(JSON.stringify({ error: e.message || 'TTS-fel' }), {
+      status:500,
+      headers:{ 'content-type':'application/json', ...cors() }
+    });
   }
-}
-
-function tidy(s){
-  let out = s.replace(/—/g, ", ").replace(/([^\.\!\?])\n/g,"$1.\n");
-  out = out.split(/\n+/).map(line => {
-    const parts = line.split(/(?<=[\.\!\?])\s+/);
-    return parts.map(p => p.trim()).filter(Boolean).map(p => {
-      if(p.length>220){ return p.replace(/, /g,". ").replace(/\s{2,}/g," "); }
-      return p;
-    }).join(" ");
-  }).join("\n");
-  out = out.replace(/“/g,'"').replace(/”/g,'"').replace(/"([^"]+)"/g,'"$1."');
-  return out.trim();
-}
-
-function err(status, message){
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
 }
