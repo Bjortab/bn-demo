@@ -2,97 +2,108 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Liten säkerhetsstyle om styles.css inte laddar direkt */
+    .container{max-width:980px;margin:24px auto;padding:0 16px}
+    .card{background:#1e1f25;border:1px solid #2a2c36;border-radius:12px;padding:18px;margin-bottom:18px;color:#e6e6ea}
+    body{background:#0f1115;color:#e6e6ea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    label{display:block;margin:6px 0 4px}
+    select,textarea,input[type="text"],input[type="range"]{width:100%;background:#12131a;color:#e6e6ea;border:1px solid #2a2c36;border-radius:8px;padding:10px}
+    textarea{min-height:110px}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .col{flex:1 1 280px}
+    .btn{border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
+    .btn-primary{background:linear-gradient(90deg,#ff3cac,#784ba0,#2b86c5);color:white}
+    .btn-ghost{background:#191b22;color:#e6e6ea;border:1px solid #2a2c36}
+    .muted{opacity:.8;font-size:.95rem}
+    .hidden{display:none!important}
+    nav{display:flex;gap:18px;align-items:center;padding:14px 0}
+    nav a{color:#e6e6ea;text-decoration:none}
+    nav .brand{color:#ff5ea8;font-weight:700}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    #status{min-height:20px;margin-top:8px}
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span>Blush</span> <strong>Narratives</strong></div>
-    <nav class="nav">
-      <a href="#" data-view="home" class="navlink">Hem</a>
-      <a href="#" data-view="create" class="navlink">Skapa</a>
-      <a href="#" class="navlink">BlushConnect</a>
-    </nav>
-  </header>
-
-  <main id="app" class="container">
-    <!-- HERO / Välkommen + 18+ -->
-    <section class="card hero" id="view-home">
-      <div class="heroGrid">
-        <div class="heroCopy">
-          <h1>Välkommen</h1>
-          <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
-        </div>
-        <div class="heroAction">
-          <label class="check">
-            <input type="checkbox" id="chkConsent" />
-            <span>Jag intygar 18+ och samtycke mellan vuxna.</span>
-          </label>
-          <div class="heroBtns">
-            <button id="btnGoCreate" class="btn btnPrimary" disabled>Skapa berättelse</button>
-            <a class="btn btnGhost" href="#">Öppna BlushConnect</a>
-          </div>
-        </div>
+  <div class="container">
+    <nav>
+      <div class="brand">Blush <span style="color:#ff2f83">Narratives</span></div>
+      <div style="margin-left:auto;display:flex;gap:16px">
+        <a href="#" id="navHome">Hem</a>
+        <a href="#" id="navCreate">Skapa</a>
+        <a href="#" id="navConnect">BlushConnect</a>
       </div>
+    </nav>
+
+    <!-- 18+-GRIND -->
+    <section id="gate" class="card">
+      <h2>Välkommen</h2>
+      <p class="muted">Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
+      <label style="display:flex;align-items:center;gap:10px;margin:10px 0 16px">
+        <input type="checkbox" id="adult" />
+        Jag intygar 18+ och samtycke mellan vuxna.
+      </label>
+      <div class="actions">
+        <button class="btn btn-primary" id="btnEnter" disabled>Skapa berättelse</button>
+        <a class="btn btn-ghost" href="#" id="openConnect">Öppna BlushConnect</a>
+      </div>
+      <p class="muted" style="margin-top:10px">© Blush Narratives</p>
     </section>
 
-    <!-- Skapa -->
-    <section class="card" id="view-create" hidden>
+    <!-- SKAPA -->
+    <section id="create" class="card hidden">
       <h2>Skapa egen berättelse</h2>
 
-      <div class="controls">
-        <div class="ctrl">
+      <div class="row">
+        <div class="col">
           <label for="length">Längd</label>
           <select id="length">
-            <option value="5" selected>5 minuter</option>
             <option value="3">3 minuter</option>
-            <option value="7">7 minuter</option>
+            <option value="5" selected>5 minuter</option>
+            <option value="8">8 minuter</option>
+            <option value="10">10 minuter</option>
           </select>
-          <div class="hint">≈ 170 ord/min → ca <span id="words">850</span> ord per 5 min.</div>
+          <div class="muted" data-words>≈ 170 ord/min → ca 850 ord per 5 min.</div>
         </div>
 
-        <div class="ctrl">
+        <div class="col">
           <label for="spice">Snusk-nivå</label>
-          <input type="range" id="spice" min="1" max="5" value="2" />
-          <div class="hint" id="spiceHint">Nivå 2 – mild med varm stämning.</div>
+          <input id="spice" type="range" min="1" max="5" step="1" value="2" />
+          <div class="muted">1 = mild / 5 = hetare språk (alltid icke-grafiskt).</div>
         </div>
 
-        <div class="ctrl">
+        <div class="col">
           <label for="voice">Röst</label>
           <select id="voice">
-            <option value="alloy" selected>Alloy (neutral)</option>
+            <option value="alloy">Alloy (neutral)</option>
             <option value="verse">Verse (mjuk)</option>
-            <option value="spark">Spark (energisk)</option>
+            <option value="coral">Coral (varm)</option>
           </select>
-          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+          <div class="muted">Gratis test-röster via OpenAI TTS.</div>
         </div>
       </div>
 
-      <label for="prompt">Din idé</label>
-      <textarea id="prompt" rows="4" placeholder="Skriv din idé..."></textarea>
+      <label for="idea" style="margin-top:14px">Din idé</label>
+      <textarea id="idea" placeholder="Skriv din idé…"></textarea>
 
-      <div class="btnRow">
-        <button id="btnPreview" class="btn">Förhandslyssna</button>
-        <button id="btnRead" class="btn btnPrimary">Läs upp</button>
-        <button id="btnDownload" class="btn btnGhost">Ladda ner .txt</button>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn btn-ghost"   id="btnPreview">Förhandslyssna</button>
+        <button class="btn btn-primary" id="btnRead">Läs upp</button>
+        <button class="btn btn-ghost"   id="btnDownload">Ladda ner .txt</button>
       </div>
 
-      <div id="status" class="status" aria-live="polite"></div>
+      <div id="status" class="muted"></div>
 
-      <audio id="player" controls preload="none"></audio>
+      <audio id="player" controls style="width:100%;margin-top:10px"></audio>
 
-      <div class="excerptWrap">
-        <h3>Utdrag</h3>
-        <textarea id="excerpt" rows="5" readonly></textarea>
-      </div>
+      <h3 style="margin-top:18px">Utdrag</h3>
+      <div id="excerpt" class="muted" style="min-height:40px"></div>
     </section>
-  </main>
+  </div>
 
-  <footer class="footer">
-    <span>© Blush Narratives · <a href="/api/health" target="_blank" rel="noopener">Status</a></span>
-  </footer>
-
-  <script src="/app.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
