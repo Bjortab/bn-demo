@@ -1,142 +1,123 @@
 // functions/api/generate.js
-// BN textmotor med tydlig nivåskillnad (1–5) och anti-klyscha
-// Kör Mistral: kräver Secret i Cloudflare Pages -> MISTRAL_API_KEY
+// BN textmotor med tre faktiska profiler (1=Mild, 3=Mellan, 5=Hett),
+// men UI kan skicka 1–5. Vi "snäpper" till 1 / 3 / 5.
+// Kräver: MISTRAL_API_KEY i Cloudflare Pages (Settings → Variables & Secrets).
 
 export const onRequestPost = async ({ request, env }) => {
   try {
-    const { idea = "", minutes = 5, spice = 2 } = await safeJson(request);
+    const { idea = "", minutes = 5, level = 2 } = await safeJson(request);
 
     if (typeof idea !== "string" || !idea.trim()) {
-      return jsonError(400, "Tom idé. Skriv en kort beskrivning av scenen.");
+      return jerr(400, "Tom idé. Skriv en kort beskrivning av scenen.");
     }
-    const mins = Math.max(1, Math.min(15, Number(minutes) || 5));
-    const lvl = Number(spice);
-    if (![1,2,3,4,5].includes(lvl)) {
-      return jsonError(400, "Ogiltig snusk-nivå (1–5).");
-    }
+    const mins = clamp(Number(minutes) || 5, 1, 15);
+
+    // ----- Snap 1–5 till 1/3/5 -----
+    const ui = clamp(Number(level) || 2, 1, 5);
+    const snapped = ui <= 1 ? 1 : (ui <= 3 ? 3 : 5);
 
     const MISTRAL_API_KEY = env.MISTRAL_API_KEY;
-    if (!MISTRAL_API_KEY) {
-      return jsonError(500, "Saknar MISTRAL_API_KEY i Cloudflare Pages → Settings → Variables & Secrets.");
-    }
+    if (!MISTRAL_API_KEY) return jerr(500, "Saknar MISTRAL_API_KEY.");
 
-    const targetWords = Math.round(170 * mins);
+    const targetWords = Math.round(mins * 170);
 
-    // ————— LEXIKON & STIL —————
-    // OBS: nivå 5 använder explicit ordval men vi håller det vuxet, samtyckande och icke-grafiskt.
-    const forbidden = [
-      "minderår", "våld", "tvång", "incest", "drogning", "förnedring"
+    // ----- lexikon -----
+    const forbiddenGlobal = ["minderår", "tvång", "våld", "incest", "drogning", "förnedring"];
+
+    const SOFT = [
+      "pirr", "värme", "smek", "kyss", "närhet", "hud", "dröjde med blicken",
+      "andas nära", "hans händer", "hennes läppar", "hjärtat slog"
     ];
 
-    const softLex = [ // ord som är okej/vanliga i 1–2
-      "pirr", "värme", "smek", "kyss", "svalka", "doft", "närhet", "hud",
-      "hans händer", "hennes läppar", "hjärtat slog", "andas nära"
+    const HOT = [
+      "våt", "slicka", "tunga", "stötar", "hårt", "djupt", "skälvde",
+      "ryckte till", "pulserade", "gripen om höfterna", "åtrå", "lust", "kåt",
+      "orgasm", "suget"
     ];
 
-    const hotLex = [ // 4–5 (används modererat i 4; tydligt i 5)
-      "våt", "slicka", "tunga", "stötar", "hårt", "djupt",
-      "skälvde", "ryckte till", "pulserade", "tryckte mig mot honom",
-      "åtrå", "lust", "kåt", "orgasm", "kummen", "suget", "gripen om höfterna"
+    // Ditt önskade ord/fraser (explicit men ej grafiskt-kliniskt)
+    const EXPLICIT = [
+      "våta sköte", "lem", "han gled in i henne", "gled in och ut",
+      "hon red honom", "ökade takten", "kom för mig", "han kom i mig",
+      "han tog mig bakifrån", "jag tog honom i munnen", "han fyllde mig",
+      "trängde in i mig", "jag red honom"
     ];
 
-    const explicitLex = [ // 5 (explicit men ej grafiskt-anatomiskt)
-      "kuk", "fitta", "knulla", "körde in", "trängde in", "reda henne med tungan",
-      "rida", "kom för mig", "sprut", "slickade henne", "han tog mig bakifrån",
-      "jag tog honom i munnen"
-    ];
-
-    // Stilprofiler per nivå
+    // ----- profiler -----
     const profiles = {
-      1: {
-        label: "nivå 1 – mild, romantisk, antydningar",
-        temperature: 0.85, top_p: 0.92,
-        mustUse: [], avoid: [...explicitLex, ...hotLex],
+      1: { // Mild (romantik/antydningar)
+        label: "Mild – romantiskt, antydande",
+        temperature: 0.8, top_p: 0.92,
+        mustUse: pick(SOFT, 3),
+        forbid: [...EXPLICIT, ...HOT], // inga explicita ord
         rules: [
-          "håll det lågmält, romantiskt, antydande",
-          "undvik direkt sexuella ord och grovt språk",
-          "fokus på blickar, beröring, stämning"
+          "håll det lågmält och romantiskt, arbeta med antydningar",
+          "inga direkta sexuella ord, ingen penetration i beskrivning",
+          "fokus på blickar, beröring, stämning, mjuk dialog"
         ]
       },
-      2: {
-        label: "nivå 2 – varm, lätt erotik",
-        temperature: 0.95, top_p: 0.92,
-        mustUse: pick(softLex, 3), avoid: [...explicitLex],
-        rules: [
-          "naturligt sensuellt språk, mer direkta antydningar",
-          "inga grova ord; samtycke tydligt"
-        ]
-      },
-      3: {
-        label: "nivå 3 – tydligt sensuell",
+      3: { // Mellan (sensuell och tydlig men inte rå)
+        label: "Mellan – sensuellt och tydligt",
         temperature: 1.05, top_p: 0.9,
-        mustUse: pick([...softLex, ...hotLex], 5), avoid: [],
+        mustUse: pick([...SOFT, ...HOT], 5),
+        forbid: [], // tillåtet med tydliga handlingar men håll god ton
         rules: [
-          "direkt sensuellt språk, men inte rått",
-          "variera uttryck och tempo; bygg upp till klimax runt 70–80%"
+          "sensuellt och tydligt, men inte rått",
+          "variera uttryck och tempo; låt handling och dialog bära scenen",
+          "bygg upp mot klimax runt 70–80% och avrunda varmt"
         ]
       },
-      4: {
-        label: "nivå 4 – het, explicit men elegant",
-        temperature: 1.12, top_p: 0.9,
-        mustUse: pick(hotLex, 6), avoid: [],
+      5: { // Hett (explicit men ej grafiskt-kliniskt)
+        label: "Hett – mycket explicit, ej grafiskt",
+        temperature: 1.18, top_p: 0.9,
+        // krav: minst 6 från EXPLICIT + 5 från HOT
+        mustUse: [...pick(EXPLICIT, 6), ...pick(HOT, 5)],
+        forbid: [], // vi styr via reglerna istället
         rules: [
-          "använd direkt erotiskt språk vuxet och respektfullt",
-          "flera tydliga intima handlingar; inget grafiskt-kroppsdetaljerat"
-        ]
-      },
-      5: {
-        label: "nivå 5 – mycket het, explicit (icke-grafiskt)",
-        temperature: 1.22, top_p: 0.9,
-        // krav: minst 5 ord/fraser ur explicitLex + 4 ur hotLex
-        mustUse: [...pick(explicitLex, 5), ...pick(hotLex, 4)],
-        avoid: [],
-        rules: [
-          "självsäkert, vuxet, mycket hett språk – alltid samtycke och trygghet",
-          "undvik grov anatomi-detalj eller kliniska termer; håll det stilfullt",
-          "visa scener med handling/dialog, inte referat"
+          // Scenkrav: leverera det du bad om
+          "ha med penetration: fraser som 'han gled in i henne' eller 'trängde in'",
+          "ha med rytm/tempo: 'gled in och ut', 'ökade takten', 'allt häftigare'",
+          "ha med en 'rida'-scen: t.ex. 'hon red honom' (om det passar idén)",
+          "bygga mot klimax och beskriv orgasm utan medicinskt språk",
+          // Stilsäkerhet:
+          "alltid vuxet och samtycke, respektfullt; inget våld/kränkning",
+          "undvik kliniska anatomidetaljer; håll det naturligt, muntligt språk",
+          "variera uttryck; undvik klyschor/upprepningar"
         ]
       }
     };
 
-    const p = profiles[lvl];
+    const p = profiles[snapped];
 
-    // Anti-klyscha-styrning
     const antiCliche = [
-      "undvik upprepningar: inte samma fras eller metafor flera gånger",
-      "variera synonymer och rytm; undvik klyschor",
-      "använd sinnesintryck: doft, smak, känsel, ljud, blickar"
+      "undvik att upprepa samma fras eller metafor mer än en gång",
+      "variera ordval och meningsrytm",
+      "använd sinnen: doft, smak, känsel, ljud, blickar"
     ];
 
-    const doNotSay = forbidden.concat(
-      p.avoid.length ? ["följande ord är förbjudna i texten: " + p.avoid.join(", ")] : []
-    );
-
-    const mustLine = p.mustUse.length
-      ? `Använd MINST ${p.mustUse.length} av följande uttryck naturligt i texten: ${p.mustUse.join(", ")}.`
-      : "Undvik grovt språk. Inga explicit ord behövs.";
-
     const systemMsg = [
-      "Du skriver på svenska sensuella vuxennoveller för uppläsning. Allt är samtycke mellan vuxna.",
+      "Du skriver svenska, vuxna, samtyckande sensuella noveller för uppläsning.",
+      "Inga minderåriga, inget tvång, inget våld, inga släktingar, inget hat.",
       `Målslängd ≈ ${targetWords} ord (±10%).`,
       `Ton: ${p.label}.`,
-      mustLine,
-      ...p.rules.map((r) => "• " + r),
-      ...antiCliche.map((r) => "• " + r),
-      doNotSay.length ? "Förbjudet innehåll: " + doNotSay.join("; ") : "",
-      "Följ lag och säkerhet. Inget minderårigt, inget tvång, inga skador."
-    ].join("\n");
+      p.mustUse.length ? `Använd MINST ${p.mustUse.length} av dessa uttryck naturligt: ${p.mustUse.join(", ")}.` : "",
+      p.forbid.length ? `Följande uttryck FÅR INTE förekomma: ${p.forbid.join(", ")}.` : "",
+      ...p.rules.map(r => "• " + r),
+      ...antiCliche.map(r => "• " + r),
+      forbiddenGlobal.length ? "Förbjudet innehåll: " + forbiddenGlobal.join(", ") : ""
+    ].filter(Boolean).join("\n");
 
     const userMsg = [
       "Idé från användaren:",
       idea.trim(),
       "",
-      "Skriv EN sammanhängande novell utan rubriker.",
+      "Skriv EN sammanhängande novell utan rubriker/listor.",
       "Struktur: snabb krok → stegring → flera intima scener → klimax → varm avrundning."
     ].join("\n");
 
-    // Timeout 50s
+    // Timeout 55s (Cloudflare)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 50000);
+    const timeout = setTimeout(() => controller.abort(), 55000);
 
     const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
       method: "POST",
@@ -161,99 +142,96 @@ export const onRequestPost = async ({ request, env }) => {
 
     if (!res.ok) {
       const txt = await safeText(res);
-      return jsonError(502, `Text-API svarade ${res.status}. ${truncate(txt, 400)}`);
+      return jerr(502, `Text-API svarade ${res.status}. ${truncate(txt, 400)}`);
     }
 
     const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || "";
-    if (!raw.trim()) {
-      return jsonError(502, "Textgenereringen gav tomt svar. Testa ändra formuleringen.");
-    }
+    let text = (data?.choices?.[0]?.message?.content || "").trim();
+    if (!text) return jerr(502, "Textgenereringen gav tomt svar.");
 
-    // Efterbearbetning
-    let text = tidyText(raw, { level: lvl, must: p.mustUse, avoid: p.avoid });
+    // Efterbearbetning – minska upprepningar, säkra nivåskillnad
+    text = tidyText(text, { snapped, must: p.mustUse, forbid: p.forbid });
+
     const excerpt = makeExcerpt(text, 420);
+    return ok({ text, excerpt, snapped });
 
-    return new Response(JSON.stringify({ ok: true, text, excerpt }), {
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      status: 200
-    });
   } catch (err) {
     const msg = err?.name === "AbortError" ? "Begäran avbröts (timeout)." : (err?.message || "Okänt fel i generate.");
-    return jsonError(500, msg);
+    return jerr(500, msg);
   }
 };
 
 /* ===== Hjälpfunktioner ===== */
 
+function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
 async function safeJson(req){ try { return await req.json(); } catch { return {}; } }
 async function safeText(res){ try { return await res.text(); } catch { return ""; } }
 
-function jsonError(status, message){
-  return new Response(JSON.stringify({ ok:false, error: message }), {
-    status, headers: { "Content-Type":"application/json", "Cache-Control":"no-store" }
-  });
-}
+function ok(obj){ return new Response(JSON.stringify({ ok:true, ...obj }), { status:200, headers:jsonHeaders() }); }
+function jerr(status, message){ return new Response(JSON.stringify({ ok:false, error:message }), { status, headers:jsonHeaders() }); }
+function jsonHeaders(){ return { "Content-Type":"application/json; charset=utf-8", "Cache-Control":"no-store", "Access-Control-Allow-Origin":"*" }; }
 
 function truncate(s,n){ return s && s.length>n ? s.slice(0,n-1)+"…" : s; }
 
 function pick(arr, n){
-  const a = [...arr]; const out=[];
-  while (a.length && out.length<n){ out.push(a.splice(Math.floor(Math.random()*a.length),1)[0]); }
+  const a = [...arr]; const out = [];
+  while (a.length && out.length < n) {
+    out.push(a.splice(Math.floor(Math.random()*a.length),1)[0]);
+  }
   return out;
 }
 
-function tidyText(input, { level, must=[], avoid=[] } = {}){
+function tidyText(input, { snapped, must = [], forbid = [] } = {}){
   let t = (input||"").trim();
 
-  // Normalisera whitespace & radbrytningar
+  // Normalisering
   t = t.replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n");
 
-  // Ta bort direkt upprepade meningar
+  // Ta bort samma mening upprepad direkt
   t = t.replace(/(^|\n)([^.\n!?]{8,}[.!?])\s+\2/gm, "$1$2");
 
-  // Tunnar ut repetitiva 4-ord fraser
+  // Tunna ut repetitiva 4-ordsfraser
   t = limitNgramRepeats(t, 4, 3);
 
-  // Säkerställ nivåskillnad:
-  //  - Om level 5: hintar in must-ord om väldigt få förekommer
-  if (level === 5 && countAny(t, must) < Math.max(3, Math.floor(must.length*0.5))){
-    t += "\n\n" + softInject(must, 3);
-  }
-  //  - Om level 1–2: ta bort explicit ord som råkat trilla in
-  if (level <= 2 && avoid.length){
-    const re = new RegExp("\\b(" + avoid.map(esc).join("|") + ")\\b","gi");
+  // Säkra nivåskillnad:
+  if (snapped === 1 && forbid.length){ // ta bort explicita uttryck som råkat trilla in
+    const re = new RegExp("\\b(" + forbid.map(esc).join("|") + ")\\b","gi");
     t = t.replace(re, "—");
   }
+  if (snapped === 5 && countAny(t, must) < Math.max(5, Math.floor(must.length*0.6))){
+    // injicera en naturlig rad som gör att fler must-ord dyker upp
+    t += "\n\n" + softInject(must, 4);
+  }
 
-  return t;
+  return t.trim();
 }
 
 function limitNgramRepeats(text, n=4, maxRepeats=3){
   const words = text.split(/\s+/);
-  const seen = new Map();
-  const keep = new Array(words.length).fill(true);
+  const seen = new Map(); const keep = new Array(words.length).fill(true);
   for (let i=0;i<=words.length-n;i++){
     const gram = words.slice(i,i+n).join(" ").toLowerCase();
     const c = (seen.get(gram)||0)+1; seen.set(gram,c);
-    if (c>maxRepeats) keep[i]=false;
+    if (c>maxRepeats) keep[i] = false;
   }
   return words.filter((_,i)=>keep[i]).join(" ");
 }
 
 function countAny(text, list){
   const lower = text.toLowerCase();
-  return list.reduce((acc, w)=> acc + (lower.includes(w.toLowerCase())?1:0), 0);
+  return list.reduce((acc,w)=> acc + (lower.includes(w.toLowerCase())?1:0), 0);
 }
+
 function softInject(words, n){
-  return "Jag tappade räkningen på tiden när " + pick(words, n).join(", ") + ".";
+  return "Jag tappade räkningen när " + pick(words, n).join(", ") + " tog över och tempot steg.";
 }
+
 function esc(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"); }
 
 function makeExcerpt(text, maxChars=420){
   const t = text.trim().replace(/\s+/g," ");
-  if (t.length<=maxChars) return t;
-  const cut = t.slice(0,maxChars);
+  if (t.length <= maxChars) return t;
+  const cut = t.slice(0, maxChars);
   const last = Math.max(cut.lastIndexOf("."), cut.lastIndexOf("?"), cut.lastIndexOf("!"));
   return last>80 ? cut.slice(0,last+1) : cut+"…";
 }
