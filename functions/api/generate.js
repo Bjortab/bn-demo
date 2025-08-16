@@ -1,106 +1,68 @@
-// Nivå 1–5 med tydliga stilregler + “spice rewrite” när bara nivån ändras
-export async function onRequestPost(context) {
-  try {
-    const { request, env } = context;
-    const body = await request.json();
+import { json, options, notAllowed } from './_utils';
 
-    const idea      = (body.idea || "").trim();
-    const mins      = Number(body.mins || 5);
-    const spice     = Math.max(1, Math.min(5, Number(body.spice || 2)));
-    const reuseText = Boolean(body.reuseText);
-    const baseText  = (body.baseText || "").trim();
+const SYS_BASE = `Du är en svensk berättarröst som skriver sensuella ljudnoveller.
+- Alltid samtycke, vuxna, inga minderåriga, ingen våldtfantasi, ingen icke-samtyckande handling.
+- Nivå 1–5 styr explicitet. 1 = romantiskt och icke-grafiskt; 5 = mest explicit (vuxet, grafiskt språk).
+- Håll prosan flytande och mänsklig. Undvik upprepningar och korthuggen rytm.
+- Skriv alltid i jag-form när det passar.`;
 
-    if (!env.OPENAI_API_KEY) return err(500, "Saknar OPENAI_API_KEY i Cloudflare.");
-    if (!reuseText && !idea)  return err(400, "Ingen idé angiven.");
-    if (reuseText && !baseText) return err(400, "reuseText=true men baseText saknas.");
-
-    const model = "gpt-5-mini";
-    const maxTokens = Math.min(4096, Math.round(mins * 260 * 1.2)); // ≈170 ord/min
-
-    const safety =
-      "Allt innehåll är mellan vuxna med ömsesidigt samtycke. Inga minderåriga, inget tvång, inget våld, bestialitet eller incest.";
-    const pacing = [
-      "Pacing: öka intensiteten stegvis. Vid ~30% första tydliga beröringen.",
-      "Vid ~60–70% kulmen. Avsluta med efterspel (inte ny scen)."
-    ].join(" ");
-
-    const rules = {
-      1: "Nivå 1: romantisk och antydande; inga könsord; fokus på stämning, blickar, hud, andning.",
-      2: "Nivå 2: sensuellt och kroppsligt; antydda beröringar och kyssar; fortfarande icke-grafiskt.",
-      3: "Nivå 3: tydligt laddat; beskriv rörelse och värme; undvik råa könsord men var konkret.",
-      4: "Nivå 4: explicit vuxet språk; tillåt ord som ‘lem’, ‘slida’, ‘våt’, ‘ta emot honom’; konkret om rytm och beröring.",
-      5: "Nivå 5: fullt explicit vuxet språk; tillåt ‘tränga in’, ‘slicka’, ‘känna hur vått det är’; inga förnedrande uttryck; allt frivilligt."
-    };
-
-    const system = [
-      "Skriv på naturlig, modern svenska med bra flyt och varierade meningar.",
-      "Använd dialog där det passar, sensoriska detaljer (lukt/ljud/känsla).",
-      safety, pacing, rules[spice]
-    ].join(" ");
-
-    const wordsTarget = Math.round(mins * 170);
-    const framing = `Sikta på ~${wordsTarget} ord (±20%).`;
-
-    const userNew = [
-      `Idé: "${idea}"`,
-      framing,
-      "Struktur: början → upptrappning → kulmen → efterspel."
-    ].join("\n");
-
-    const userRewrite = [
-      "Krydda om texten till vald nivå utan att ändra händelseförlopp i onödan.",
-      framing,
-      "Behåll ton och stil men höj explicit-nivån enligt reglerna.",
-      "Text att krydda:", baseText
-    ].join("\n");
-
-    const payload = {
-      model,
-      input: [
-        { role: "system", content: system },
-        { role: "user",   content: reuseText ? userRewrite : userNew }
-      ],
-      max_output_tokens: maxTokens,
-      temperature: spice >= 4 ? 1.0 : 0.9,
-      top_p: 0.9
-    };
-
-    const r = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!r.ok) {
-      const t = await r.text().catch(()=>r.statusText);
-      return err(r.status, `OpenAI error: ${t}`);
-    }
-
-    const data = await r.json();
-    const text =
-      data?.output_text ||
-      data?.choices?.[0]?.message?.content ||
-      data?.data?.[0]?.content || "";
-
-    if (!text) return err(502, "Tomt svar från modellen.");
-
-    const excerpt = text.slice(0, 500) + (text.length > 500 ? " …" : "");
-    return new Response(JSON.stringify({ text, excerpt }), {
-      headers: { "Content-Type": "application/json" },
-      status: 200
-    });
-
-  } catch (e) {
-    return err(500, e.message || "Okänt fel.");
+function spiceHints(level){
+  switch(Number(level)){
+    case 1: return 'Håll det varmt och romantiskt. Undvik grafiska ord.';
+    case 2: return 'Sensuellt och tydligt, men fortfarande icke-grafiskt.';
+    case 3: return 'Sensuellt + vissa explicita antydningar, men inte full vocabulary.';
+    case 4: return 'Explicit vuxet språk tillåtet (lem, slida, våt, kyssa, slicka).';
+    case 5: return 'Mest explicit (vuxet). Ord som kuk, fitta, knulla får förekomma. Fortsatt respektfull ton och samtycke.';
+    default: return 'Neutral nivå.';
   }
 }
 
-function err(status, message){
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
+export async function onRequest(context){
+  const { request, env } = context;
+  if(request.method === 'OPTIONS') return options();
+  if(request.method !== 'POST') return notAllowed(['POST','OPTIONS']);
+
+  try{
+    const { idea, minutes=5, spice=2 } = await request.json();
+    if(!idea || !String(idea).trim()) return json({ error:'Tom prompt' }, 400);
+
+    const words = Math.max(80, Math.round(Number(minutes)*170));
+    const sys = `${SYS_BASE}\n\nNivå: ${spice}. ${spiceHints(spice)}\nMål-längd: ca ${words} ord.`;
+    const user = `Idé: ${idea}\nSkriv en sammanhängande berättelse (svenska). Ge även ett 2–3 meningars utdrag i början.`;
+
+    const resp = await fetch('https://api.openai.com/v1/responses', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'authorization': `Bearer ${env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        input: [
+          { role:'system', content: sys },
+          { role:'user', content: user }
+        ],
+        max_output_tokens: Math.min(4096, Math.round(words*2.2)),
+        temperature: 0.9
+      })
+    });
+
+    if(!resp.ok){
+      const err = await resp.text();
+      return json({ error:`OpenAI: ${resp.status} ${err.slice(0,500)}` }, 502);
+    }
+    const data = await resp.json();
+    const full = data?.output?.[0]?.content?.[0]?.text
+              || data?.output_text
+              || '';
+
+    if(!full) return json({ error:'Tomt svar från OpenAI' }, 502);
+
+    // Utdrag = första stycket eller 400 tecken
+    const excerpt = full.split(/\n{2,}/)[0].slice(0, 600);
+
+    return json({ text: full, excerpt });
+  }catch(e){
+    return json({ error: e.message || 'Internt fel' }, 500);
+  }
 }
