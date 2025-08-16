@@ -4,70 +4,87 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="nav">
-    <div class="brand"><span>Blush</span> <strong>Narratives</strong></div>
-    <nav><a href="./">Hem</a> <a href="./">Skapa</a> <a href="./">BlushConnect</a></nav>
+    <div class="brand">Blush <strong>Narratives</strong></div>
+    <nav>
+      <a href="./">Hem</a>
+      <a href="./">Skapa</a>
+      <a href="./">BlushConnect</a>
+    </nav>
   </header>
 
   <main class="container">
     <section class="card">
-      <h2>Skapa egen berättelse</h2>
+      <h1>Skapa egen berättelse</h1>
 
-      <div class="row">
-        <label for="length">Längd</label>
-        <select id="length">
-          <option value="3">3 minuter</option>
-          <option value="5" selected>5 minuter</option>
-          <option value="8">8 minuter</option>
-        </select>
-        <small>≈ 170 ord/min → upp till ca 850 ord.</small>
-      </div>
-
-      <div class="row">
-        <div>Snusk-nivå</div>
-        <div class="levels">
-          <label><input type="radio" name="level" value="1" checked /> 1</label>
-          <label><input type="radio" name="level" value="2" /> 2</label>
-          <label><input type="radio" name="level" value="3" /> 3</label>
-          <label><input type="radio" name="level" value="4" /> 4</label>
-          <label><input type="radio" name="level" value="5" /> 5</label>
+      <div class="grid2">
+        <div class="field">
+          <label for="length">Längd</label>
+          <select id="length">
+            <option value="3">3 minuter</option>
+            <option value="5" selected>5 minuter</option>
+            <option value="8">8 minuter</option>
+          </select>
+          <div class="hint">≈ 170 ord/min → upp till ca 850 ord.</div>
         </div>
-        <small id="levelHelp">Nivå 2 – mild med varm stämning.</small>
+
+        <div class="field">
+          <label>Snusk-nivå</label>
+          <div class="spice-row" id="spiceRow">
+            <label><input type="radio" name="spice" value="1"> 1</label>
+            <label><input type="radio" name="spice" value="2" checked> 2</label>
+            <label><input type="radio" name="spice" value="3"> 3</label>
+            <label><input type="radio" name="spice" value="4"> 4</label>
+            <label><input type="radio" name="spice" value="5"> 5</label>
+          </div>
+          <div class="hint" id="spiceHint">Nivå 2 – mild med varm stämning.</div>
+        </div>
+
+        <div class="field">
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <option value="alloy" selected>Alloy (neutral)</option>
+            <option value="verse">Verse</option>
+            <option value="aria">Aria</option>
+          </select>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+        </div>
+
+        <div class="field">
+          <label for="rate">Hastighet</label>
+          <select id="rate">
+            <option value="1.0">1.00×</option>
+            <option value="1.25" selected>1.25×</option>
+            <option value="1.5">1.50×</option>
+            <option value="1.75">1.75×</option>
+          </select>
+        </div>
       </div>
 
-      <div class="row">
-        <label for="voice">Röst</label>
-        <select id="voice">
-          <option value="alloy" selected>Alloy (neutral)</option>
-          <option value="verse">Verse</option>
-          <option value="aria">Aria</option>
-        </select>
-        <small>Gratis test-röster via OpenAI TTS.</small>
-      </div>
-
-      <div class="row">
+      <div class="field">
         <label for="idea">Din idé</label>
-        <textarea id="idea" rows="3" placeholder="Skriv din idé…"></textarea>
+        <textarea id="idea" placeholder="Skriv din idé…"></textarea>
       </div>
 
-      <div class="buttons">
-        <button id="btnPreview" type="button">Förhandslyssna</button>
-        <button id="btnRead" type="button" class="primary">Läs upp</button>
-        <button id="btnDownload" type="button">Ladda ner .txt</button>
+      <div class="btn-row">
+        <button id="btnPreview" class="secondary" type="button">Förhandslyssna</button>
+        <button id="btnRead" type="button">Läs upp</button>
+        <button id="btnDownload" class="secondary" type="button">Ladda ner .txt</button>
       </div>
 
-      <p id="status" class="status"></p>
+      <div id="status" class="status" aria-live="polite"></div>
 
       <audio id="player" controls preload="none"></audio>
 
       <h3>Utdrag</h3>
-      <p id="excerpt" class="excerpt"></p>
+      <div id="excerpt" class="excerpt"></div>
     </section>
   </main>
 
-  <script src="./app.js" defer></script>
+  <footer class="footer">© Blush Narratives</footer>
+  <script src="app.js" defer></script>
 </body>
 </html>
