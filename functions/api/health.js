@@ -1,5 +1,9 @@
-export async function onRequestGet() {
-  return new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
-    headers: { "content-type": "application/json", "access-control-allow-origin": "*" }
-  });
+import { json, options, notAllowed } from './_utils';
+
+export async function onRequest(context){
+  const { request } = context;
+  if(request.method === 'OPTIONS') return options();
+  if(request.method !== 'GET') return notAllowed(['GET','OPTIONS']);
+
+  return json({ ok:true, ts: Date.now() });
 }
