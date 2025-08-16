@@ -1,48 +1,29 @@
-:root{
-  --bg:#0e0f13; --panel:#171922; --muted:#9aa3b2; --text:#e9edf3;
-  --accent:#ff4db8; --accent2:#7a5cff; --ok:#67e8a9; --err:#ff7a7a;
-  --chip:#2a2d3a;
-  font-synthesis-weight:none;
+/* BN – grundtema (din befintliga palett får gärna vara kvar) */
+body { background:#0f1216; color:#eaeaf0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+.card { background:#171a20; border-radius:12px; padding:18px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+
+/* Se till att input-fält inte krymper */
+textarea#idea {
+  width: 100%;
+  min-height: 110px;   /* <- gör rutan normalstor igen */
+  resize: vertical;
+  padding: 10px 12px;
+  background:#10141a;
+  color:#eaeaf0;
+  border:1px solid #2a2f38;
+  border-radius:8px;
 }
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,sans-serif}
-a{color:#9cc9ff;text-decoration:none}
-a:hover{text-decoration:underline}
 
-.topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #222634;background:#10121a;position:sticky;top:0;z-index:10}
-.brand{font-weight:700;letter-spacing:.2px}
-.brand span{color:var(--accent)}
-nav a{margin-left:16px;color:var(--muted)}
-nav a.active, nav a:hover{color:var(--text)}
+/* statusrad */
+#status { margin-top:10px; font-size:.95rem; }
 
-.container{max-width:950px;margin:28px auto;padding:0 16px}
-.card{background:var(--panel);border:1px solid #22263a;border-radius:12px;padding:20px}
-h1{margin:6px 0 16px 0}
-h3{margin:18px 0 10px}
+/* knappar (exempel – anpassa efter din gradient) */
+button {
+  border:0; border-radius:10px; padding:10px 14px; cursor:pointer;
+  background:linear-gradient(90deg, #ff54b0, #8f5dff);
+  color:white; font-weight:600;
+}
+button.secondary { background:#2a2f38; color:#eaeaf0; }
 
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.field{display:flex;flex-direction:column;gap:8px}
-label{font-size:.92rem;color:var(--muted)}
-select,textarea{background:#111421;border:1px solid #262a3f;color:var(--text);border-radius:8px;padding:10px 12px}
-textarea{resize:vertical}
-.hint{font-size:.85rem;color:#aab3c5}
-
-.level-group{display:flex;gap:8px;flex-wrap:wrap}
-.level-group label{background:var(--chip);border:1px solid #2f3346;border-radius:999px;padding:6px 10px;cursor:pointer;user-select:none}
-.level-group input{accent-color:var(--accent)}
-.level-group input:checked + span{}
-
-.actions{display:flex;gap:10px;margin:8px 0 6px}
-button{border:0;border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600}
-button.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));color:white}
-button.secondary{background:#20253a;color:#d6dcf0}
-button:disabled{opacity:.6;cursor:not-allowed}
-
-.status{min-height:22px;margin:4px 0 10px;color:#bcc6da}
-.status.err{color:var(--err)}
-.status.ok{color:var(--ok)}
-
-audio{width:100%;margin:2px 0 10px}
-.excerpt{background:#101421;border:1px solid #20243a;border-radius:10px;padding:12px}
-
-.foot{opacity:.75;text-align:center;color:var(--muted);padding:24px 0}
+/* radio-knappar (snusk-nivå) kan du styla hur du vill – behåller standard här */
