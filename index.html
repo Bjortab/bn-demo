@@ -2,85 +2,72 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Blush <span>Narratives</span></div>
-    <nav>
-      <a href="#" id="navHome">Hem</a>
-      <a href="#" id="navCreate" class="active">Skapa</a>
-      <a href="https://blushconnect.example" target="_blank" rel="noopener">BlushConnect</a>
-    </nav>
+  <header class="nav">
+    <div class="brand"><span>Blush</span> <strong>Narratives</strong></div>
+    <nav><a href="./">Hem</a> <a href="./">Skapa</a> <a href="./">BlushConnect</a></nav>
   </header>
 
   <main class="container">
     <section class="card">
-      <h1>Skapa egen berättelse</h1>
+      <h2>Skapa egen berättelse</h2>
 
-      <div class="grid">
-        <div class="field">
-          <label for="length">Längd</label>
-          <select id="length">
-            <option value="5">5 minuter</option>
-            <option value="3">3 minuter</option>
-            <option value="1">1 minut</option>
-          </select>
-          <div class="hint">≈ 170 ord/min → upp till ca <span id="words">850</span> ord.</div>
-        </div>
-
-        <div class="field">
-          <label>Snusk-nivå</label>
-          <div class="level-group" id="levelGroup">
-            <label><input type="radio" name="level" value="1" checked> 1</label>
-            <label><input type="radio" name="level" value="2"> 2</label>
-            <label><input type="radio" name="level" value="3"> 3</label>
-            <label><input type="radio" name="level" value="4"> 4</label>
-            <label><input type="radio" name="level" value="5"> 5</label>
-          </div>
-          <div class="hint" id="levelHint">Nivå 2 – mild med varm stämning.</div>
-        </div>
-
-        <div class="field">
-          <label for="voice">Röst</label>
-          <select id="voice">
-            <option value="alloy">Alloy (neutral)</option>
-            <option value="verse">Verse (mjuk)</option>
-            <option value="aria">Aria (varm)</option>
-            <option value="coral">Coral (djup)</option>
-          </select>
-          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
-        </div>
+      <div class="row">
+        <label for="length">Längd</label>
+        <select id="length">
+          <option value="3">3 minuter</option>
+          <option value="5" selected>5 minuter</option>
+          <option value="8">8 minuter</option>
+        </select>
+        <small>≈ 170 ord/min → upp till ca 850 ord.</small>
       </div>
 
-      <div class="field">
-        <label for="prompt">Din idé</label>
-        <textarea id="prompt" rows="3" placeholder="Skriv din idé…"></textarea>
+      <div class="row">
+        <div>Snusk-nivå</div>
+        <div class="levels">
+          <label><input type="radio" name="level" value="1" checked /> 1</label>
+          <label><input type="radio" name="level" value="2" /> 2</label>
+          <label><input type="radio" name="level" value="3" /> 3</label>
+          <label><input type="radio" name="level" value="4" /> 4</label>
+          <label><input type="radio" name="level" value="5" /> 5</label>
+        </div>
+        <small id="levelHelp">Nivå 2 – mild med varm stämning.</small>
       </div>
 
-      <div class="actions">
-        <button id="btnPreview" class="secondary">Förhandslyssna</button>
-        <button id="btnRead" class="primary">Läs upp</button>
-        <button id="btnDownload" class="secondary">Ladda ner .txt</button>
+      <div class="row">
+        <label for="voice">Röst</label>
+        <select id="voice">
+          <option value="alloy" selected>Alloy (neutral)</option>
+          <option value="verse">Verse</option>
+          <option value="aria">Aria</option>
+        </select>
+        <small>Gratis test-röster via OpenAI TTS.</small>
       </div>
 
-      <div id="status" class="status"></div>
+      <div class="row">
+        <label for="idea">Din idé</label>
+        <textarea id="idea" rows="3" placeholder="Skriv din idé…"></textarea>
+      </div>
+
+      <div class="buttons">
+        <button id="btnPreview" type="button">Förhandslyssna</button>
+        <button id="btnRead" type="button" class="primary">Läs upp</button>
+        <button id="btnDownload" type="button">Ladda ner .txt</button>
+      </div>
+
+      <p id="status" class="status"></p>
 
       <audio id="player" controls preload="none"></audio>
 
-      <div class="excerpt">
-        <h3>Utdrag</h3>
-        <div id="excerpt"></div>
-      </div>
+      <h3>Utdrag</h3>
+      <p id="excerpt" class="excerpt"></p>
     </section>
   </main>
 
-  <footer class="foot">
-    © Blush Narratives • <a id="statusLink" href="/api/health" target="_blank">Status</a>
-  </footer>
-
-  <script src="app.js"></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
