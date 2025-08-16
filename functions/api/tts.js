@@ -1,51 +1,32 @@
-import { cors, options, notAllowed } from './_utils';
+export async function onRequestPost(ctx){
+  const { env, request } = ctx;
+  const apiKey = env.OPENAI_API_KEY;
+  if (!apiKey) return new Response('Missing OPENAI_API_KEY', { status: 500 });
 
-export async function onRequest(context){
-  const { request, env } = context;
-  if(request.method === 'OPTIONS') return options();
-  if(request.method !== 'POST') return notAllowed(['POST','OPTIONS']);
+  const { text = '', voice = 'alloy' } = await request.json();
+  if (!text.trim()) return new Response('No text', { status: 400 });
 
-  try{
-    const { text, voice='alloy' } = await request.json();
-    if(!text || !String(text).trim()){
-      return new Response(JSON.stringify({ error:'Ingen text att läsa upp' }), {
-        status:400,
-        headers: { 'content-type':'application/json', ...cors() }
-      });
-    }
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method:'POST',
+    headers:{
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model:'gpt-4o-mini-tts',
+      voice, input:text, format:'mp3'
+    })
+  });
 
-    // OpenAI TTS
-    const resp = await fetch('https://api.openai.com/v1/audio/speech', {
-      method:'POST',
-      headers:{
-        'content-type':'application/json',
-        'authorization': `Bearer ${env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini-tts',
-        voice,
-        input: text,
-        format: 'mp3'
-      })
-    });
-
-    if(!resp.ok){
-      const err = await resp.text();
-      return new Response(JSON.stringify({ error:`OpenAI TTS: ${resp.status} ${err.slice(0,400)}` }), {
-        status:502,
-        headers:{ 'content-type':'application/json', ...cors() }
-      });
-    }
-
-    // Strömma ut MP3 till klienten
-    const headers = new Headers(cors());
-    headers.set('content-type','audio/mpeg');
-    headers.set('cache-control','no-store');
-    return new Response(resp.body, { status:200, headers });
-  }catch(e){
-    return new Response(JSON.stringify({ error: e.message || 'TTS-fel' }), {
-      status:500,
-      headers:{ 'content-type':'application/json', ...cors() }
-    });
+  if (!res.ok){
+    return new Response(await res.text(), { status: 502 });
   }
+
+  const buf = await res.arrayBuffer();
+  return new Response(buf, {
+    headers:{
+      'Content-Type':'audio/mpeg',
+      'Cache-Control':'no-store'
+    }
+  });
 }
