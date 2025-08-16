@@ -1,86 +1,75 @@
-// Cloudflare Pages Function: /api/tts
-// Läser upp given text med OpenAI TTS. Validerar input och returnerar MP3.
-
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Cache-Control": "no-store",
-};
-
-export function onRequestOptions() {
-  return new Response(null, { headers: CORS });
-}
-
-export async function onRequestPost({ request, env }) {
+// functions/api/tts.js
+export async function onRequestPost(ctx) {
   try {
-    if (!env.OPENAI_API_KEY) {
-      return jerr(500, "Saknar OPENAI_API_KEY.");
+    const { request, env } = ctx;
+    const apiKey = env.OPENAI_API_KEY; // vi kör TTS via OpenAI
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'Missing OPENAI_API_KEY' }), { status: 500 });
     }
 
-    const { text, voice } = await safeJson(request);
-    const input = (text ?? "").toString().trim();
-    const voiceId = (voice || "alloy").toString();
+    const body = await request.json();
+    let { text, voice = 'alloy', preview = false } = body || {};
 
-    if (!input) return jerr(400, "Tom text att läsa upp.");
+    if (typeof text !== 'string') text = '';
+    text = text.trim();
 
-    const res = await fetchWithTimeout(
-      "https://api.openai.com/v1/audio/speech",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini-tts",
-          voice: voiceId,         // "alloy", "verse", "coral", ...
-          input,
-          format: "mp3",
-        }),
-      },
-      60000
-    );
-
-    if (!res.ok) {
-      const errTxt = await res.text().catch(() => "");
-      return jerr(502, `OpenAI TTS error: ${res.status} :: ${errTxt || "okänt fel"}`);
+    if (!text) {
+      return new Response(
+        JSON.stringify({ error: { code: 'empty_string', message: "Invalid 'input': empty string." } }),
+        { status: 400, headers: { 'content-type': 'application/json' } }
+      );
     }
 
-    const buf = await res.arrayBuffer();
-    return new Response(buf, {
-      status: 200,
+    // Begränsa längd vid förhandslyssning (snabbt, ~10 sek)
+    // och gör en rimlig hårdgräns även för full uppläsning
+    const MAX_PREVIEW_CHARS = 900;   // ca 8–12 sek
+    const MAX_FULLREAD_CHARS = 3200; // ~30–45 sek beroende på text
+
+    if (preview && text.length > MAX_PREVIEW_CHARS) {
+      text = text.slice(0, MAX_PREVIEW_CHARS);
+    } else if (!preview && text.length > MAX_FULLREAD_CHARS) {
+      text = text.slice(0, MAX_FULLREAD_CHARS);
+    }
+
+    // OpenAI TTS
+    const resp = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
       headers: {
-        ...CORS,
-        "Content-Type": "audio/mpeg",
-        "Content-Disposition": "inline; filename=bn-tts.mp3",
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
       },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',      // kostnadseffektiv
+        voice,                         // alloy, verse, aria, etc.
+        input: text,
+        format: 'mp3',                 // liten fil
+        sample_rate: 22050             // lite mindre, snabbare
+      })
     });
 
-  } catch (err) {
-    const msg = err?.name === "AbortError" ? "TTS avbröts (timeout)." : (err?.message || "Okänt fel.");
-    return jerr(502, msg);
+    if (!resp.ok) {
+      const err = await safeJson(resp);
+      return new Response(
+        JSON.stringify({ error: { code: 'openai_tts_failed', status: resp.status, details: err }}),
+        { status: 502, headers: { 'content-type': 'application/json' } }
+      );
+    }
+
+    const arrayBuf = await resp.arrayBuffer();
+    return new Response(arrayBuf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Cache-Control': preview ? 'no-store' : 'public, max-age=60'
+      }
+    });
+  } catch (e) {
+    return new Response(JSON.stringify({ error: { code: 'tts_crash', message: String(e) } }), {
+      status: 500, headers: { 'content-type': 'application/json' }
+    });
   }
 }
 
-async function safeJson(req) {
-  try { return await req.json(); }
-  catch { return {}; }
-}
-
-async function fetchWithTimeout(url, opts, ms) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort("timeout"), ms || 30000);
-  try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-function jerr(code, msg) {
-  return new Response(JSON.stringify({ error: msg }), {
-    status: code,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...CORS },
-  });
+async function safeJson(r) {
+  try { return await r.json(); } catch { return await r.text().catch(()=>''); }
 }
