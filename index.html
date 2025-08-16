@@ -5,86 +5,82 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives</title>
   <link rel="stylesheet" href="styles.css" />
-  <style>
-    .container{max-width:980px;margin:24px auto;padding:0 16px}
-    .card{background:#1e1f25;border:1px solid #2a2c36;border-radius:12px;padding:18px;margin-bottom:18px;color:#e6e6ea}
-    body{background:#0f1115;color:#e6e6ea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
-    label{display:block;margin:6px 0 4px}
-    select,textarea,input[type="text"],input[type="range"]{width:100%;background:#12131a;color:#e6e6ea;border:1px solid #2a2c36;border-radius:8px;padding:10px}
-    textarea{min-height:110px}
-    .row{display:flex;gap:12px;flex-wrap:wrap}
-    .col{flex:1 1 280px}
-    .btn{border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
-    .btn-primary{background:linear-gradient(90deg,#ff3cac,#784ba0,#2b86c5);color:white}
-    .btn-ghost{background:#191b22;color:#e6e6ea;border:1px solid #2a2c36}
-    .muted{opacity:.8;font-size:.95rem}
-    nav{display:flex;gap:18px;align-items:center;padding:14px 0}
-    nav a{color:#e6e6ea;text-decoration:none}
-    nav .brand{color:#ff5ea8;font-weight:700}
-    .actions{display:flex;gap:10px;flex-wrap:wrap}
-    #status{min-height:20px;margin-top:8px}
-  </style>
 </head>
 <body>
-  <div class="container">
+  <header class="topbar">
+    <div class="brand">Blush <span>Narratives</span></div>
     <nav>
-      <div class="brand">Blush <span style="color:#ff2f83">Narratives</span></div>
-      <div style="margin-left:auto;display:flex;gap:16px">
-        <a href="#" id="navCreate">Skapa</a>
-        <a href="#" id="navConnect">BlushConnect</a>
-      </div>
+      <a href="#" id="navHome">Hem</a>
+      <a href="#" id="navCreate" class="active">Skapa</a>
+      <a href="https://blushconnect.example" target="_blank" rel="noopener">BlushConnect</a>
     </nav>
+  </header>
 
-    <!-- DIREKT TILL SKAPA -->
-    <section id="create" class="card">
-      <h2>Skapa egen berättelse</h2>
+  <main class="container">
+    <section class="card">
+      <h1>Skapa egen berättelse</h1>
 
-      <div class="row">
-        <div class="col">
+      <div class="grid">
+        <div class="field">
           <label for="length">Längd</label>
           <select id="length">
+            <option value="5">5 minuter</option>
             <option value="3">3 minuter</option>
-            <option value="5" selected>5 minuter</option>
-            <option value="8">8 minuter</option>
-            <option value="10">10 minuter</option>
+            <option value="1">1 minut</option>
           </select>
-          <div class="muted" data-words>≈ 170 ord/min → ca 850 ord per 5 min.</div>
+          <div class="hint">≈ 170 ord/min → upp till ca <span id="words">850</span> ord.</div>
         </div>
 
-        <div class="col">
-          <label for="spice">Snusk-nivå</label>
-          <input id="spice" type="range" min="1" max="5" step="1" value="2" />
-          <div class="muted">1 = mild / 5 = hetast (alltid icke-grafiskt).</div>
+        <div class="field">
+          <label>Snusk-nivå</label>
+          <div class="level-group" id="levelGroup">
+            <label><input type="radio" name="level" value="1" checked> 1</label>
+            <label><input type="radio" name="level" value="2"> 2</label>
+            <label><input type="radio" name="level" value="3"> 3</label>
+            <label><input type="radio" name="level" value="4"> 4</label>
+            <label><input type="radio" name="level" value="5"> 5</label>
+          </div>
+          <div class="hint" id="levelHint">Nivå 2 – mild med varm stämning.</div>
         </div>
 
-        <div class="col">
+        <div class="field">
           <label for="voice">Röst</label>
           <select id="voice">
             <option value="alloy">Alloy (neutral)</option>
             <option value="verse">Verse (mjuk)</option>
-            <option value="coral">Coral (varm)</option>
+            <option value="aria">Aria (varm)</option>
+            <option value="coral">Coral (djup)</option>
           </select>
-          <div class="muted">Gratis test-röster via OpenAI TTS.</div>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
         </div>
       </div>
 
-      <label for="idea" style="margin-top:14px">Din idé</label>
-      <textarea id="idea" placeholder="Skriv din idé…"></textarea>
-
-      <div class="actions" style="margin-top:10px">
-        <button class="btn btn-ghost"   id="btnPreview" type="button">Förhandslyssna</button>
-        <button class="btn btn-primary" id="btnRead" type="button">Läs upp</button>
-        <button class="btn btn-ghost"   id="btnDownload" type="button">Ladda ner .txt</button>
+      <div class="field">
+        <label for="prompt">Din idé</label>
+        <textarea id="prompt" rows="3" placeholder="Skriv din idé…"></textarea>
       </div>
 
-      <div id="status" class="muted"></div>
-      <audio id="player" controls style="width:100%;margin-top:10px"></audio>
+      <div class="actions">
+        <button id="btnPreview" class="secondary">Förhandslyssna</button>
+        <button id="btnRead" class="primary">Läs upp</button>
+        <button id="btnDownload" class="secondary">Ladda ner .txt</button>
+      </div>
 
-      <h3 style="margin-top:18px">Utdrag</h3>
-      <div id="excerpt" class="muted" style="min-height:40px"></div>
+      <div id="status" class="status"></div>
+
+      <audio id="player" controls preload="none"></audio>
+
+      <div class="excerpt">
+        <h3>Utdrag</h3>
+        <div id="excerpt"></div>
+      </div>
     </section>
-  </div>
+  </main>
 
-  <script src="app.js" defer></script>
+  <footer class="foot">
+    © Blush Narratives • <a id="statusLink" href="/api/health" target="_blank">Status</a>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
 </html>
