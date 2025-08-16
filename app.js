@@ -1,109 +1,135 @@
-// Enkel app utan 18+-gate, går direkt mot /api/generate och /api/tts
-
-const API_BASE = ""; // samma origin
+// ===== API-bas (CORS) =====
+const API_BASE = 'https://bn-demo01.pages.dev'; // <-- din Cloudflare Pages-domän
 
 const els = {
-  length:  byId("length"),
-  spice:   byId("spice"),
-  voice:   byId("voice"),
-  idea:    byId("idea"),
-  btnPrev: byId("btnPreview"),
-  btnRead: byId("btnRead"),
-  btnDl:   byId("btnDownload"),
-  status:  byId("status"),
-  excerpt: byId("excerpt"),
-  player:  byId("player"),
+  length: document.getElementById('length'),
+  levelHint: document.getElementById('levelHint'),
+  voice: document.getElementById('voice'),
+  words: document.getElementById('words'),
+  prompt: document.getElementById('prompt'),
+  btnPreview: document.getElementById('btnPreview'),
+  btnRead: document.getElementById('btnRead'),
+  btnDownload: document.getElementById('btnDownload'),
+  status: document.getElementById('status'),
+  excerpt: document.getElementById('excerpt'),
+  player: document.getElementById('player'),
+  levelGroup: document.getElementById('levelGroup'),
 };
 
-function byId(id){ return document.getElementById(id); }
-function calcWords(mins){ return Math.round((Number(mins)||5) * 170); }
-function updateWords(){
-  const mins = Number(els.length.value)||5;
-  const el = document.querySelector("[data-words]");
-  if (el) el.textContent = `≈ 170 ord/min → ca ${calcWords(mins)} ord per ${mins} min.`;
-}
-updateWords();
-["input","change"].forEach(ev => els.length.addEventListener(ev, updateWords));
-
-function uiStatus(msg, isErr=false){
-  els.status.textContent = msg || "";
-  els.status.style.color = isErr ? "#ff7070" : "#9cdd7b";
-}
-function lockUI(lock=true){
-  [els.btnPrev, els.btnRead, els.btnDl].forEach(b => b.disabled = lock);
+function getSelectedLevel() {
+  const checked = document.querySelector('input[name="level"]:checked');
+  return checked ? Number(checked.value) : 2;
 }
 
-async function callApi(path, payload, timeoutMs=70000){
+function calcWords(mins){ return Math.max(60, Math.round(mins * 170)); }
+function uiStatus(msg, state=''){ els.status.textContent = msg || ''; els.status.className = `status ${state}`; }
+
+function updateMetaUI(){
+  const mins = Number(els.length.value || 5);
+  els.words.textContent = calcWords(mins);
+  const level = getSelectedLevel();
+  const hints = {
+    1: 'Nivå 1 – romantiskt och antydande.',
+    2: 'Nivå 2 – mild med varm stämning.',
+    3: 'Nivå 3 – sensuellt och tydligt.',
+    4: 'Nivå 4 – hett, direkt språk (ej grafiskt).',
+    5: 'Nivå 5 – mycket hett och explicit (ej grafiskt, alltid samtycke).',
+  };
+  els.levelHint.textContent = hints[level] || '';
+}
+updateMetaUI();
+[els.length, els.levelGroup].forEach(el => el.addEventListener('change', updateMetaUI));
+
+async function apiPost(path, payload){
   const ctrl = new AbortController();
-  const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+  const timer = setTimeout(()=>ctrl.abort(), 45000); // 45s safeguard
   try{
-    const res = await fetch(`${API_BASE}/api/${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {}),
+    const res = await fetch(`${API_BASE}${path}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
       signal: ctrl.signal
     });
-    if (!res.ok){
-      const txt = await res.text().catch(()=> "");
-      throw new Error(`${res.status} :: ${txt || "Request failed"}`);
+    if(!res.ok){
+      const txt = await res.text().catch(()=> '');
+      throw new Error(`${res.status} ${res.statusText} :: ${txt.slice(0,300)}`);
     }
-    const ct = res.headers.get("Content-Type") || "";
-    if (ct.includes("application/json")) return await res.json();
-    if (ct.startsWith("audio/"))          return await res.blob();
-    return await res.text();
-  } finally { clearTimeout(t); }
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-els.btnPrev.addEventListener("click", async ()=>{
-  const idea = (els.idea.value||"").trim();
-  if (!idea){ uiStatus("Skriv din idé först.", true); return; }
-  lockUI(true); uiStatus("Skapar text…"); els.excerpt.textContent = "";
+async function generateAndTTS(){
+  els.btnRead.disabled = true; els.btnPreview.disabled = true;
+  uiStatus('Genererar text …');
+
+  const idea = (els.prompt.value || '').trim();
+  if(!idea){ uiStatus('Skriv en idé först.', 'err'); els.btnRead.disabled = false; els.btnPreview.disabled = false; return; }
+
+  const minutes = Number(els.length.value || 5);
+  const level = getSelectedLevel();
+  const voice = els.voice.value || 'alloy';
+
   try{
-    const data = await callApi("generate", {
-      idea, minutes: Number(els.length.value)||5, level: Number(els.spice.value)||2
+    // 1) Generera text
+    const gen = await apiPost('/api/generate',{ idea, minutes, level });
+    const story = (gen && gen.text) ? gen.text.trim() : '';
+    if(!story) throw new Error('Tomt svar från text-API.');
+
+    // visa utdrag
+    els.excerpt.textContent = story.slice(0, 600) + (story.length > 600 ? ' …' : '');
+    uiStatus('Skapar röst …');
+
+    // 2) TTS
+    const audioRes = await fetch(`${API_BASE}/api/tts`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text: story, voice }),
     });
-    if (!data?.text) throw new Error("Tomt textsvar.");
-    els.excerpt.textContent = data.excerpt || data.text.split("\n\n")[0];
-    uiStatus("Text klar.");
-  }catch(e){ uiStatus(`Generate failed: ${e.message}`, true); }
-  finally{ lockUI(false); }
+    if(!audioRes.ok){
+      const t = await audioRes.text().catch(()=> '');
+      throw new Error(`TTS misslyckades: ${audioRes.status} ${audioRes.statusText} :: ${t.slice(0,200)}`);
+    }
+    const blob = await audioRes.blob();
+    els.player.src = URL.createObjectURL(blob);
+    els.player.play().catch(()=>{ /* användaren måste ibland trycka play */ });
+    uiStatus('Klart! Tryck play om ljudet inte startar automatiskt.', 'ok');
+  } catch(err){
+    uiStatus(`Generate failed: ${err.message}`, 'err');
+  } finally {
+    els.btnRead.disabled = false; els.btnPreview.disabled = false;
+  }
+}
+
+// Förhandslyssna = kortare text (1 minut)
+els.btnPreview.addEventListener('click', async ()=>{
+  const keep = els.length.value;
+  els.length.value = '1';
+  await generateAndTTS();
+  els.length.value = keep;
+  updateMetaUI();
 });
+els.btnRead.addEventListener('click', generateAndTTS);
 
-els.btnRead.addEventListener("click", async ()=>{
-  const idea = (els.idea.value||"").trim();
-  if (!idea){ uiStatus("Skriv din idé först.", true); return; }
-  lockUI(true); uiStatus("Skapar text och ljud…"); els.excerpt.textContent = "";
+// Ladda ner TXT
+els.btnDownload.addEventListener('click', async ()=>{
+  const idea = (els.prompt.value || '').trim();
+  if(!idea){ uiStatus('Skriv en idé först.', 'err'); return; }
+  const minutes = Number(els.length.value || 5);
+  const level = getSelectedLevel();
   try{
-    const gen = await callApi("generate", {
-      idea, minutes: Number(els.length.value)||5, level: Number(els.spice.value)||2
-    });
-    const fullText = (gen?.text||"").trim();
-    if (!fullText) throw new Error("Textgenereringen gav tomt svar.");
-    els.excerpt.textContent = gen.excerpt || fullText.split("\n\n")[0];
-
-    const audioBlob = await callApi("tts", { text: fullText, voice: els.voice.value||"alloy" });
-    const url = URL.createObjectURL(audioBlob);
-    els.player.src = url; els.player.play().catch(()=>{});
-    uiStatus("Uppläsning klar.");
-  }catch(e){ uiStatus(`Generate failed: ${e.message}`, true); }
-  finally{ lockUI(false); }
-});
-
-els.btnDl.addEventListener("click", async ()=>{
-  const idea = (els.idea.value||"").trim();
-  if (!idea){ uiStatus("Skriv din idé först.", true); return; }
-  lockUI(true); uiStatus("Skapar text…");
-  try{
-    const data = await callApi("generate", {
-      idea, minutes: Number(els.length.value)||5, level: Number(els.spice.value)||2
-    });
-    const txt = (data?.text||"").trim();
-    if (!txt) throw new Error("Tomt textsvar.");
-    const blob = new Blob([txt], { type:"text/plain;charset=utf-8" });
+    uiStatus('Genererar text …');
+    const gen = await apiPost('/api/generate',{ idea, minutes, level });
+    const story = (gen && gen.text) ? gen.text.trim() : '';
+    if(!story) throw new Error('Tomt svar.');
+    const blob = new Blob([story], {type:'text/plain;charset=utf-8'});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "berattelse.txt"; a.click();
+    const a = document.createElement('a');
+    a.href = url; a.download = 'berattelse.txt'; a.click();
     URL.revokeObjectURL(url);
-    uiStatus("Text nedladdad.");
-  }catch(e){ uiStatus(`Download failed: ${e.message}`, true); }
-  finally{ lockUI(false); }
+    uiStatus('Text nedladdad.', 'ok');
+  } catch(err){
+    uiStatus(`Generate failed: ${err.message}`, 'err');
+  }
 });
