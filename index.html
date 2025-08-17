@@ -7,17 +7,19 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- TOP NAV -->
   <header class="nav">
     <div class="brand">Blush <strong>Narratives</strong></div>
-    <nav>
-      <a href="./">Hem</a>
-      <a href="./">Skapa</a>
-      <a href="./">BlushConnect</a>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="create">Skapa</button>
+      <button class="tab-btn" data-tab="connect">BlushConnect</button>
     </nav>
   </header>
 
   <main class="container">
-    <section class="card">
+
+    <!-- ============= SKAPA (stories) ============= -->
+    <section id="tab-create" class="card tab active">
       <h1>Skapa egen berättelse</h1>
 
       <div class="grid2">
@@ -56,10 +58,9 @@
         <div class="field">
           <label for="rate">Hastighet</label>
           <select id="rate">
-            <option value="1.0">1.00×</option>
-            <option value="1.25" selected>1.25×</option>
+            <option value="1.0" selected>1.00×</option>
+            <option value="1.25">1.25×</option>
             <option value="1.5">1.50×</option>
-            <option value="1.75">1.75×</option>
           </select>
         </div>
       </div>
@@ -70,18 +71,117 @@
       </div>
 
       <div class="btn-row">
-        <button id="btnPreview" class="secondary" type="button">Förhandslyssna</button>
+        <button id="btnPreview" class="secondary" type="button">Skapa text</button>
         <button id="btnRead" type="button">Läs upp</button>
         <button id="btnDownload" class="secondary" type="button">Ladda ner .txt</button>
       </div>
 
       <div id="status" class="status" aria-live="polite"></div>
-
       <audio id="player" controls preload="none"></audio>
 
-      <h3>Utdrag</h3>
+      <h3>Berättelsetext</h3>
       <div id="excerpt" class="excerpt"></div>
     </section>
+
+    <!-- ============= BLUSHCONNECT ============= -->
+    <section id="tab-connect" class="card tab">
+      <h1>BlushConnect</h1>
+
+      <div class="subnav">
+        <button class="chip active" data-sub="profile">Min profil</button>
+        <button class="chip" data-sub="explore">Utforska</button>
+        <button class="chip" data-sub="settings">Inställningar</button>
+      </div>
+
+      <!-- Profil -->
+      <div id="sub-profile" class="subtab active">
+        <div class="grid2">
+          <div class="field">
+            <label for="bc-name">Visningsnamn</label>
+            <input id="bc-name" type="text" placeholder="t.ex. Lina" />
+          </div>
+          <div class="field">
+            <label for="bc-age">Ålder (18+)</label>
+            <input id="bc-age" type="number" min="18" max="99" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="bc-gender">Kön</label>
+            <select id="bc-gender">
+              <option value="">Välj…</option>
+              <option>Kvinna</option>
+              <option>Man</option>
+              <option>Icke-binär</option>
+              <option>Annat</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="bc-orientation">Läggning</label>
+            <select id="bc-orientation">
+              <option value="">Välj…</option>
+              <option>Hetero</option>
+              <option>Bi</option>
+              <option>Homo</option>
+              <option>Queer</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="bc-level">Favoritnivå</label>
+            <select id="bc-level">
+              <option value="1">1 – Oskyldig</option>
+              <option value="2" selected>2 – Mild</option>
+              <option value="3">3 – Sensuell</option>
+              <option value="4">4 – Het</option>
+              <option value="5">5 – Max</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="bc-visible">Synlighet</label>
+            <select id="bc-visible">
+              <option value="public" selected>Synlig för andra</option>
+              <option value="private">Dold (endast du)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="bc-bio">Kort bio</label>
+          <textarea id="bc-bio" placeholder="Berätta kort om dig (max 200 tecken)"></textarea>
+        </div>
+
+        <div class="btn-row">
+          <button id="bc-save">Spara profil</button>
+          <button id="bc-preview" class="secondary">Förhandsvisa kort</button>
+          <span id="bc-status" class="status"></span>
+        </div>
+
+        <div id="bc-card" class="bc-card" hidden></div>
+      </div>
+
+      <!-- Utforska -->
+      <div id="sub-explore" class="subtab">
+        <div class="field">
+          <label>Filtrera på nivå</label>
+          <div class="spice-row compact">
+            <label><input type="checkbox" class="ex-filter" value="1"> 1</label>
+            <label><input type="checkbox" class="ex-filter" value="2" checked> 2</label>
+            <label><input type="checkbox" class="ex-filter" value="3" checked> 3</label>
+            <label><input type="checkbox" class="ex-filter" value="4" checked> 4</label>
+            <label><input type="checkbox" class="ex-filter" value="5" checked> 5</label>
+          </div>
+        </div>
+
+        <div id="bc-list" class="bc-grid"></div>
+      </div>
+
+      <!-- Inställningar -->
+      <div id="sub-settings" class="subtab">
+        <div class="muted">
+          Den här versionen lagrar allt lokalt på din enhet (localStorage).
+          När vi kopplar på backend: säkra profiler, rapportfunktion och meddelanden.
+        </div>
+      </div>
+    </section>
+
   </main>
 
   <footer class="footer">© Blush Narratives</footer>
