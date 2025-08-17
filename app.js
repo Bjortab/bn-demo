@@ -1,294 +1,234 @@
-// ====== Config ======
-const API_BASE = "";                 // relativt /api på Cloudflare Pages
-const GENERATE_TIMEOUT_MS = 60000;
-const TTS_TIMEOUT_MS = 60000;
-const DEFAULT_VOICE = "alloy";
-const TTS_SPEED = 1.0;
+// ======= Frontend för Blush Narratives =======
+// Matchar backend-endpoints:
+//   POST /api/generate   -> { ok, text } från Mistral/OpenAI
+//   POST /api/tts        -> returnerar audio/mp3 (OpenAI TTS)
+// Körs på Cloudflare Pages med Functions i samma origin.
 
-// ====== DOM (Skapa) ======
+const API_BASE = location.origin;
+
+// --- DOM refs ---
 const els = {
-  length: document.getElementById("length"),
-  spiceRadios: Array.from(document.querySelectorAll('input[name="spice"]')),
-  voice: document.getElementById("voice"),
-  rate: document.getElementById("rate"),
-  idea: document.getElementById("idea"),
-  btnPreview: document.getElementById("btnPreview"),
-  btnRead: document.getElementById("btnRead"),
-  btnDownload: document.getElementById("btnDownload"),
+  // topp-kontroller
+  length: document.getElementById("length"),           // <select> 1..15 (minuter)
+  // nivå-knappar (radio: name="level")
+  levels: Array.from(document.querySelectorAll('input[name="level"]')),
+  voice: document.getElementById("voice"),             // <select> röster
+  speed: document.getElementById("speed"),             // <select> 0.75x..1.5x
+
+  // textfält + knappar
+  idea: document.getElementById("idea"),               // <textarea>
+  btnGen: document.getElementById("btnGen"),           // "Skapa text"
+  btnRead: document.getElementById("btnRead"),         // "Läs upp"
+  btnDownload: document.getElementById("btnDownload"), // "Ladda ner .txt"
+
+  // status + ljud + text
   status: document.getElementById("status"),
-  excerpt: document.getElementById("excerpt"),
   player: document.getElementById("player"),
-  spiceHint: document.getElementById("spiceHint"),
+  excerpt: document.getElementById("excerpt"),
 };
 
-// ====== DOM (Tabs & Connect) ======
-const tabBtns = Array.from(document.querySelectorAll(".tab-btn"));
-const tabs = {
-  create: document.getElementById("tab-create"),
-  connect: document.getElementById("tab-connect"),
-};
-const subBtns = Array.from(document.querySelectorAll(".subnav .chip"));
-const subTabs = {
-  profile: document.getElementById("sub-profile"),
-  explore: document.getElementById("sub-explore"),
-  settings: document.getElementById("sub-settings"),
-};
-
-// Connect elements
-const bc = {
-  name: document.getElementById("bc-name"),
-  age: document.getElementById("bc-age"),
-  gender: document.getElementById("bc-gender"),
-  orientation: document.getElementById("bc-orientation"),
-  level: document.getElementById("bc-level"),
-  visible: document.getElementById("bc-visible"),
-  bio: document.getElementById("bc-bio"),
-  save: document.getElementById("bc-save"),
-  preview: document.getElementById("bc-preview"),
-  status: document.getElementById("bc-status"),
-  card: document.getElementById("bc-card"),
-  list: document.getElementById("bc-list"),
-  filters: Array.from(document.querySelectorAll(".ex-filter"))
-};
-
-// ====== Helpers ======
-function uiStatus(msg, isError=false){
-  if(!els.status) return;
+// --- UI helpers ---
+function uiStatus(msg, kind = "info") {
+  if (!els.status) return;
   els.status.textContent = msg || "";
-  els.status.style.color = isError ? "#ff7070" : "#98c67b";
+  els.status.style.color =
+    kind === "error" ? "#ff6b6b" :
+    kind === "ok"    ? "#9ae6b4" : "#d7d7ff";
 }
-function getLevel(){
-  const r = els.spiceRadios.find(x => x.checked);
-  return r ? Number(r.value) : 1;
+
+function disableAll(disabled) {
+  [els.btnGen, els.btnRead, els.btnDownload, els.length, els.voice, els.speed, els.idea, ...els.levels]
+    .forEach(n => n && (n.disabled = !!disabled));
 }
-function updateSpiceHint(){
-  const lvl = getLevel();
-  const map = {
-    1:"Nivå 1 – romantiskt och antydande.",
-    2:"Nivå 2 – mild med varm stämning.",
-    3:"Nivå 3 – tydligt sensuellt, utan råa ord.",
-    4:"Nivå 4 – hett och explicit (vuxet språk).",
-    5:"Nivå 5 – maximalt hett (vuxet språk, ej våld/icke-samtycke)."
+
+// ord-approx från minuter (~170 ord/min)
+function calcWords(mins) {
+  const w = Math.round(170 * Math.max(1, Math.min(15, mins)));
+  return w;
+}
+
+function getSelectedLevel() {
+  const picked = els.levels.find(r => r.checked);
+  return picked ? Number(picked.value) : 2;
+}
+
+function currentPayload() {
+  return {
+    idea: (els.idea.value || "").trim(),
+    level: getSelectedLevel(),
+    minutes: Number(els.length.value) || 5
   };
-  if(els.spiceHint) els.spiceHint.textContent = map[lvl] || "";
-}
-els.spiceRadios.forEach(r => r.addEventListener('change', updateSpiceHint));
-updateSpiceHint();
-
-async function fetchWithTimeout(url, opts={}, timeoutMs=30000){
-  const ctl = new AbortController();
-  const id = setTimeout(()=>ctl.abort(), timeoutMs);
-  try { return await fetch(url, { ...opts, signal: ctl.signal }); }
-  finally { clearTimeout(id); }
 }
 
-// ====== SKAPA – flöden ======
-async function doGenerate(){
-  const idea = (els.idea?.value || "").trim();
-  if(!idea){ uiStatus("Skriv in en idé först.", true); return { ok:false }; }
-
-  const minutes = Number(els.length?.value || 5);
-  const level = getLevel();
-
-  uiStatus("Genererar text …");
-  const res = await fetchWithTimeout(`${API_BASE}/api/generate`, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ idea, minutes, level })
-  }, GENERATE_TIMEOUT_MS).catch(()=>null);
-
-  if(!res || !res.ok){
-    const detail = res ? await res.text().catch(()=> "") : "no_response";
-    uiStatus(`Generate failed: ${res?.status || ""} :: ${detail.slice(0,120)}`, true);
-    return { ok:false };
-  }
-  const data = await res.json().catch(()=> ({}));
-  const text = data?.text?.trim() || "";
-  if(!text){ uiStatus("Tomt svar från modellen.", true); return { ok:false }; }
-
-  if(els.excerpt) els.excerpt.textContent = text;
-  uiStatus("Text klar.");
-  return { ok:true, text };
+function showExcerpt(fullText) {
+  if (!els.excerpt) return;
+  // visa hela texten i story-rutan; frontend låter användaren scrolla
+  els.excerpt.value = fullText || "";
 }
 
-async function doTTS(text, voice){
-  uiStatus("Skapar röst …");
-  const speed = Number(els.rate?.value || TTS_SPEED) || 1.0;
-  const res = await fetchWithTimeout(`${API_BASE}/api/tts`, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ text, voice, speed })
-  }, TTS_TIMEOUT_MS).catch(()=>null);
-
-  if(!res || !res.ok){
-    const detail = res ? await res.text().catch(()=> "") : "no_response";
-    uiStatus(`TTS failed: ${res?.status || ""} :: ${detail.slice(0,120)}`, true);
-    return { ok:false };
-  }
-
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  if(els.player){
-    els.player.src = url;
-    els.player.controls = true;
-    els.player.playbackRate = 1.0;  // tvinga normal hastighet
-    try { await els.player.play(); } catch (_) {}
-  }
-  uiStatus("Klar.");
-  return { ok:true };
-}
-
-// Knappar (Skapa)
-els.btnPreview?.addEventListener("click", async ()=>{ await doGenerate(); });
-els.btnRead?.addEventListener("click", async ()=>{
-  const g = await doGenerate();
-  if(!g.ok) return;
-  await doTTS(g.text, (els.voice?.value || DEFAULT_VOICE));
-});
-els.btnDownload?.addEventListener("click", async ()=>{
-  const g = await doGenerate();
-  if(!g.ok) return;
-  const blob = new Blob([g.text], { type:"text/plain;charset=utf-8" });
+// Nedladdning av textfil
+function downloadTxt(filename, text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "berattelse.txt";
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-});
-
-// ====== BLUSHCONNECT – SPA navigation ======
-tabBtns.forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    tabBtns.forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    const target = btn.dataset.tab;
-    Object.values(tabs).forEach(el=>el.classList.remove('active'));
-    tabs[target]?.classList.add('active');
-  });
-});
-
-subBtns.forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    subBtns.forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    const target = btn.dataset.sub;
-    Object.values(subTabs).forEach(el=>el.classList.remove('active'));
-    subTabs[target]?.classList.add('active');
-  });
-});
-
-// ====== BLUSHCONNECT – Profil lagring/render ======
-const LS_KEY = "bn_profile_v1";
-
-function loadProfile(){
-  try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(!raw) return {};
-    return JSON.parse(raw);
-  }catch{ return {}; }
-}
-function saveProfile(p){
-  localStorage.setItem(LS_KEY, JSON.stringify(p));
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
-function fillProfileForm(p){
-  bc.name.value = p.name || "";
-  bc.age.value = p.age || "";
-  bc.gender.value = p.gender || "";
-  bc.orientation.value = p.orientation || "";
-  bc.level.value = String(p.level || 2);
-  bc.visible.value = p.visible || "public";
-  bc.bio.value = p.bio || "";
-}
-function readProfileForm(){
-  const age = Number(bc.age.value || 0);
-  return {
-    name: (bc.name.value || "").trim(),
-    age: isFinite(age) ? age : "",
-    gender: bc.gender.value || "",
-    orientation: bc.orientation.value || "",
-    level: Number(bc.level.value || 2),
-    visible: bc.visible.value || "public",
-    bio: (bc.bio.value || "").trim()
-  };
-}
-function renderProfileCard(p){
-  const safe = {
-    name: p.name || "Anonym",
-    age: p.age ? `${p.age}` : "18+",
-    gender: p.gender || "—",
-    orientation: p.orientation || "—",
-    level: p.level || 2,
-    bio: p.bio || "—"
-  };
-  bc.card.innerHTML = `
-    <h3>${escapeHtml(safe.name)} <span class="badge">Nivå ${safe.level}</span></h3>
-    <div class="line">Ålder: ${escapeHtml(safe.age)}</div>
-    <div class="line">Kön: ${escapeHtml(safe.gender)}</div>
-    <div class="line">Läggning: ${escapeHtml(safe.orientation)}</div>
-    <div class="line">Synlighet: ${escapeHtml(p.visible || "public")}</div>
-    <div class="line" style="margin-top:8px">${escapeHtml(safe.bio)}</div>
-  `;
-  bc.card.hidden = false;
-}
-function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Hämta med timeout (ms)
+async function fetchJSON(path, body, timeoutMs = 45000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
 
-// init form
-fillProfileForm(loadProfile());
-
-// Save / Preview
-bc.save?.addEventListener('click', ()=>{
-  const p = readProfileForm();
-  if(!p.name){ bc.status.textContent = "Ange visningsnamn."; bc.status.style.color="#ff7070"; return; }
-  if(!p.age || p.age < 18){ bc.status.textContent = "Du måste vara 18+."; bc.status.style.color="#ff7070"; return; }
-  saveProfile(p);
-  bc.status.textContent = "Sparat."; bc.status.style.color="#98c67b";
-  renderProfileCard(p);
-});
-bc.preview?.addEventListener('click', ()=>{
-  renderProfileCard(readProfileForm());
-});
-
-// ====== BLUSHCONNECT – Utforska (demodata + filter) ======
-const DEMO_USERS = [
-  { name:"Sara", age:27, gender:"Kvinna", orientation:"Hetero", level:2, bio:"Tycker om varma röster och nivå 2–3." },
-  { name:"Maja", age:33, gender:"Kvinna", orientation:"Bi", level:5, bio:"Gillar tempo och tydliga scener. Hör av dig!" },
-  { name:"Anton", age:29, gender:"Man", orientation:"Hetero", level:4, bio:"Rytm, kyssar och tydliga händer." },
-  { name:"Leo", age:24, gender:"Man", orientation:"Bi", level:3, bio:"Dialog och långsamt uppbyggd spänning." },
-  { name:"Nora", age:31, gender:"Kvinna", orientation:"Homo", level:5, bio:"Maxnivå. Gillar tydliga önskemål." },
-  { name:"Elli", age:35, gender:"Icke-binär", orientation:"Queer", level:1, bio:"Oskyldigt med antydningar. Låt det ta tid." },
-];
-
-function renderExplore(){
-  const chosen = new Set(bc.filters.filter(f=>f.checked).map(f=> Number(f.value)));
-  const my = loadProfile();
-  const merged = [...DEMO_USERS];
-
-  // visa också din egen profil om den är public (som demo)
-  if(my?.name && my.visible !== "private"){
-    merged.unshift({
-      name: my.name + " (du)",
-      age: my.age || 18,
-      gender: my.gender || "—",
-      orientation: my.orientation || "—",
-      level: my.level || 2,
-      bio: my.bio || ""
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal
     });
+
+    if (!res.ok) {
+      let detail = "";
+      try { detail = await res.text(); } catch {}
+      throw new Error(`${res.status} :: ${detail}`);
+    }
+    const data = await res.json();
+    return data;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Hämta binär (audio) med timeout
+async function fetchAudio(path, body, timeoutMs = 60000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body || {}),
+      signal: ctrl.signal
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`${res.status} :: ${errText}`);
+    }
+    return await res.blob();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// --- Event handlers ---
+async function onGenerate() {
+  const p = currentPayload();
+  if (!p.idea) {
+    uiStatus("Skriv en idé först 🙏", "error");
+    els.idea.focus();
+    return;
   }
 
-  const filtered = merged.filter(u => chosen.has(Number(u.level)));
-  bc.list.innerHTML = filtered.map(u => `
-    <div class="cardlet">
-      <h4>${escapeHtml(u.name)} <span class="badge">Nivå ${u.level}</span></h4>
-      <div class="line">Ålder: ${escapeHtml(u.age)}</div>
-      <div class="line">Kön: ${escapeHtml(u.gender)}</div>
-      <div class="line">Läggning: ${escapeHtml(u.orientation)}</div>
-      <p style="margin:8px 0 0">${escapeHtml(u.bio)}</p>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="secondary" disabled>Matcha (kommer)</button>
-        <button class="secondary" disabled>Meddelande (kommer)</button>
-      </div>
-    </div>
-  `).join("");
+  const words = calcWords(p.minutes);
+  uiStatus(`Skapar text (~${words} ord) …`, "info");
+  disableAll(true);
+
+  try {
+    const data = await fetchJSON("/api/generate", p, 60000);
+    if (!data?.ok || !data?.text) {
+      throw new Error(data?.detail || "Tomt svar från /api/generate");
+    }
+    showExcerpt(data.text);
+    uiStatus("Text klar ✔️", "ok");
+  } catch (err) {
+    uiStatus(`Generate failed: ${String(err.message || err)}`, "error");
+  } finally {
+    disableAll(false);
+  }
 }
-bc.filters.forEach(f => f.addEventListener('change', renderExplore));
-renderExplore();
+
+async function onRead() {
+  const p = currentPayload();
+
+  // Om användaren inte genererat text här – försök först skapa
+  if (!(els.excerpt.value || "").trim()) {
+    await onGenerate();
+    if (!(els.excerpt.value || "").trim()) {
+      // om fortfarande tomt – avbryt
+      return;
+    }
+  }
+
+  // Läs upp texten vi har i rutan (backend tar text från body.text om den finns)
+  const text = els.excerpt.value.trim();
+  const voice = els.voice.value;
+  const speed = parseFloat(els.speed.value || "1.0");
+
+  uiStatus("Skapar ljud …", "info");
+  disableAll(true);
+
+  try {
+    const blob = await fetchAudio("/api/tts", {
+      text,
+      voice,
+      speed
+    }, 90000);
+
+    const url = URL.createObjectURL(blob);
+    els.player.src = url;
+    els.player.playbackRate = speed || 1.0;
+    await els.player.play().catch(() => {});
+    uiStatus("Klart ✔️", "ok");
+  } catch (err) {
+    uiStatus(`TTS failed: ${String(err.message || err)}`, "error");
+  } finally {
+    disableAll(false);
+  }
+}
+
+function onDownload() {
+  const s = (els.excerpt.value || "").trim();
+  if (!s) {
+    uiStatus("Ingen text att ladda ner ännu.", "error");
+    return;
+  }
+  const dt = new Date();
+  const stamp = dt.toISOString().slice(0,19).replace(/[:T]/g, "-");
+  downloadTxt(`blush-${stamp}.txt`, s);
+}
+
+// --- Init ---
+function init() {
+  // defaultar nivå 2 om ingen vald
+  if (!els.levels.some(r => r.checked) && els.levels[1]) {
+    els.levels[1].checked = true; // 1->index0, 2->index1
+  }
+
+  // UI-kopplingar
+  els.btnGen?.addEventListener("click", onGenerate);
+  els.btnRead?.addEventListener("click", onRead);
+  els.btnDownload?.addEventListener("click", onDownload);
+
+  els.length?.addEventListener("change", () => {
+    const words = calcWords(Number(els.length.value) || 5);
+    uiStatus(`≈ ${words} ord (~${els.length.value} min)`, "info");
+    setTimeout(() => uiStatus(""), 1200);
+  });
+
+  // Snyggare fokusbeteende
+  els.idea?.addEventListener("focus", () => els.idea.select());
+
+  // Se till att spelaren syns och kan styras
+  if (els.player) {
+    els.player.controls = true;
+    els.player.preload = "none";
+    els.player.playbackRate = parseFloat(els.speed.value || "1.0");
+  }
+}
+document.addEventListener("DOMContentLoaded", init);
