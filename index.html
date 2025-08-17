@@ -7,67 +7,32 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css" />
-  <style>
-    .btn{cursor:pointer}
-    .btn[disabled]{opacity:.5;cursor:not-allowed}
-    .hidden{display:none}
-    nav{display:flex;gap:16px;align-items:center}
-    nav a{color:#c7b3ff;text-decoration:none}
-    nav a.active{font-weight:700;text-decoration:underline}
-    section{max-width:980px;margin:24px auto;padding:16px}
-    .card{background:#1b1e27;border-radius:12px;padding:20px}
-    .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
-    label{user-select:none}
-    textarea{width:100%;min-height:120px}
-    audio{width:100%}
-    .primary{background:linear-gradient(90deg,#ff4eb8,#8b5cf6);color:#fff;border:0;padding:10px 16px;border-radius:10px}
-    .ghost{background:#2a2f3b;color:#e6e6f2;border:0;padding:10px 16px;border-radius:10px}
-  </style>
 </head>
 <body>
-  <header class="card" style="margin-top:12px">
-    <div class="row" style="justify-content:space-between">
-      <div><strong style="color:#ff4eb8">Blush</strong> <span style="color:#e6e6f2">Narratives</span></div>
-      <nav>
-        <a href="#/home" id="navHome" class="active">Hem</a>
-        <a href="#/create" id="navCreate">Skapa</a>
-        <a href="#/connect" id="navConnect">BlushConnect</a>
-      </nav>
-    </div>
+  <header class="card top">
+    <div class="brand"><strong>Blush</strong><span> Narratives</span></div>
+    <nav>
+      <a class="active">Skapa</a>
+      <a>BlushConnect (kommer)</a>
+    </nav>
   </header>
 
-  <!-- HEM / GATE -->
-  <section id="viewHome" class="card">
-    <h2>Välkommen</h2>
-    <p>Sensuella ljudnoveller för mobilen. Välj nivå, lyssna direkt, spara favoriter.</p>
-    <div class="row" style="gap:10px;margin-top:8px">
-      <label class="row" style="gap:8px">
-        <input type="checkbox" id="chk18" />
-        <span>Jag intygar 18+ och samtycke mellan vuxna.</span>
-      </label>
-      <button id="btnStart" class="btn ghost" disabled>Skapa berättelse</button>
-      <button id="btnOpenConnect" class="btn ghost" disabled>Öppna BlushConnect</button>
-    </div>
-    <p id="status" style="margin-top:12px;color:#9bd67b"></p>
-  </section>
-
-  <!-- SKAPA -->
-  <section id="viewCreate" class="card hidden">
+  <main class="card">
     <h2>Skapa & lyssna</h2>
 
     <div class="row">
-      <div>
-        <label for="length">Längd</label><br/>
+      <div class="field">
+        <label for="length">Längd</label>
         <select id="length">
-          <option value="3">3 minuter</option>
-          <option value="5" selected>5 minuter</option>
-          <option value="8">8 minuter</option>
+          <option value="3">3 min</option>
+          <option value="5" selected>5 min</option>
+          <option value="8">8 min</option>
         </select>
       </div>
 
-      <div>
-        <label>Snusk-nivå</label><br/>
-        <div class="row" style="gap:8px">
+      <div class="field">
+        <label>Snusk‑nivå</label>
+        <div class="row compact">
           <label><input type="radio" name="level" value="1" checked> 1</label>
           <label><input type="radio" name="level" value="2"> 2</label>
           <label><input type="radio" name="level" value="3"> 3</label>
@@ -76,16 +41,20 @@
         </div>
       </div>
 
-      <div>
-        <label for="voice">Röst</label><br/>
+      <div class="field">
+        <label for="voice">Röst</label>
         <select id="voice">
-          <option value="alloy" selected>Alloy (neutral)</option>
-          <option value="verse">Verse (varm)</option>
+          <option value="verse" selected>Verse (mjuk)</option>
+          <option value="alloy">Alloy (neutral)</option>
+          <option value="aria">Aria</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="sage">Sage</option>
+          <option value="nova">Nova</option>
         </select>
       </div>
 
-      <div>
-        <label for="speed">Hastighet</label><br/>
+      <div class="field">
+        <label for="speed">Hastighet</label>
         <select id="speed">
           <option value="1.0" selected>1.00x</option>
           <option value="1.1">1.10x</option>
@@ -95,35 +64,26 @@
       </div>
     </div>
 
-    <div style="margin-top:12px">
+    <div class="field">
       <label for="idea">Din idé</label>
-      <textarea id="idea" placeholder="Kort beskrivning (t.ex. 'första mötet i hissen...')"></textarea>
+      <textarea id="idea" placeholder="Kort beskrivning (t.ex. 'första mötet i hissen…')"></textarea>
     </div>
 
-    <div class="row" style="margin-top:12px">
-      <button id="btnGenRead" class="btn primary">Skapa & läs</button>
-      <button id="btnDownload" class="btn ghost">Ladda ner .txt</button>
+    <div class="row actions">
+      <button id="btnGenRead" class="primary">Skapa & läs</button>
+      <button id="btnDownload" class="ghost">Ladda ner .txt</button>
+      <span id="status" class="status"></span>
     </div>
 
-    <div style="margin-top:12px">
-      <audio id="player" controls preload="none"></audio>
-    </div>
+    <audio id="player" controls preload="none"></audio>
 
-    <div style="margin-top:12px">
+    <div class="field">
       <h3>Berättelsetext</h3>
-      <pre id="story" style="white-space:pre-wrap"></pre>
+      <pre id="story" class="story"></pre>
     </div>
-  </section>
+  </main>
 
-  <!-- BLUSHCONNECT (placeholder) -->
-  <section id="viewConnect" class="card hidden">
-    <h2>BlushConnect</h2>
-    <p>Placeholder – inlogg/favoriter/kommande premium. (Vi kopplar betalning här senare.)</p>
-  </section>
-
-  <footer class="card hidden" id="viewFooter" style="text-align:center;margin-bottom:40px">
-    © Blush Narratives
-  </footer>
+  <footer class="card foot">© Blush Narratives</footer>
 
   <script src="./app.js"></script>
 </body>
