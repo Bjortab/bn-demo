@@ -1,207 +1,182 @@
-// Cloudflare Pages Function: POST /api/generate
-// Tar emot: { idea: string, level: 1|2|3|4|5, minutes: number }
-// Returnerar: { ok: true, text: string } eller { ok: false, error, detail }
+// /functions/api/generate.js
+// Cloudflare Pages Functions – GENERATE STORY
 
-export async function onRequestPost({ request, env }) {
+export const onRequestPost = async ({ request, env }) => {
   try {
-    const { idea = "", level = 2, minutes = 5 } = await request.json();
+    const { idea, level, minutes } = await request.json();
 
-    if (!idea || typeof idea !== "string" || idea.trim().length === 0) {
-      return json({ ok: false, error: "bad_request", detail: "empty_idea" }, 400);
+    // --- Basic validation ---
+    const _idea = (typeof idea === "string" ? idea : "").trim();
+    const _level = Number.isFinite(level) ? Math.max(1, Math.min(5, Number(level))) : 2;
+    const _minutes = Number.isFinite(minutes) ? Math.max(1, Math.min(10, Number(minutes))) : 5;
+
+    if (!_idea) {
+      return json({ ok: false, error: "empty_idea" }, 400);
     }
-    const L = clamp(Number(level) || 2, 1, 5);
-    const mins = clamp(Number(minutes) || 5, 1, 15); // 1–15 min
-    const targetWords = Math.max(120, Math.min(170 * mins, 1200)); // ca 170 ord/min
 
-    // —— Vår "riktiga ordbok" per nivå ——
-    // OBS: lägg gärna till fler – detta är en start. Vi tvingar användning via prompten.
-    const LIB = {
-      1: [
-        "blickar som dröjer kvar", "händer som möts", "mjuka rörelser",
-        "hjärtan som slår i takt", "en varm närhet", "förväntansfull tystnad",
-        "dofter som blandas", "läppar som nästan nuddar", "pirr längs ryggraden",
-        "känslan av att våga lite mer", "värmen i rummet", "en blyg beröring",
-        "närheten som växer", "ett försiktigt skratt", "lugn, djup andning"
-      ],
-      2: [
-        "huden mot huden", "läppar som söker", "andhämtning som tätnar",
-        "fingrar som stannar till", "värme som pulserar", "en darrning längs nacken",
-        "tyg som ger efter", "en kyss som förlängs", "ord som viskas nära",
-        "handflator som utforskar", "närmare, bara lite till", "tiden som saktar in",
-        "värmen mellan er", "kroppar som hittar rytm", "små ljud som avslöjar allt"
-      ],
-      3: [
-        "begär som tar fart", "ritmisk rörelse", "våt värme", "läppar och tunga",
-        "händer som greppar", "höfter som möts", "en ström av värme",
-        "tungt andetag mot huden", "korta, hungriga kyssar", "huden blir känslig",
-        "ryck i andningen", "nära nog att darra", "kroppens självklara språk",
-        "vill ha mer", "när allt faller på plats"
-      ],
-      4: [
-        "våta kyssar", "handen mellan låren", "mun som utforskar",
-        "sakta, sedan snabbare", "fingrar som glider in", "dovt stön nära örat",
-        "höfter som pressar emot", "slickande, rytmiskt", "hon rider honom",
-        "han tar ett stadigt tag om höften", "de vänder på sig", "djupare för varje rörelse",
-        "kroppen svarar direkt", "allt hetare tempo", "oförställd njutning"
-      ],
-      5: [
-        "våt slida", "hans lem glider in", "kåt och otålig",
-        "hon sitter grensle och rider", "djupa stötar", "slickar långsamt och ivrigt",
-        "hon särar benen mer", "jag vill ha dig nu", "han fyller henne helt",
-        "fukt som rinner", "rytmen hårdnar", "stön som ekar", "kroppar som slår ihop",
-        "han håller om hennes höfter", "hon rör sig snabbare",
-        "hela hon pulserar", "hon skriker av njutning", "han kommer djupt",
-        "våt värme omsluter honom", "efteråt ligger de andfådda"
-      ]
+    // ~170 ord/minut
+    const targetWords = Math.max(120, Math.min(1200, Math.round(_minutes * 170)));
+
+    // ======== WORD BANKS (kontrollerad användning) ========
+    const soft = [
+      "värme mellan oss", "långsam kyss", "dov längtan", "hans händer mot min rygg",
+      "hennes händer i mitt hår", "pausen i blicken", "hjärtat som rusar"
+    ];
+
+    const sensual = [
+      "läppar mot hud", "kroppar nära", "fingrar på nyckelben",
+      "sval hals som hettar", "andning som hakar upp sig",
+      "tyget som glider", "skälvning när huden möts"
+    ];
+
+    const hot = [
+      "hans lem", "hennes sköte", "våt värme", "djupare rytm",
+      "tungan som cirklar", "rygg mot vägg", "greppet hårdnar",
+      "höfter som svarar", "han tränger in", "hon rider honom",
+      "svetten mellan oss", "stön som brister"
+    ];
+
+    // Level-specifika styrningar
+    const levelSpecs = {
+      1: {
+        tone: "romantisk, antydande, utan explicita ord",
+        mustUse: soft.slice(0, 3),
+        avoid: [...hot],
+      },
+      2: {
+        tone: "mild och sensuell, tydligt vuxen men varsam",
+        mustUse: [soft[3], sensual[0]],
+        avoid: ["lem", "tränger in", "fitta", "kuk", "klitoris"], // håll nere explicit
+      },
+      3: {
+        tone: "sensuell och tydligare, men elegans kvar",
+        mustUse: [sensual[1], sensual[3]],
+        avoid: ["fitta", "kuk"], // spar dessa för nivå 5
+      },
+      4: {
+        tone: "het och direkt, konkreta handlingar, men utan grova ord",
+        mustUse: ["våt värme", "rytm som tilltar", "tungan som cirklar"],
+        avoid: ["fitta", "kuk"], // flyttat till nivå 5
+      },
+      5: {
+        tone: "rakt, hett och explicit men samtyckande och respektfullt",
+        mustUse: [
+          "hans lem", "hennes sköte", "han tränger in", "hon rider honom",
+          "tungan som cirklar", "våt värme", "höfter som svarar"
+        ],
+        avoid: [], // allt tillåtet inom samtycke och vuxna
+      },
     };
 
-    // Bygg prompt-tillägg: hur många fraser som måste användas
-    const { list, minUse, tone, taboos } = enrichSpec(LIB, L);
+    const spec = levelSpecs[_level];
 
+    // ======== SYSTEM PROMPT (struktur + regler) ========
     const system = [
-      "Du är en svensk berättarröst som skriver sensuella, vuxna noveller.",
-      "Alltid samtycke mellan vuxna, inga minderåriga, ingen våldspornografi, inga övergrepp, inga djur, ingen incest.",
-      "Skriv på naturlig modern svenska.",
-      `Håll ungefär ${targetWords} ord (+/− 10%).`,
-      `Ton: ${tone}.`,
-      taboos
-        ? `Undvik uttryck: ${taboos.join(", ")}.`
-        : "",
-      minUse > 0
-        ? `Använd MINST ${minUse} uttryck från följande lista, väv in dem naturligt (böjning och plural får variera; maximera variation, upprepa inte samma fras): ${list.join("; ")}.`
-        : `Du får använda 0–1 uttryck från listan (väldigt försiktigt): ${list.join("; ")}.`
-    ].filter(Boolean).join("\n");
+      "Du skriver på svenska en sammanhängande erotisk kortnovell avsedd att läsas upp.",
+      "Alltid en röd tråd: 1) inledning, 2) stegring, 3) hetta, 4) avtoning.",
+      "Berättarperspektiv: jag-form. Partnern är 'hon' om inte annat anges i idén.",
+      "Strikt vuxna och samtyckande. Inga minderåriga, våld, tvång, blod, smärta eller degradering.",
+      "Undvik upprepningar och klyschor. Variera ordval och meningstakt.",
+      `Ton: ${spec.tone}.`,
+      "I nivå 1–2: antydan och värme. I nivå 3–4: tydligare fysisk närhet. I nivå 5: tydlig och rakt sexuell handling (respektfullt).",
+      "Avsluta utan moralkakor – en lugn efterton räcker.",
+      `Sikta på cirka ${targetWords} ord.`,
+      "Använd de här fraserna diskret där de passar naturligt:",
+      `MÅSTE-FRASER: ${spec.mustUse.join(", ")}.`,
+      spec.avoid.length ? `UNDVIK (använd inte): ${spec.avoid.join(", ")}.` : "Inga särskilda förbud utöver standardreglerna.",
+    ].join(" ");
 
+    // ======== USER PROMPT ========
     const user = [
-      `Idé: ${idea.trim()}`,
-      `Nivå: ${L} (1=romantiskt antydande … 5=het, explicit men respektfull och samtyckt).`,
-      "Skriv i tredje person, med tempo och upptrappning. Undvik klichéer och upprepningar.",
-      "Beskriv kroppsliga förnimmelser och rytm, men håll det icke-grafiskt även på nivå 5 (inga anatomiska detaljer på medicinsk nivå).",
-      "Avsluta på ett tillfredsställande sätt; inget 'fortsättning följer'."
+      `IDÉ: ${_idea}`,
+      "Bygg berättelse med tydliga övergångar (kort, men närvarande: ---).",
+      "Följ strukturen (inledning → stegring → hetta → avtoning).",
+      "Håll 'jag' + 'hon' konsekvent. Inga könsbyten.",
+      "Skriv utan rubriker och utan listor. Endast ren prosa.",
     ].join("\n");
 
-    // Kör Mistral först om nyckel finns, annars OpenAI (fallback)
+    // ======== CALL LLM (Mistral primärt, annars OpenAI) ========
+    const mistralKey = env.MISTRAL_API_KEY || env.MISTRAL_KEY;
+    const openaiKey  = env.OPENAI_API_KEY || env.OPENAI_KEY;
+
     let text = null;
-    if (env.MISTRAL_API_KEY) {
-      text = await callMistral(env.MISTRAL_API_KEY, system, user);
+    let usedModel = null;
+
+    if (mistralKey) {
+      const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${mistralKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "mistral-large-latest",
+          temperature: _level >= 4 ? 0.9 : 0.8,
+          max_tokens: Math.min(1400, Math.round(targetWords * 1.5)),
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }),
+      });
+      if (!r.ok) {
+        const err = await safeJson(r);
+        return json({ ok: false, error: "mistral_error", detail: err }, 502);
+      }
+      const data = await r.json();
+      text = data?.choices?.[0]?.message?.content?.trim() || null;
+      usedModel = "mistral";
+    } else if (openaiKey) {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: _level >= 4 ? 0.9 : 0.8,
+          max_tokens: Math.min(1400, Math.round(targetWords * 1.5)),
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }),
+      });
+      if (!r.ok) {
+        const err = await safeJson(r);
+        return json({ ok: false, error: "openai_error", detail: err }, 502);
+      }
+      const data = await r.json();
+      text = data?.choices?.[0]?.message?.content?.trim() || null;
+      usedModel = "openai";
+    } else {
+      return json({ ok: false, error: "missing_api_key", detail: "No MISTRAL_API_KEY or OPENAI_API_KEY found in Cloudflare env." }, 500);
     }
-    if (!text && env.OPENAI_API_KEY) {
-      text = await callOpenAI(env.OPENAI_API_KEY, system, user);
-    }
+
     if (!text) {
-      return json({ ok: false, error: "server_error", detail: "no_provider_response" }, 502);
+      return json({ ok: false, error: "empty_story" }, 502);
     }
 
-    // Extra säkerhetsrensning & lätt “enrichment” efter generering (valfritt)
-    text = postClean(text);
+    // Snygga till eventuella markdown/avdelare
+    text = text.replace(/^---\s*$/gm, "").trim();
 
-    return json({ ok: true, text });
+    return json({ ok: true, text, model: usedModel }, 200);
   } catch (err) {
     return json({ ok: false, error: "server_error", detail: String(err?.message || err) }, 500);
   }
-}
+};
 
-/* ----------------- Helpers ----------------- */
-
-function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status, headers: { "content-type": "application/json; charset=utf-8" }
+// ===== Helpers =====
+const json = (obj, status = 200) =>
+  new Response(JSON.stringify(obj), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
   });
-}
 
-// Specificerar hur många fraser per nivå + ton + förbjudna uttryck för att hålla det icke-grafiskt
-function enrichSpec(LIB, level) {
-  const list = LIB[level] || [];
-  let minUse = 0;
-  let tone = "sensuellt, varmt, fokus på närhet och rytm";
-  let taboos = [];
-
-  switch (level) {
-    case 1:
-      minUse = 0; // tillåtet 0–1 (systemtext förklarar)
-      tone = "romantiskt, antydande, mjukt och återhållsamt";
-      break;
-    case 2:
-      minUse = 1;
-      tone = "milt sensuellt, värme och närhet, låg explicithet";
-      break;
-    case 3:
-      minUse = 2;
-      tone = "tydligt sensuellt, upptrappning, mer kroppsliga detaljer utan att bli rå";
-      break;
-    case 4:
-      minUse = 3;
-      tone = "hett och energiskt, tydliga beskrivningar av handling och rytm, ändå respektfullt";
-      // flytta “klitoris” till nivå 5 om vi råkar lägga in det i 4 framöver
-      taboos = ["klitoris"];
-      break;
-    case 5:
-      minUse = 5;
-      tone = "mycket hett, direkt språk men respektfullt, samtyckt, inga kränkande epitet";
-      break;
-  }
-  return { list, minUse, tone, taboos };
-}
-
-// En liten efter-städning så texten inte innehåller dubbla tomrader etc.
-function postClean(s) {
-  return String(s)
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
-}
-
-/* ----------- Providers ----------- */
-
-async function callMistral(API_KEY, system, user) {
-  try {
-    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "authorization": `Bearer ${API_KEY}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "mistral-large-latest",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ],
-        temperature: 0.9,
-        max_tokens: 1800
-      })
-    });
-    if (!res.ok) throw new Error(`mistral_${res.status}`);
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content || null;
-  } catch (_e) {
-    return null;
-  }
-}
-
-async function callOpenAI(API_KEY, system, user) {
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "authorization": `Bearer ${API_KEY}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-5-mini", // kostnadseffektivt alternativ; byt om du vill
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ],
-        temperature: 0.9,
-        max_tokens: 1800
-      })
-    });
-    if (!res.ok) throw new Error(`openai_${res.status}`);
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content || null;
-  } catch (_e) {
-    return null;
-  }
-}
+const safeJson = async (r) => {
+  try { return await r.json(); } catch { return { status: r.status, statusText: r.statusText }; }
+};
