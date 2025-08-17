@@ -1,7 +1,6 @@
-// === Frontend controller (OpenAI TTS + cache backend) ===
-const API = ""; // samma origin (/api/...)
+// === Frontend controller (robust iOS) ===
+const API = "";
 
-// UI refs
 const els = {
   length:  document.getElementById("length"),
   levelRadios: () => Array.from(document.querySelectorAll('input[name="level"]')),
@@ -20,33 +19,44 @@ const uiStatus = (msg, err=false) => {
   els.status.textContent = msg || "";
   els.status.style.color = err ? "#ff6b6b" : "#9bd67b";
 };
+const getLevel = () => { const r = els.levelRadios().find(x=>x.checked); return r ? Number(r.value) : 2; };
 
-const getLevel = () => {
-  const r = els.levelRadios().find(x=>x.checked);
-  return r ? Number(r.value) : 2;
-};
-
-// fetch helper med timeout + cache-bust
+// fetch helper: timeout + cache-bust + no-store + 1 retry
 async function callApi(path, payload, timeoutMs = 60000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(()=>ctrl.abort(), timeoutMs);
-  const url = `${API}${path}${path.includes("?")?"&":"?"}v=${Date.now()}`;
-  const res = await fetch(url, {
-    method:"POST",
-    headers:{"content-type":"application/json"},
-    body: JSON.stringify(payload||{}),
-    signal: ctrl.signal
-  }).catch(e=>{ clearTimeout(t); throw e; });
-  clearTimeout(t);
-  if (!res.ok) {
-    let detail = `${res.status}`;
-    try { const j = await res.json(); detail = `${res.status} :: ${j.error||j.detail||JSON.stringify(j)}`; } catch {}
-    throw new Error(detail);
+  const attempt = async () => {
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+    const url = `${API}${path}${path.includes("?")?"&":"?"}v=${Date.now()}`;
+    try {
+      const res = await fetch(url, {
+        method:"POST",
+        headers:{ "content-type":"application/json" },
+        body: JSON.stringify(payload||{}),
+        signal: ctrl.signal,
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      clearTimeout(t);
+      if (!res.ok) {
+        let detail = `${res.status}`;
+        try { const j = await res.json(); detail = `${res.status} :: ${j.error||j.detail||JSON.stringify(j)}`; } catch {}
+        throw new Error(detail);
+      }
+      return res.json();
+    } catch (e) {
+      clearTimeout(t);
+      throw e;
+    }
+  };
+  try {
+    return await attempt();
+  } catch (e1) {
+    // liten paus + retry (hjälper iOS “Load failed”)
+    await new Promise(r=>setTimeout(r, 500));
+    return attempt();
   }
-  return res.json();
 }
 
-// Kombinerad: generate -> tts -> play
 let busy = false;
 async function onGenRead(){
   if (busy) return;
@@ -56,7 +66,6 @@ async function onGenRead(){
   busy = true; els.btnGenRead?.setAttribute("disabled","true");
   uiStatus("Skapar text …");
 
-  // nollställ
   els.story.textContent = "";
   els.player.removeAttribute("src"); els.player.load?.();
 
@@ -86,7 +95,9 @@ async function onGenRead(){
     els.player.play().catch(()=>{});
     uiStatus(tts.cached ? `Klart ✔ (cached: ${tts.cached})` : "Klart ✔");
   } catch (e){
-    uiStatus(`Generate failed: ${e.message||e}`, true);
+    uiStatus(`Generate failed: ${e.message || e}`, true);
+    // Bonus-hjälp för mobilen
+    console?.log?.("[BN] error", e);
   } finally {
     busy = false; els.btnGenRead?.removeAttribute("disabled");
   }
