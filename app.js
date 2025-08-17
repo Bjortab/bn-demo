@@ -1,234 +1,209 @@
-// ======= Frontend för Blush Narratives =======
-// Matchar backend-endpoints:
-//   POST /api/generate   -> { ok, text } från Mistral/OpenAI
-//   POST /api/tts        -> returnerar audio/mp3 (OpenAI TTS)
-// Körs på Cloudflare Pages med Functions i samma origin.
+// ===== Frontend controller for BN =====
+const API = ""; // lämna tom för samma origin (/api/...)
 
-const API_BASE = location.origin;
-
-// --- DOM refs ---
+// Elements
 const els = {
-  // topp-kontroller
-  length: document.getElementById("length"),           // <select> 1..15 (minuter)
-  // nivå-knappar (radio: name="level")
-  levels: Array.from(document.querySelectorAll('input[name="level"]')),
-  voice: document.getElementById("voice"),             // <select> röster
-  speed: document.getElementById("speed"),             // <select> 0.75x..1.5x
+  // nav + views
+  navHome: document.getElementById("navHome"),
+  navCreate: document.getElementById("navCreate"),
+  navConnect: document.getElementById("navConnect"),
+  vHome: document.getElementById("viewHome"),
+  vCreate: document.getElementById("viewCreate"),
+  vConnect: document.getElementById("viewConnect"),
+  vFooter: document.getElementById("viewFooter"),
 
-  // textfält + knappar
-  idea: document.getElementById("idea"),               // <textarea>
-  btnGen: document.getElementById("btnGen"),           // "Skapa text"
-  btnRead: document.getElementById("btnRead"),         // "Läs upp"
-  btnDownload: document.getElementById("btnDownload"), // "Ladda ner .txt"
+  // gate
+  chk18: document.getElementById("chk18"),
+  btnStart: document.getElementById("btnStart"),
+  btnOpenConnect: document.getElementById("btnOpenConnect"),
 
-  // status + ljud + text
+  // status
   status: document.getElementById("status"),
-  player: document.getElementById("player"),
-  excerpt: document.getElementById("excerpt"),
+
+  // create controls
+  length:  document.getElementById("length"),
+  levelRadios: () => Array.from(document.querySelectorAll('input[name="level"]')),
+  voice:   document.getElementById("voice"),
+  speed:   document.getElementById("speed"),
+  idea:    document.getElementById("idea"),
+  btnGenRead: document.getElementById("btnGenRead"),
+  btnTxt:  document.getElementById("btnDownload"),
+  story:   document.getElementById("story"),
+  player:  document.getElementById("player")
 };
 
-// --- UI helpers ---
-function uiStatus(msg, kind = "info") {
+// UI helpers
+const uiStatus = (msg, isError = false) => {
   if (!els.status) return;
   els.status.textContent = msg || "";
-  els.status.style.color =
-    kind === "error" ? "#ff6b6b" :
-    kind === "ok"    ? "#9ae6b4" : "#d7d7ff";
+  els.status.style.color = isError ? "#ff6b6b" : "#9bd67b";
+};
+
+function getLevel() {
+  const checked = els.levelRadios().find(r => r.checked);
+  return checked ? Number(checked.value) : 2;
 }
 
-function disableAll(disabled) {
-  [els.btnGen, els.btnRead, els.btnDownload, els.length, els.voice, els.speed, els.idea, ...els.levels]
-    .forEach(n => n && (n.disabled = !!disabled));
+// API helper med timeout + cache-bust
+async function callApi(path, payload, timeoutMs = 60000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const url = `${API}${path}${path.includes("?") ? "&" : "?"}v=${Date.now()}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload || {}),
+    signal: ctrl.signal
+  }).catch(err => {
+    clearTimeout(t);
+    throw err;
+  });
+
+  clearTimeout(t);
+
+  if (!res.ok) {
+    let detail = `${res.status}`;
+    try {
+      const j = await res.json();
+      detail = `${res.status} :: ${j.error || j.detail || JSON.stringify(j)}`;
+    } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
 }
 
-// ord-approx från minuter (~170 ord/min)
-function calcWords(mins) {
-  const w = Math.round(170 * Math.max(1, Math.min(15, mins)));
-  return w;
+// === Combined flow: Generate -> TTS -> Play ===
+let busy = false;
+
+async function onGenRead() {
+  if (busy) return;
+  const idea = (els.idea?.value || "").trim();
+  if (!idea) { uiStatus("Skriv din idé först.", true); els.idea?.focus?.(); return; }
+
+  busy = true;
+  els.btnGenRead?.setAttribute("disabled", "true");
+  uiStatus("Skapar text …");
+
+  // nollställ spelare
+  if (els.player) {
+    els.player.removeAttribute("src");
+    els.player.load?.();
+  }
+  if (els.story) els.story.textContent = "";
+
+  const level = getLevel();
+  const minutes = Number(els.length?.value || 5);
+
+  try {
+    // 1) Generate text
+    const gen = await callApi("/api/generate", { idea, level, minutes }, 60000);
+    if (!gen?.ok || !gen.text) throw new Error("tomt svar från generate");
+    els.story.textContent = gen.text;
+
+    // 2) TTS
+    uiStatus("Genererar röst …");
+    const voice = els.voice?.value || "alloy";
+    const speed = Number(els.speed?.value || 1.0);
+    const tts = await callApi("/api/tts", { text: gen.text, voice, speed }, 90000);
+    if (!tts?.ok || !tts.audio) throw new Error(tts?.error || "tts-fel");
+
+    // 3) Spela
+    const b64 = tts.audio.split(",").pop();
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    const blob = new Blob([buf], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+
+    if (els.player) {
+      els.player.src = url;
+      try { els.player.playbackRate = speed; } catch {}
+      els.player.play().catch(()=>{});
+    }
+    uiStatus("Klart ✔");
+  } catch (err) {
+    uiStatus(`Generate failed: ${err.message || err}`, true);
+  } finally {
+    busy = false;
+    els.btnGenRead?.removeAttribute("disabled");
+  }
 }
 
-function getSelectedLevel() {
-  const picked = els.levels.find(r => r.checked);
-  return picked ? Number(picked.value) : 2;
-}
-
-function currentPayload() {
-  return {
-    idea: (els.idea.value || "").trim(),
-    level: getSelectedLevel(),
-    minutes: Number(els.length.value) || 5
-  };
-}
-
-function showExcerpt(fullText) {
-  if (!els.excerpt) return;
-  // visa hela texten i story-rutan; frontend låter användaren scrolla
-  els.excerpt.value = fullText || "";
-}
-
-// Nedladdning av textfil
-function downloadTxt(filename, text) {
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
+// Download .txt
+function onDownloadTxt() {
+  const txt = (els.story?.textContent || "").trim();
+  if (!txt) return;
+  const file = new Blob([txt], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = "berattelse.txt";
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 }
 
-// Hämta med timeout (ms)
-async function fetchJSON(path, body, timeoutMs = 45000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+// ===== Router / Gate =====
+function setActive(navId){
+  [els.navHome, els.navCreate, els.navConnect].forEach(a=>a && a.classList.remove("active"));
+  const el = document.getElementById(navId);
+  if (el) el.classList.add("active");
+}
 
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body || {}),
-      signal: ctrl.signal
-    });
+function show(view){
+  els.vHome?.classList.add("hidden");
+  els.vCreate?.classList.add("hidden");
+  els.vConnect?.classList.add("hidden");
+  els.vFooter?.classList.add("hidden");
+  view?.classList.remove("hidden");
+  els.vFooter?.classList.remove("hidden");
+}
 
-    if (!res.ok) {
-      let detail = "";
-      try { detail = await res.text(); } catch {}
-      throw new Error(`${res.status} :: ${detail}`);
-    }
-    const data = await res.json();
-    return data;
-  } finally {
-    clearTimeout(t);
+function route(){
+  const hash = location.hash || "#/home";
+  if (hash.startsWith("#/create")){
+    setActive("navCreate");
+    show(els.vCreate);
+  } else if (hash.startsWith("#/connect")){
+    setActive("navConnect");
+    show(els.vConnect);
+  } else {
+    setActive("navHome");
+    show(els.vHome);
   }
 }
 
-// Hämta binär (audio) med timeout
-async function fetchAudio(path, body, timeoutMs = 60000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body || {}),
-      signal: ctrl.signal
-    });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      throw new Error(`${res.status} :: ${errText}`);
-    }
-    return await res.blob();
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-// --- Event handlers ---
-async function onGenerate() {
-  const p = currentPayload();
-  if (!p.idea) {
-    uiStatus("Skriv en idé först 🙏", "error");
-    els.idea.focus();
-    return;
-  }
-
-  const words = calcWords(p.minutes);
-  uiStatus(`Skapar text (~${words} ord) …`, "info");
-  disableAll(true);
-
-  try {
-    const data = await fetchJSON("/api/generate", p, 60000);
-    if (!data?.ok || !data?.text) {
-      throw new Error(data?.detail || "Tomt svar från /api/generate");
-    }
-    showExcerpt(data.text);
-    uiStatus("Text klar ✔️", "ok");
-  } catch (err) {
-    uiStatus(`Generate failed: ${String(err.message || err)}`, "error");
-  } finally {
-    disableAll(false);
-  }
-}
-
-async function onRead() {
-  const p = currentPayload();
-
-  // Om användaren inte genererat text här – försök först skapa
-  if (!(els.excerpt.value || "").trim()) {
-    await onGenerate();
-    if (!(els.excerpt.value || "").trim()) {
-      // om fortfarande tomt – avbryt
-      return;
-    }
-  }
-
-  // Läs upp texten vi har i rutan (backend tar text från body.text om den finns)
-  const text = els.excerpt.value.trim();
-  const voice = els.voice.value;
-  const speed = parseFloat(els.speed.value || "1.0");
-
-  uiStatus("Skapar ljud …", "info");
-  disableAll(true);
-
-  try {
-    const blob = await fetchAudio("/api/tts", {
-      text,
-      voice,
-      speed
-    }, 90000);
-
-    const url = URL.createObjectURL(blob);
-    els.player.src = url;
-    els.player.playbackRate = speed || 1.0;
-    await els.player.play().catch(() => {});
-    uiStatus("Klart ✔️", "ok");
-  } catch (err) {
-    uiStatus(`TTS failed: ${String(err.message || err)}`, "error");
-  } finally {
-    disableAll(false);
-  }
-}
-
-function onDownload() {
-  const s = (els.excerpt.value || "").trim();
-  if (!s) {
-    uiStatus("Ingen text att ladda ner ännu.", "error");
-    return;
-  }
-  const dt = new Date();
-  const stamp = dt.toISOString().slice(0,19).replace(/[:T]/g, "-");
-  downloadTxt(`blush-${stamp}.txt`, s);
-}
-
-// --- Init ---
-function init() {
-  // defaultar nivå 2 om ingen vald
-  if (!els.levels.some(r => r.checked) && els.levels[1]) {
-    els.levels[1].checked = true; // 1->index0, 2->index1
-  }
-
-  // UI-kopplingar
-  els.btnGen?.addEventListener("click", onGenerate);
-  els.btnRead?.addEventListener("click", onRead);
-  els.btnDownload?.addEventListener("click", onDownload);
-
-  els.length?.addEventListener("change", () => {
-    const words = calcWords(Number(els.length.value) || 5);
-    uiStatus(`≈ ${words} ord (~${els.length.value} min)`, "info");
-    setTimeout(() => uiStatus(""), 1200);
+// Gate: aktivera knappar när 18+ är checkad
+function updateGate(){
+  const ok = !!els.chk18?.checked;
+  [els.btnStart, els.btnOpenConnect].forEach(b=>{
+    if (!b) return;
+    if (ok) b.removeAttribute("disabled");
+    else b.setAttribute("disabled","true");
   });
-
-  // Snyggare fokusbeteende
-  els.idea?.addEventListener("focus", () => els.idea.select());
-
-  // Se till att spelaren syns och kan styras
-  if (els.player) {
-    els.player.controls = true;
-    els.player.preload = "none";
-    els.player.playbackRate = parseFloat(els.speed.value || "1.0");
-  }
 }
-document.addEventListener("DOMContentLoaded", init);
+
+window.addEventListener("hashchange", route);
+
+window.addEventListener("DOMContentLoaded", () => {
+  // Gate
+  els.chk18?.addEventListener("change", updateGate);
+  updateGate();
+
+  // Gate-knappar -> rutter
+  els.btnStart?.addEventListener("click", ()=> { location.hash = "#/create"; });
+  els.btnOpenConnect?.addEventListener("click", ()=> { location.hash = "#/connect"; });
+
+  // Nav-länkar
+  els.navHome?.addEventListener("click", (e)=>{ e.preventDefault(); location.hash = "#/home"; });
+  els.navCreate?.addEventListener("click", (e)=>{ e.preventDefault(); location.hash = "#/create"; });
+  els.navConnect?.addEventListener("click", (e)=>{ e.preventDefault(); location.hash = "#/connect"; });
+
+  // Combined generate + tts
+  els.btnGenRead?.addEventListener("click", onGenRead);
+  els.btnTxt?.addEventListener("click", onDownloadTxt);
+
+  route();
+});
