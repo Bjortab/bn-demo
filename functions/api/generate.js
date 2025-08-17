@@ -11,7 +11,6 @@ export const onRequestPost = async ({ request, env }) => {
 
     const targetWords = Math.max(120, Math.min(1200, Math.round(_minutes * 170)));
 
-    // Styrord (exempel)
     const soft = ["värme mellan oss", "långsam kyss", "dov längtan", "hans händer mot min rygg", "hennes händer i mitt hår"];
     const sensual = ["läppar mot hud", "kroppar nära", "sval hals", "andning som hakar upp sig", "tyget som glider"];
     const hot = ["hans lem", "hennes sköte", "våt värme", "tungan som cirklar", "han tränger in", "hon rider honom", "höfter som svarar"];
@@ -48,7 +47,7 @@ export const onRequestPost = async ({ request, env }) => {
     const mistralKey = env.MISTRAL_API_KEY || env.MISTRAL_KEY;
     const openaiKey  = env.OPENAI_API_KEY  || env.OPENAI_KEY;
 
-    let text=null;
+    let text=null, used=null;
 
     if (mistralKey) {
       const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
@@ -61,9 +60,10 @@ export const onRequestPost = async ({ request, env }) => {
           messages:[{role:"system",content:system},{role:"user",content:user}]
         })
       });
-      if (!r.ok){ const err = await safeJson(r); return json({ok:false,error:"mistral_error",detail:err},502); }
+      if (!r.ok){ const err = await safeJson(r); return json({ok:false,error:"mistral_error",detail:err}, 502); }
       const data = await r.json();
       text = data?.choices?.[0]?.message?.content?.trim() || null;
+      used = "mistral";
     } else if (openaiKey) {
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method:"POST",
@@ -75,23 +75,31 @@ export const onRequestPost = async ({ request, env }) => {
           messages:[{role:"system",content:system},{role:"user",content:user}]
         })
       });
-      if (!r.ok){ const err = await safeJson(r); return json({ok:false,error:"openai_error",detail:err},502); }
+      if (!r.ok){ const err = await safeJson(r); return json({ok:false,error:"openai_error",detail:err}, 502); }
       const data = await r.json();
       text = data?.choices?.[0]?.message?.content?.trim() || null;
+      used = "openai";
     } else {
-      return json({ ok:false, error:"missing_api_key", detail:"Lägg in MISTRAL_API_KEY eller OPENAI_API_KEY i Pages → Settings → Env vars."}, 500);
+      return json({ ok:false, error:"missing_api_key", detail:"Lägg in MISTRAL_API_KEY eller OPENAI_API_KEY i Pages → Settings → Environment variables."}, 500);
     }
 
     if (!text) return json({ ok:false, error:"empty_story" }, 502);
 
     text = text.replace(/^---\s*$/gm,"").trim();
-    return json({ ok:true, text }, 200);
+    return json({ ok:true, text, model: used }, 200);
   } catch(err){
     return json({ ok:false, error:"server_error", detail:String(err?.message||err) }, 500);
   }
 };
 
 const json = (obj, status=200) =>
-  new Response(JSON.stringify(obj), { status, headers:{ "content-type":"application/json; charset=utf-8", "cache-control":"no-store" }});
+  new Response(JSON.stringify(obj), {
+    status,
+    headers:{
+      "content-type":"application/json; charset=utf-8",
+      "cache-control":"no-store",
+      "access-control-allow-origin":"*"
+    }
+  });
 
-const safeJson = async (r)=>{ try{return await r.json();}catch{return {status:r.status,statusText:r.statusText}} };
+const safeJson = async (r)=>{ try{ return await r.json(); } catch { return { status:r.status, statusText:r.statusText }; } };
