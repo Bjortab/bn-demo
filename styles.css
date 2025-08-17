@@ -1,97 +1,182 @@
-/* Theme */
-:root{
-  --bg:#0f1216; --panel:#171a20; --ink:#eaeaf0; --muted:#a9b0bb;
-  --stroke:#2a2f38; --accent1:#ff54b0; --accent2:#8f5dff;
+/* Reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
-*{ box-sizing:border-box }
-html,body{ margin:0; padding:0 }
-body{
-  background:var(--bg); color:var(--ink);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+
+body {
+  font-family: "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.6;
+  background: #1a1a1a;
+  color: #f2f2f2;
+  padding: 0;
+  margin: 0;
 }
 
 /* Header */
-.nav{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:12px 16px; background:#11151b; border-bottom:1px solid var(--stroke);
+header {
+  background: linear-gradient(90deg, #ff4da6, #ff0066);
+  padding: 1rem;
+  text-align: center;
 }
-.brand{ font-weight:700; letter-spacing:.3px }
-.tabs{ display:flex; gap:8px }
-.tab-btn{
-  border:1px solid var(--stroke); background:#1a1f27; color:var(--ink);
-  padding:8px 12px; border-radius:10px; cursor:pointer;
-}
-.tab-btn.active{ background: linear-gradient(90deg, var(--accent1), var(--accent2)); border-color: transparent; }
 
-/* Layout */
-.container{ max-width:1100px; margin:28px auto; padding:0 16px }
-.card{
-  background:var(--panel); border:1px solid var(--stroke);
-  border-radius:14px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,.35);
+header h1 {
+  font-size: 2rem;
+  color: white;
+  margin-bottom: 0.5rem;
 }
-.grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
 
-/* Forms */
-.field{ display:block }
-label{ display:block; font-weight:600; margin:8px 0 6px }
-.hint, .muted{ color:var(--muted); font-size:.92rem }
-select, textarea, input[type="text"], input[type="number"]{
-  width:100%; background:#10141a; color:var(--ink);
-  border:1px solid var(--stroke); border-radius:10px; padding:10px 12px;
+nav a {
+  color: white;
+  margin: 0 0.75rem;
+  text-decoration: none;
+  font-weight: bold;
 }
-textarea#idea{ min-height:140px; resize:vertical }
-textarea#bc-bio{ min-height:100px; resize:vertical }
 
-/* Spice chips */
-.spice-row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
-.spice-row.compact label{ padding:2px 8px }
-.spice-row label{
-  background:#141821; border:1px solid var(--stroke); padding:6px 10px; border-radius:8px; cursor:pointer;
+nav a:hover {
+  text-decoration: underline;
 }
-.spice-row input{ margin-right:6px }
+
+/* Main container */
+main {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: #262626;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(255, 0, 100, 0.3);
+}
+
+/* Generator sektionen */
+.generator h2 {
+  margin-bottom: 1rem;
+  color: #ff4da6;
+}
+
+label {
+  display: block;
+  margin-top: 1rem;
+  font-weight: bold;
+  color: #ffb3d9;
+}
+
+select,
+textarea,
+input[type="text"] {
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+}
+
+select {
+  background: #333;
+  color: white;
+}
+
+textarea {
+  resize: vertical;
+  background: #1a1a1a;
+  color: #f2f2f2;
+  border: 1px solid #444;
+}
+
+/* Snusk-nivå radio */
+fieldset {
+  margin-top: 1rem;
+  border: 1px solid #444;
+  padding: 1rem;
+  border-radius: 5px;
+}
+
+legend {
+  color: #ff4da6;
+  padding: 0 0.5rem;
+}
+
+fieldset label {
+  margin-right: 1rem;
+  font-weight: normal;
+  color: #ddd;
+}
 
 /* Buttons */
-.btn-row{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap }
-button{
-  border:0; border-radius:12px; padding:12px 16px; cursor:pointer;
-  background: linear-gradient(90deg, var(--accent1), var(--accent2));
-  color:white; font-weight:700; letter-spacing:.2px;
-}
-button.secondary{ background:#242a34; color:var(--ink); border:1px solid var(--stroke) }
-button:active{ transform: translateY(1px) }
-.status{ margin-top:8px; min-height:22px }
-
-/* Tabs */
-.tab{ display:none }
-.tab.active{ display:block }
-
-/* Subnav (BlushConnect) */
-.subnav{ display:flex; gap:8px; margin:6px 0 14px }
-.chip{
-  border:1px solid var(--stroke); background:#1a1f27; color:var(--ink);
-  padding:6px 10px; border-radius:999px; cursor:pointer; font-weight:600;
-}
-.chip.active{ background: linear-gradient(90deg, var(--accent1), var(--accent2)); border-color: transparent }
-
-/* Player & excerpt */
-audio#player{ width:100%; display:block; margin-top:10px }
-.excerpt{
-  margin-top:8px; background:#10141a; border:1px solid var(--stroke);
-  border-radius:10px; min-height:120px; padding:12px; line-height:1.55;
+.buttons {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-/* BlushConnect cards */
-.bc-card, .bc-grid .cardlet{
-  background:#121720; border:1px solid var(--stroke); border-radius:12px; padding:12px;
+button {
+  background: #ff4da6;
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  font-size: 1rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.2s ease;
 }
-.bc-card .line{ margin:4px 0; color:var(--muted) }
-.bc-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px }
-.cardlet h4{ margin:4px 0 6px }
-.badges{ display:flex; gap:6px; flex-wrap:wrap }
-.badge{
-  background:#222833; border:1px solid var(--stroke);
-  padding:2px 8px; border-radius:999px; font-size:.88rem; color:var(--ink)
+
+button:hover {
+  background: #ff1a75;
+}
+
+/* Status */
+#status {
+  margin-top: 1rem;
+  font-style: italic;
+  color: #aaa;
+}
+
+/* Audio player */
+audio {
+  width: 100%;
+  margin-top: 1.5rem;
+  outline: none;
+}
+
+/* Excerpt */
+#excerpt {
+  margin-top: 1rem;
+  font-family: monospace;
+  font-size: 0.95rem;
+  background: #111;
+  border: 1px solid #444;
+  padding: 0.75rem;
+  border-radius: 5px;
+  color: #ffebf5;
 }
 
 /* Footer */
-.footer{ text-align:center; color:var(--muted); padding:24px 12px; border-top:1px solid var(--stroke); margin-top:28px }
+footer {
+  margin-top: 2rem;
+  padding: 1rem;
+  text-align: center;
+  background: #111;
+  color: #888;
+  font-size: 0.9rem;
+}
+footer a {
+  color: #ff4da6;
+  text-decoration: none;
+}
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* Responsiv */
+@media (max-width: 600px) {
+  main {
+    margin: 1rem;
+    padding: 1rem;
+  }
+
+  header h1 {
+    font-size: 1.5rem;
+  }
+}
