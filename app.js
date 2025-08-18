@@ -1,118 +1,140 @@
-// === Frontend controller (robust iOS) ===
-const API = "";
+// ===== KONFIG =====
+const API_BASE = ""; // tom = samma domän (Cloudflare Pages)
+const DEFAULT_SPEED = 1.0;
 
+// ===== UI-refs =====
 const els = {
-  length:  document.getElementById("length"),
-  levelRadios: () => Array.from(document.querySelectorAll('input[name="level"]')),
-  voice:   document.getElementById("voice"),
-  speed:   document.getElementById("speed"),
-  idea:    document.getElementById("idea"),
-  btnGenRead: document.getElementById("btnGenRead"),
-  btnTxt:  document.getElementById("btnDownload"),
-  status:  document.getElementById("status"),
-  story:   document.getElementById("story"),
-  player:  document.getElementById("player")
+  minutes: document.getElementById("length"),
+  levelBtns: Array.from(document.querySelectorAll('input[name="spice"]')),
+  voice: document.getElementById("voice"),
+  speed: document.getElementById("speed"),
+  idea: document.getElementById("idea"),
+  btnGen: document.getElementById("btnRead"),
+  btnMakeText: document.getElementById("btnMakeText"),
+  btnDownload: document.getElementById("btnDownload"),
+  player: document.getElementById("player"),
+  story: document.getElementById("story"),
+  status: document.getElementById("status"),
 };
 
-const uiStatus = (msg, err=false) => {
-  if (!els.status) return;
-  els.status.textContent = msg || "";
-  els.status.style.color = err ? "#ff6b6b" : "#9bd67b";
-};
-const getLevel = () => { const r = els.levelRadios().find(x=>x.checked); return r ? Number(r.value) : 2; };
-
-// fetch helper: timeout + cache-bust + no-store + 1 retry
-async function callApi(path, payload, timeoutMs = 60000) {
-  const attempt = async () => {
-    const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort(), timeoutMs);
-    const url = `${API}${path}${path.includes("?")?"&":"?"}v=${Date.now()}`;
-    try {
-      const res = await fetch(url, {
-        method:"POST",
-        headers:{ "content-type":"application/json" },
-        body: JSON.stringify(payload||{}),
-        signal: ctrl.signal,
-        cache: "no-store",
-        credentials: "same-origin"
-      });
-      clearTimeout(t);
-      if (!res.ok) {
-        let detail = `${res.status}`;
-        try { const j = await res.json(); detail = `${res.status} :: ${j.error||j.detail||JSON.stringify(j)}`; } catch {}
-        throw new Error(detail);
-      }
-      return res.json();
-    } catch (e) {
-      clearTimeout(t);
-      throw e;
-    }
+// Hjälp
+function ui(msg, bad=false){ els.status.textContent = msg || ""; els.status.style.color = bad ? "#f66" : "#9bd"; }
+function chosenLevel(){
+  const b = els.levelBtns.find(x=>x.checked);
+  return b ? Number(b.value) : 2;
+}
+function getParams(){
+  return {
+    minutes: Number(els.minutes?.value || 5),
+    level: chosenLevel(),
+    voice: els.voice?.value || "alloy",
+    speed: Number(els.speed?.value || DEFAULT_SPEED),
+    idea: (els.idea?.value || "").trim()
   };
-  try {
-    return await attempt();
-  } catch (e1) {
-    // liten paus + retry (hjälper iOS “Load failed”)
-    await new Promise(r=>setTimeout(r, 500));
-    return attempt();
+}
+function setStory(text){ els.story.value = text; }
+function setAudio(blob){
+  const url = URL.createObjectURL(blob);
+  els.player.src = url;
+  els.player.load();
+}
+
+// API helpers med lång timeout
+async function postJSON(path, payload){
+  const ctrl = new AbortController();
+  const to = setTimeout(()=>ctrl.abort("timeout"), 60000);
+  try{
+    const r = await fetch(`${API_BASE}${path}`, {
+      method:"POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    clearTimeout(to);
+    return r;
+  }catch(e){
+    clearTimeout(to);
+    throw e;
   }
 }
 
-let busy = false;
-async function onGenRead(){
-  if (busy) return;
-  const idea = (els.idea?.value || "").trim();
-  if (!idea){ uiStatus("Skriv din idé först.", true); els.idea?.focus?.(); return; }
+// Generera TEXT
+async function makeText(){
+  const p = getParams();
+  ui("Skapar text …");
+  const r = await postJSON("/api/generate", { idea: p.idea, level: p.level, minutes: p.minutes });
+  if(!r.ok){
+    const t = await r.text().catch(()=> "");
+    throw new Error(`Textfel (${r.status}): ${t}`);
+  }
+  const data = await r.json();
+  if(!data.ok || !data.text) throw new Error("Tomt svar från generatorn.");
+  setStory(data.text);
+  ui("Text klar ✓");
+  return data.text;
+}
 
-  busy = true; els.btnGenRead?.setAttribute("disabled","true");
-  uiStatus("Skapar text …");
+// Generera RÖST (OpenAI TTS)
+async function makeVoice(text){
+  const p = getParams();
+  ui("Skapar röst …");
+  const r = await postJSON("/api/tts", { text, voice: p.voice || "alloy", speed: p.speed || DEFAULT_SPEED });
+  if(!r.ok){
+    const t = await r.text().catch(()=> "");
+    throw new Error(`TTS-fel (${r.status}): ${t}`);
+  }
+  const blob = await r.blob();
+  setAudio(blob);
+  ui("Klart ✓");
+}
 
-  els.story.textContent = "";
-  els.player.removeAttribute("src"); els.player.load?.();
-
-  const level = getLevel();
-  const minutes = Number(els.length?.value || 5);
-
-  try {
-    const gen = await callApi("/api/generate", { idea, level, minutes }, 70000);
-    if (!gen?.ok || !gen.text) throw new Error("tomt svar från generate");
-    els.story.textContent = gen.text;
-
-    uiStatus("Genererar röst …");
-    const voice = els.voice?.value || "verse";
-    const speed = Number(els.speed?.value || 1.0);
-    const tts = await callApi("/api/tts", { text: gen.text, voice, speed }, 90000);
-    if (!tts?.ok || !tts.audio) throw new Error(tts?.error || "tts-fel");
-
-    const b64 = tts.audio.split(",").pop();
-    const bin = atob(b64);
-    const buf = new Uint8Array(bin.length);
-    for (let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
-    const blob = new Blob([buf], { type:"audio/mpeg" });
-    const url = URL.createObjectURL(blob);
-
-    els.player.src = url;
-    try { els.player.playbackRate = speed; } catch{}
-    els.player.play().catch(()=>{});
-    uiStatus(tts.cached ? `Klart ✔ (cached: ${tts.cached})` : "Klart ✔");
-  } catch (e){
-    uiStatus(`Generate failed: ${e.message || e}`, true);
-    // Bonus-hjälp för mobilen
-    console?.log?.("[BN] error", e);
-  } finally {
-    busy = false; els.btnGenRead?.removeAttribute("disabled");
+// EN-KNAPP: Text -> Röst
+async function handleRead(){
+  try{
+    els.btnGen.disabled = true;
+    const text = await makeText();
+    await makeVoice(text);
+  }catch(e){
+    console.error(e);
+    ui(e.message || "Ett fel inträffade", true);
+  }finally{
+    els.btnGen.disabled = false;
   }
 }
 
-function onDownloadTxt(){
-  const txt = (els.story?.textContent || "").trim();
-  if (!txt) return;
-  const file = new Blob([txt], {type:"text/plain;charset=utf-8"});
-  const url = URL.createObjectURL(file);
-  const a = document.createElement("a"); a.href = url; a.download = "berattelse.txt";
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+// Separat “Skapa text” om du vill prova bara texten
+async function handleMakeText(){
+  try{
+    els.btnMakeText.disabled = true;
+    await makeText();
+  }catch(e){
+    console.error(e);
+    ui(e.message || "Ett fel inträffade", true);
+  }finally{
+    els.btnMakeText.disabled = false;
+  }
 }
 
-window.addEventListener("DOMContentLoaded", ()=>{
-  els.btnGenRead?.addEventListener("click", onGenRead);
-  els.btnTxt?.addEventListener("click", onDownloadTxt);
-});
+// Ladda ner .txt
+function downloadTxt(){
+  const text = els.story.value || "";
+  const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "berattelse.txt";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Init
+(function(){
+  if (els.btnGen) els.btnGen.addEventListener("click", handleRead);
+  if (els.btnMakeText) els.btnMakeText.addEventListener("click", handleMakeText);
+  if (els.btnDownload) els.btnDownload.addEventListener("click", downloadTxt);
+  if (els.speed) els.speed.value = DEFAULT_SPEED;
+  // Gör prompt-rutan stor även på mobil
+  if (els.idea) { els.idea.rows = 5; }
+})();
