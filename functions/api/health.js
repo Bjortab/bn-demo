@@ -1,10 +1,12 @@
-// /functions/api/health.js
-export const onRequestGet = () =>
-  new Response(JSON.stringify({ ok: true, ts: Date.now() }), {
-    status: 200,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*"
-    }
-  });
+export default {
+  async fetch(request, env) {
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        tts: env.OPENAI_API_KEY ? "openai" : "not_configured",
+        time: new Date().toISOString()
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+};
