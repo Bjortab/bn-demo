@@ -2,60 +2,87 @@
 <html lang="sv">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BlushNarratives Demo</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blush Narratives</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>BlushNarratives</h1>
+  <header class="topbar">
+    <div class="brand"><span>Blush</span> Narratives</div>
+    <nav class="nav">
+      <a href="./">Hem</a>
+      <a href="./api/">Skapa</a>
+      <a href="#" id="openBlushConnect">BlushConnect</a>
+    </nav>
+  </header>
 
-    <!-- Inputfält -->
-    <label for="idea">Din idé:</label>
-    <textarea id="idea" placeholder="Skriv en kort idé till berättelsen..."></textarea>
+  <main class="wrap">
+    <section class="card">
+      <h2>Skapa & lyssna</h2>
 
-    <div class="controls">
-      <label for="length">Längd:</label>
-      <select id="length">
-        <option value="kort">Kort</option>
-        <option value="medel">Medel</option>
-        <option value="lång">Lång</option>
-      </select>
+      <label class="lbl" for="idea">Din idé</label>
+      <textarea id="idea" placeholder="Kort beskrivning (t.ex. 'Första mötet i hissen…')"></textarea>
 
-      <label for="level">Nivå:</label>
-      <select id="level">
-        <option value="1">1 – Oskyldig</option>
-        <option value="2">2 – Lätt</option>
-        <option value="3">3 – Mellan</option>
-        <option value="4">4 – Het</option>
-        <option value="5">5 – Explicit</option>
-      </select>
+      <div class="grid">
+        <div class="field">
+          <label class="lbl" for="length">Längd</label>
+          <select id="length">
+            <option value="kort" selected>5 min</option>
+            <option value="medel">8 min</option>
+            <option value="lång">10 min</option>
+          </select>
+          <div class="hint">≈ 170 ord/min → upp till ca 850 ord.</div>
+        </div>
 
-      <label for="voice">Röst:</label>
-      <select id="voice">
-        <option value="alloy">Alloy</option>
-        <option value="aria">Aria</option>
-        <option value="verse">Verse</option>
-      </select>
+        <div class="field">
+          <label class="lbl">Snusk-nivå</label>
+          <div id="levelGrp" class="levels">
+            <button type="button" class="lvl active" data-lvl="1">1</button>
+            <button type="button" class="lvl" data-lvl="2">2</button>
+            <button type="button" class="lvl" data-lvl="3">3</button>
+            <button type="button" class="lvl" data-lvl="4">4</button>
+            <button type="button" class="lvl" data-lvl="5">5</button>
+          </div>
+          <div id="levelHelp" class="hint">Nivå 1 – romantiskt och antydande.</div>
+        </div>
 
-      <label for="speed">Hastighet:</label>
-      <select id="speed">
-        <option value="1.0" selected>1.0x</option>
-        <option value="0.9">0.9x</option>
-        <option value="1.1">1.1x</option>
-      </select>
-    </div>
+        <div class="field">
+          <label class="lbl" for="voice">Röst</label>
+          <select id="voice">
+            <option value="alloy" selected>Alloy (neutral)</option>
+            <option value="aria">Aria (mjuk)</option>
+            <option value="verse">Verse (mörk)</option>
+          </select>
+          <div class="hint">Gratis test-röster via OpenAI TTS.</div>
+        </div>
 
-    <!-- Knapp -->
-    <button id="generateBtn">Skapa & läs</button>
-    <button id="downloadTxtBtn" disabled>Ladda ner text</button>
+        <div class="field">
+          <label class="lbl" for="speed">Hastighet</label>
+          <select id="speed">
+            <option value="1.0" selected>1.00x</option>
+            <option value="0.9">0.90x</option>
+            <option value="1.1">1.10x</option>
+            <option value="1.25">1.25x</option>
+          </select>
+        </div>
+      </div>
 
-    <!-- Story -->
-    <div id="storyText" class="story"></div>
+      <div class="actions">
+        <button id="generateBtn" class="primary">Skapa & läs</button>
+        <button id="downloadTxtBtn" class="ghost" disabled>Ladda ner .txt</button>
+        <span id="status" class="status"></span>
+      </div>
 
-    <!-- Ljudspelare -->
-    <audio id="audioPlayer" controls></audio>
-  </div>
+      <audio id="audioPlayer" controls preload="none"></audio>
+
+      <h3>Berättelsetext</h3>
+      <div id="storyText" class="story"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    © Blush Narratives • <a id="statusLink" href="/api/health" target="_blank" rel="noopener">Status</a>
+  </footer>
 
   <script src="app.js"></script>
 </body>
