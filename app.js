@@ -1,183 +1,149 @@
-// ===== BN Frontend (stabil + Connect v1) =====
-const API_BASE = ""; // samma origin
-const DEFAULT_SPEED = 1.0;
-
-// ===== UI refs =====
+// Frontend: en knapp -> generera text -> TTS -> spela upp
 const els = {
-  // views & nav
-  nav: document.querySelectorAll("nav a[data-view]"),
-  viewCreate: document.getElementById("view-create"),
-  viewConnect: document.getElementById("view-connect"),
-  // create
-  minutes: document.getElementById("length"),
-  levelBtns: Array.from(document.querySelectorAll('input[name="spice"]')),
-  voice: document.getElementById("voice"),
-  speed: document.getElementById("speed"),
-  idea: document.getElementById("idea"),
-  btnGen: document.getElementById("btnRead"),
-  btnMakeText: document.getElementById("btnMakeText"),
-  btnDownload: document.getElementById("btnDownload"),
-  player: document.getElementById("player"),
-  story: document.getElementById("story"),
-  status: document.getElementById("status"),
-  // connect
-  cnick: document.getElementById("cnick"),
-  clevel: document.getElementById("clevel"),
-  csave: document.getElementById("csave"),
-  cstatus: document.getElementById("cstatus"),
-  cfavs: document.getElementById("cfavs"),
+  words: document.getElementById('words'),
+  length: document.getElementById('length'),
+  levelHint: document.getElementById('levelHint'),
+  idea: document.getElementById('idea'),
+  voice: document.getElementById('voice'),
+  rate: document.getElementById('rate'),
+  btnMake: document.getElementById('btnMake'),
+  btnDownload: document.getElementById('btnDownload'),
+  status: document.getElementById('status'),
+  player: document.getElementById('player'),
+  story: document.getElementById('story'),
+  nav: document.querySelectorAll('nav a'),
+  views: document.querySelectorAll('main.view'),
+  health: document.getElementById('health')
 };
 
-function ui(msg, bad=false){ if(!els.status) return; els.status.textContent = msg || ""; els.status.style.color = bad ? "#f66" : "#9bd"; }
-function chosenLevel(){ const b = els.levelBtns.find(x=>x.checked); return b ? Number(b.value) : 2; }
+const API_BASE = ''; // samma origin
+const TIMEOUT_MS = 90000;
 
-// ===== Navigation (tabs) =====
-function switchView(name){
-  if (name === "connect"){
-    els.viewCreate.classList.add("hidden");
-    els.viewConnect.classList.remove("hidden");
-    document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("active", a.dataset.view==="connect"));
-    loadProfile();
-  } else {
-    els.viewConnect.classList.add("hidden");
-    els.viewCreate.classList.remove("hidden");
-    document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("active", a.dataset.view==="create"));
+function updateWords() {
+  const mins = Number(els.length.value || 5);
+  els.words.textContent = String(Math.min(170*mins, 1000));
+}
+updateWords();
+els.length.addEventListener('change', updateWords);
+
+function setLevelHint() {
+  const v = Number(document.querySelector('input[name="level"]:checked').value);
+  const map = {
+    1: 'Nivå 1 – romantiskt/antydande.',
+    2: 'Nivå 2 – mild med varm stämning.',
+    3: 'Nivå 3 – tydligt sensuellt (icke-grafiskt).',
+    4: 'Nivå 4 – hett språk, vuxna teman (ej grafiskt).',
+    5: 'Nivå 5 – mest hett och direkt (din ordlista styr).'
+  };
+  els.levelHint.textContent = map[v] || '';
+}
+document.getElementById('levels').addEventListener('change', setLevelHint);
+setLevelHint();
+
+document.querySelectorAll('nav a').forEach(a=>{
+  a.addEventListener('click', e=>{
+    e.preventDefault();
+    els.nav.forEach(n=>n.classList.remove('active'));
+    a.classList.add('active');
+    const view = a.dataset.view;
+    els.views.forEach(v=>v.classList.toggle('active', v.id === `view-${view}`));
+    if(view === 'status'){ pingHealth(); }
+  });
+});
+
+function ui(msg, cls='') {
+  els.status.className = `status ${cls}`;
+  els.status.textContent = msg || '';
+}
+
+async function withTimeout(promise, ms=TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), ms);
+  try { return await promise(ctrl.signal); }
+  finally { clearTimeout(t); }
+}
+
+async function postJSON(path, body, signal) {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(body),
+    signal
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>res.statusText);
+    throw new Error(`${res.status} :: ${txt}`);
+  }
+  return res.json();
+}
+
+async function postAudio(path, body, signal) {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type':'application/json' },
+    body: JSON.stringify(body),
+    signal
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>res.statusText);
+    throw new Error(`${res.status} :: ${txt}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+els.btnMake.addEventListener('click', async ()=>{
+  const level = Number(document.querySelector('input[name="level"]:checked').value);
+  const minutes = Number(els.length.value || 5);
+  const voice = els.voice.value;
+  const rate = Number(els.rate.value || 1.0);
+  const idea = (els.idea.value || '').trim();
+
+  if (!idea) { ui('Skriv en kort idé först.', 'err'); return; }
+
+  els.btnMake.disabled = true;
+  els.btnDownload.disabled = true;
+  ui('Skapar text…');
+
+  try{
+    const data = await withTimeout(
+      (signal)=>postJSON('generate',{idea, level, minutes}, signal)
+    );
+    const text = (data && data.text || '').trim();
+    if (!text) throw new Error('Tomt svar från textgenerering.');
+    els.story.value = text;
+    els.btnDownload.disabled = false;
+
+    ui('Skapar röst…');
+    const src = await withTimeout(
+      (signal)=>postAudio('tts',{ text, voice, rate }, signal)
+    );
+    els.player.src = src;
+    try { els.player.play(); } catch {}
+    ui('Klar ✓', 'ok');
+  } catch(err){
+    ui(`Generate failed: ${err.message}`, 'err');
+  } finally{
+    els.btnMake.disabled = false;
+  }
+});
+
+els.btnDownload.addEventListener('click', ()=>{
+  const blob = new Blob([els.story.value || ''], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'blush_narrative.txt';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+async function pingHealth(){
+  const pre = document.getElementById('health');
+  pre.textContent = 'Kontrollerar…';
+  try{
+    const r = await fetch('/api/health');
+    pre.textContent = await r.text();
+  }catch(e){
+    pre.textContent = 'Health check misslyckades.';
   }
 }
-
-// ===== API helper (timeout + retry + no-store) =====
-async function postJSON(path, payload, timeoutMs=70000){
-  const attempt = async () => {
-    const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort("timeout"), timeoutMs);
-    try{
-      const r = await fetch(`${API_BASE}${path}?v=${Date.now()}`, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload),
-        signal: ctrl.signal,
-        cache: "no-store",
-        credentials: "same-origin"
-      });
-      clearTimeout(t);
-      return r;
-    }catch(e){ clearTimeout(t); throw e; }
-  };
-  try{ return await attempt(); }
-  catch(e){ await new Promise(r=>setTimeout(r,500)); return attempt(); }
-}
-
-// ===== Create flow =====
-function getParams(){
-  return {
-    minutes: Number(els.minutes?.value || 5),
-    level: chosenLevel(),
-    voice: els.voice?.value || "verse",
-    speed: Number(els.speed?.value || DEFAULT_SPEED),
-    idea: (els.idea?.value || "").trim()
-  };
-}
-function setStory(text){ els.story.value = text; }
-function setAudioFromBlob(blob){
-  const url = URL.createObjectURL(blob);
-  els.player.src = url; els.player.load();
-}
-
-async function makeText(){
-  const p = getParams();
-  if (!p.idea){ throw new Error("Skriv din idé först."); }
-  ui("Skapar text …");
-  const r = await postJSON("/api/generate", { idea: p.idea, level: p.level, minutes: p.minutes }, 80000);
-  if (!r.ok){ const t = await r.text().catch(()=> ""); throw new Error(`Textfel (${r.status}): ${t}`); }
-  const data = await r.json();
-  if (!data.ok || !data.text) throw new Error("Tomt svar från generatorn.");
-  setStory(data.text);
-  ui("Text klar ✓");
-  return data.text;
-}
-
-async function makeVoice(text){
-  const p = getParams();
-  ui("Skapar röst …");
-  const r = await postJSON("/api/tts", { text, voice: p.voice, speed: p.speed }, 90000);
-  if (!r.ok){ const t = await r.text().catch(()=> ""); throw new Error(`TTS-fel (${r.status}): ${t}`); }
-  const blob = await r.blob();
-  setAudioFromBlob(blob);
-  try { els.player.playbackRate = p.speed; } catch {}
-  els.player.play().catch(()=>{});
-  ui("Klart ✓");
-}
-
-async function handleRead(){
-  try{
-    els.btnGen.disabled = true;
-    const text = await makeText();
-    await makeVoice(text);
-  }catch(e){ console.error(e); ui(e.message || "Fel uppstod", true); }
-  finally{ els.btnGen.disabled = false; }
-}
-
-async function handleMakeText(){
-  try{
-    els.btnMakeText.disabled = true;
-    await makeText();
-  }catch(e){ console.error(e); ui(e.message || "Fel uppstod", true); }
-  finally{ els.btnMakeText.disabled = false; }
-}
-
-function downloadTxt(){
-  const text = els.story.value || "";
-  if (!text) return;
-  const blob = new Blob([text], { type:"text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "berattelse.txt";
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-
-// ===== BlushConnect v1 (lokalt) =====
-const LS_KEY_PROFILE = "bn_profile";
-const LS_KEY_FAVS = "bn_favs";
-
-function loadProfile(){
-  try{
-    const p = JSON.parse(localStorage.getItem(LS_KEY_PROFILE)||"{}");
-    if (p.nick) els.cnick.value = p.nick;
-    if (p.level) els.clevel.value = String(p.level);
-    renderFavs();
-  }catch{}
-}
-function saveProfile(){
-  const prof = { nick: (els.cnick.value||"").trim(), level: Number(els.clevel.value||2) };
-  localStorage.setItem(LS_KEY_PROFILE, JSON.stringify(prof));
-  if (els.cstatus){ els.cstatus.textContent = "Sparat ✓"; setTimeout(()=>els.cstatus.textContent="", 1500); }
-}
-function renderFavs(){
-  const ul = els.cfavs; if (!ul) return;
-  ul.innerHTML = "";
-  const favs = JSON.parse(localStorage.getItem(LS_KEY_FAVS)||"[]");
-  favs.forEach((f,i)=>{
-    const li = document.createElement("li");
-    li.textContent = `${i+1}. ${f.title || "Story"} (${f.level||"?"})`;
-    ul.appendChild(li);
-  });
-}
-
-// ===== Init =====
-(function init(){
-  // nav
-  els.nav.forEach(a=>{
-    a.addEventListener("click", (e)=>{ e.preventDefault(); switchView(a.dataset.view); });
-  });
-  switchView("create");
-
-  // create
-  if (els.btnGen) els.btnGen.addEventListener("click", handleRead);
-  if (els.btnMakeText) els.btnMakeText.addEventListener("click", handleMakeText);
-  if (els.btnDownload) els.btnDownload.addEventListener("click", downloadTxt);
-  if (els.speed) els.speed.value = DEFAULT_SPEED;
-
-  // connect
-  if (els.csave) els.csave.addEventListener("click", saveProfile);
-})();
