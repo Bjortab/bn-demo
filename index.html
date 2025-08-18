@@ -1,104 +1,62 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Blush Narratives</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlushNarratives Demo</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">Blush <span>Narratives</span></div>
-    <nav>
-      <a href="#" data-view="create" class="active">Skapa & lyssna</a>
-      <a href="#" data-view="status">Status</a>
-      <a href="#" data-view="connect">BlushConnect</a>
-    </nav>
-  </header>
+  <div class="container">
+    <h1>BlushNarratives</h1>
 
-  <main id="view-create" class="view active">
-    <section class="panel">
-      <h1>Skapa & lyssna</h1>
+    <!-- Inputfält -->
+    <label for="idea">Din idé:</label>
+    <textarea id="idea" placeholder="Skriv en kort idé till berättelsen..."></textarea>
 
-      <div class="grid">
-        <label class="field">
-          <span>Längd</span>
-          <select id="length">
-            <option value="3">3 min</option>
-            <option value="5" selected>5 min</option>
-            <option value="8">8 min</option>
-          </select>
-          <small>≈ 170 ord/min → upp till ca <span id="words">850</span> ord.</small>
-        </label>
+    <div class="controls">
+      <label for="length">Längd:</label>
+      <select id="length">
+        <option value="kort">Kort</option>
+        <option value="medel">Medel</option>
+        <option value="lång">Lång</option>
+      </select>
 
-        <fieldset class="field">
-          <legend>Snusk-nivå</legend>
-          <div class="levels" id="levels">
-            <label><input type="radio" name="level" value="1" checked> 1</label>
-            <label><input type="radio" name="level" value="2"> 2</label>
-            <label><input type="radio" name="level" value="3"> 3</label>
-            <label><input type="radio" name="level" value="4"> 4</label>
-            <label><input type="radio" name="level" value="5"> 5</label>
-          </div>
-          <small id="levelHint">Nivå 1 – romantiskt/antydande.</small>
-        </fieldset>
+      <label for="level">Nivå:</label>
+      <select id="level">
+        <option value="1">1 – Oskyldig</option>
+        <option value="2">2 – Lätt</option>
+        <option value="3">3 – Mellan</option>
+        <option value="4">4 – Het</option>
+        <option value="5">5 – Explicit</option>
+      </select>
 
-        <label class="field">
-          <span>Röst</span>
-          <select id="voice">
-            <option value="alloy">Alloy (neutral)</option>
-            <option value="verse">Verse (mjuk)</option>
-            <option value="aria">Aria (varm)</option>
-            <option value="storm">Storm (mörk)</option>
-          </select>
-          <small>OpenAI TTS test-röster.</small>
-        </label>
+      <label for="voice">Röst:</label>
+      <select id="voice">
+        <option value="alloy">Alloy</option>
+        <option value="aria">Aria</option>
+        <option value="verse">Verse</option>
+      </select>
 
-        <label class="field">
-          <span>Hastighet</span>
-          <select id="rate">
-            <option value="1.0" selected>1.00×</option>
-            <option value="1.1">1.10×</option>
-            <option value="1.25">1.25×</option>
-          </select>
-          <small>Finjustera uppläsningen.</small>
-        </label>
-      </div>
+      <label for="speed">Hastighet:</label>
+      <select id="speed">
+        <option value="1.0" selected>1.0x</option>
+        <option value="0.9">0.9x</option>
+        <option value="1.1">1.1x</option>
+      </select>
+    </div>
 
-      <label class="field">
-        <span>Din idé</span>
-        <textarea id="idea" rows="4" placeholder="Kort beskrivning (t.ex. ”första mötet i hissen…”)"></textarea>
-      </label>
+    <!-- Knapp -->
+    <button id="generateBtn">Skapa & läs</button>
+    <button id="downloadTxtBtn" disabled>Ladda ner text</button>
 
-      <div class="actions">
-        <button id="btnMake" class="primary">Skapa & läs</button>
-        <button id="btnDownload" disabled>Ladda ner .txt</button>
-        <span id="status" class="status"></span>
-      </div>
+    <!-- Story -->
+    <div id="storyText" class="story"></div>
 
-      <div class="playerbox">
-        <audio id="player" controls preload="none"></audio>
-      </div>
+    <!-- Ljudspelare -->
+    <audio id="audioPlayer" controls></audio>
+  </div>
 
-      <h3>Berättelsetext</h3>
-      <textarea id="story" class="story" rows="10" readonly></textarea>
-    </section>
-  </main>
-
-  <main id="view-status" class="view">
-    <section class="panel">
-      <h1>Status</h1>
-      <pre id="health">Kontrollerar…</pre>
-    </section>
-  </main>
-
-  <main id="view-connect" class="view">
-    <section class="panel">
-      <h1>BlushConnect</h1>
-      <p>Kommer snart.</p>
-    </section>
-  </main>
-
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
