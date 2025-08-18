@@ -1,94 +1,132 @@
-// app.js – frontend
+// === Frontend som matchar Cloudflare Pages Functions ===
+// Endpoints: /api/generate (JSON) och /api/tts (audio/mpeg)
 
+const API_BASE = `${location.origin}/api`;
+
+// ---- DOM refs
 const els = {
-  length: document.getElementById("length"),
-  level: document.getElementById("level"),
-  voice: document.getElementById("voice"),
-  speed: document.getElementById("speed"),
-  idea: document.getElementById("idea"),
-  btn: document.getElementById("generateBtn"),
-  btnDl: document.getElementById("downloadTxtBtn"),
-  player: document.getElementById("audioPlayer"),
-  story: document.getElementById("storyText"),
+  idea: document.getElementById('idea'),
+  length: document.getElementById('length'),
+  levelGrp: document.getElementById('levelGrp'),
+  levelHelp: document.getElementById('levelHelp'),
+  voice: document.getElementById('voice'),
+  speed: document.getElementById('speed'),
+  btnGen: document.getElementById('generateBtn'),
+  btnDl: document.getElementById('downloadTxtBtn'),
+  status: document.getElementById('status'),
+  story: document.getElementById('storyText'),
+  player: document.getElementById('audioPlayer'),
 };
 
-const AVOID_KEY = "bn_avoid_phrases_v1";
-function getAvoid() {
-  try { return JSON.parse(localStorage.getItem(AVOID_KEY) || "[]"); }
-  catch { return []; }
+// ---- state
+let currentLevel = 1;
+let currentText = "";
+
+// Hjälptexter per nivå
+const LEVEL_HELP = {
+  1: "Nivå 1 – romantiskt och antydande.",
+  2: "Nivå 2 – mild med varm stämning.",
+  3: "Nivå 3 – sensuellt och tydligare beskrivningar.",
+  4: "Nivå 4 – hett och direkt språk.",
+  5: "Nivå 5 – mest explicit (alltid samtycke; inga minderåriga)."
+};
+
+// Markera nivåknapp + hjälpfält
+function selectLevel(n){
+  currentLevel = n;
+  document.querySelectorAll('.lvl').forEach(b=>{
+    b.classList.toggle('active', Number(b.dataset.lvl)===n);
+  });
+  els.levelHelp.textContent = LEVEL_HELP[n] || "";
 }
-function pushAvoid(phrases) {
-  const cur = getAvoid();
-  const next = [...phrases, ...cur].slice(0, 40);
-  localStorage.setItem(AVOID_KEY, JSON.stringify(next));
+els.levelGrp.addEventListener('click', (e)=>{
+  const b = e.target.closest('.lvl'); if(!b) return;
+  selectLevel(Number(b.dataset.lvl));
+});
+// startvärde
+selectLevel(1);
+
+// UI status
+function setStatus(msg, type=""){
+  els.status.textContent = msg || "";
+  els.status.className = `status ${type}`;
 }
 
-els.btn.addEventListener("click", async () => {
-  const payload = {
-    length: els.length.value,
-    level: els.level.value,
-    idea: els.idea.value,
-    avoid: getAvoid()
-  };
-
-  els.btn.disabled = true;
-  els.btn.textContent = "Skapar...";
-  els.story.textContent = "";
-  els.btnDl.disabled = true;
-  els.player.removeAttribute("src");
-
-  try {
-    // 1) Skapa text
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify(payload)
+// fetch med timeout
+async function postJSON(path, body, timeoutMs=60000){
+  const ctrl = new AbortController();
+  const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try{
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
     });
-    const js = await res.json();
-    if (!res.ok || !js.ok) throw new Error(js.error || "generate_failed");
+    return res;
+  } finally { clearTimeout(t); }
+}
 
-    const story = js.story || "";
-    els.story.textContent = story;
+// huvudflöde: skapa text + TTS
+els.btnGen.addEventListener('click', async ()=>{
+  const idea = (els.idea.value || "").trim();
+  if(!idea){ setStatus("Skriv en idé först.", "err"); return; }
 
-    // Ladda ner .txt
-    els.btnDl.disabled = false;
-    els.btnDl.onclick = () => {
-      const blob = new Blob([story], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "berattelse.txt"; a.click();
-      URL.revokeObjectURL(url);
-    };
+  const minutes = (els.length.value==="lång") ? 10 : (els.length.value==="medel" ? 8 : 5);
+  const voice = els.voice.value;
+  const speed = parseFloat(els.speed.value);
 
-    // Undvik upprepningar nästa gång
-    if (Array.isArray(js.used_phrases)) pushAvoid(js.used_phrases);
+  els.btnGen.disabled = true; setStatus("Skapar text…"); els.story.textContent = "";
+  els.player.src = ""; els.btnDl.disabled = true;
 
-    // 2) TTS
-    const ttsRes = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type":"application/json" },
-      body: JSON.stringify({
-        text: story,
-        voice: els.voice.value,
-      })
-    });
-    if (!ttsRes.ok) throw new Error("tts_failed");
-
-    const audioBlob = await ttsRes.blob();
-    const url = URL.createObjectURL(audioBlob);
-    els.player.src = url;
-
-    // VIKTIGT: använd vald hastighet i uppspelningen
-    const rate = parseFloat(els.speed.value) || 1.0;
-    els.player.playbackRate = rate;
-
-    await els.player.play();
-
-  } catch (e) {
-    alert("Fel: " + e.message);
-    console.error(e);
-  } finally {
-    els.btn.disabled = false;
-    els.btn.textContent = "Skapa & läs";
+  // 1) Text
+  let text = "";
+  try{
+    const res = await postJSON('/generate', { idea, level: currentLevel, minutes });
+    if(!res.ok){
+      const errText = await res.text();
+      throw new Error(`Textgenerering misslyckades (${res.status}). ${errText}`);
+    }
+    const data = await res.json();
+    if(!data || !data.ok || !data.text) throw new Error("Tomt svar från text-API.");
+    text = data.text;
+    currentText = text;
+  }catch(err){
+    setStatus(err.message, "err");
+    els.btnGen.disabled = false;
+    return;
   }
+
+  // 2) Visa text
+  els.story.textContent = currentText;
+  els.btnDl.disabled = false;
+  setStatus("Skapar röst…");
+
+  // 3) TTS
+  try{
+    const res = await postJSON('/tts', { text: currentText, voice, speed });
+    if(!res.ok){
+      const errText = await res.text();
+      throw new Error(`TTS misslyckades (${res.status}). ${errText}`);
+    }
+    const buf = await res.arrayBuffer();
+    const blob = new Blob([buf], { type: 'audio/mpeg' });
+    const url = URL.createObjectURL(blob);
+    els.player.src = url;
+    els.player.play().catch(()=>{ /* användaren kan behöva klicka play */ });
+    setStatus("Klar ✓", "ok");
+  }catch(err){
+    setStatus(err.message, "err");
+  }finally{
+    els.btnGen.disabled = false;
+  }
+});
+
+// Ladda ner text
+els.btnDl.addEventListener('click', ()=>{
+  if(!currentText) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([currentText], { type:'text/plain;charset=utf-8' }));
+  a.download = 'berattelse.txt';
+  a.click();
 });
