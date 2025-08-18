@@ -1,69 +1,57 @@
-// /functions/api/tts.js
-// OpenAI TTS → MP3 (mobilvänligt). CORS + timeout.
-export default {
-  async fetch(request, env) {
-    try {
-      if (request.method !== "POST") {
-        return new Response("Method Not Allowed", {
-          status: 405,
-          headers: { "access-control-allow-origin": "*" }
-        });
-      }
-      if (!env.OPENAI_API_KEY) {
-        return new Response(JSON.stringify({ error:"Missing OPENAI_API_KEY" }), {
-          status: 500,
-          headers: { "content-type":"application/json", "access-control-allow-origin":"*" }
-        });
-      }
-      const { text, voice="verse", speed=1.0 } = await request.json();
-      const input = String(text||"").trim();
-      if (!input) {
-        return new Response(JSON.stringify({ error:"empty_text" }), {
-          status: 400, headers: { "content-type":"application/json", "access-control-allow-origin":"*" }
-        });
-      }
+export async function onRequestPost({ request, env }) {
+  const { text = '', voice = 'alloy', rate = 1.0 } = await readJson(request);
+  if (!text || String(text).trim().length < 2) return j({ ok:false, error:'empty_text' }, 400);
+  const key = env.OPENAI_API_KEY;
+  if (!key) return j({ ok:false, error:'missing_openai_key' }, 500);
 
-      const ctrl = new AbortController();
-      const timer = setTimeout(()=>ctrl.abort("timeout"), 65000);
-
-      const res = await fetch("https://api.openai.com/v1/audio/speech", {
-        method:"POST",
-        headers:{
-          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini-tts",
-          voice,
-          input,
-          speed: Math.max(0.5, Math.min(2.0, Number(speed)||1.0)),
-          format: "mp3"
-        }),
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-
-      if (!res.ok) {
-        const err = await res.text().catch(()=> "");
-        return new Response(JSON.stringify({ error:"tts_failed", detail: err }), {
-          status: 502, headers: { "content-type":"application/json", "access-control-allow-origin":"*" }
-        });
-      }
-
-      return new Response(res.body, {
-        status: 200,
-        headers: {
-          "content-type": "audio/mpeg",
-          "cache-control": "no-store",
-          "access-control-allow-origin": "*"
-        }
-      });
-
-    } catch (err) {
-      const msg = (err?.message||"").includes("timeout") ? "timeout" : (err?.message||"server_error");
-      return new Response(JSON.stringify({ error:"server_error", detail: msg }), {
-        status: 500, headers: { "content-type":"application/json", "access-control-allow-origin":"*" }
-      });
+  try{
+    const r = await fetch('https://api.openai.com/v1/audio/speech', {
+      method:'POST',
+      headers:{ 'content-type':'application/json','authorization':`Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice,
+        input: text,
+        format: 'mp3'
+      })
+    });
+    if(!r.ok){
+      const txt = await r.text().catch(()=>r.statusText);
+      return j({ ok:false, error:`openai_tts_${r.status}`, detail: txt }, 502);
     }
+    const mp3 = await r.arrayBuffer();
+    return new Response(mp3, {
+      status:200,
+      headers:{
+        'content-type':'audio/mpeg',
+        'cache-control':'no-store',
+        'access-control-allow-origin':'*'
+      }
+    });
+  }catch(err){
+    return j({ ok:false, error:'server_error', detail:String(err?.message||err) }, 500);
   }
-};
+}
+
+export function onRequestOptions() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'access-control-allow-origin':'*',
+      'access-control-allow-methods':'POST,OPTIONS',
+      'access-control-allow-headers':'*'
+    }
+  });
+}
+
+async function readJson(req){ try { return await req.json(); } catch { return {}; } }
+function j(obj, status=200){
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers:{
+      'content-type':'application/json; charset=utf-8',
+      'cache-control':'no-store',
+      'access-control-allow-origin':'*'
+    }
+  });
+}
