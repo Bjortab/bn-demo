@@ -1,7 +1,3 @@
-// /functions/api/generate.js
-// Kumulativ ordlista: nivå N använder level1..levelN
-// Tvingar ett visst antal ord/fraser från AKTUELL nivå så att 1–5 känns tydligt olika.
-
 const WORDS_PER_MIN = 170;
 
 export async function onRequestPost({ request, env }) {
@@ -13,16 +9,13 @@ export async function onRequestPost({ request, env }) {
     const min = clamp(Number(minutes)||5, 1, 15);
     const lvl = clamp(Number(level)||2, 1, 5);
 
-    // Längdmål
     const targetWords = Math.round(min * WORDS_PER_MIN);
     const minWords = Math.max(220, Math.round(targetWords * 0.9));
     const maxWords = Math.round(targetWords * 1.15);
 
-    // Hämta lexicon.json från origin (rotmappen)
     const origin = new URL(request.url).origin;
     const lex = await loadLexicon(`${origin}/lexicon.json?v=${Date.now()}`);
 
-    // Normalisera nivålistor
     const L = {
       1: norm(lex.level1),
       2: norm(lex.level2),
@@ -31,7 +24,6 @@ export async function onRequestPost({ request, env }) {
       5: norm(lex.level5)
     };
 
-    // Bygg kumulativ lista (nivå N = 1..N)
     const LCUM = {
       1: L[1],
       2: dedup([...L[1], ...L[2]]),
@@ -56,11 +48,9 @@ export async function onRequestPost({ request, env }) {
       "Avtoning: lugn efterklang och en tydlig slutmening."
     ];
 
-    // Hur många “måste-vad”?
-    const mustPrimary = (lvl>=5 ? 6 : lvl>=4 ? 4 : 2);    // från AKTUELL nivå
-    const mustTotal   = mustPrimary + (lvl>=3 ? 2 : 0);   // totalt från kumulativa (ger variation utan att späda ut nivån)
+    const mustPrimary = (lvl>=5 ? 6 : lvl>=4 ? 4 : 2);
+    const mustTotal   = mustPrimary + (lvl>=3 ? 2 : 0);
 
-    // Bygg system + user-prompt
     const system = [
       "Du skriver på SVENSKA kortnoveller för uppläsning.",
       "Alltid vuxna & samtycke. Ingen skada, inget tvång, inga minderåriga.",
@@ -78,7 +68,6 @@ export async function onRequestPost({ request, env }) {
       "Skriv sammanhängande prosa (ingen lista/rubriker) och avsluta med en tydlig, lugn slutmening."
     ].join("\n");
 
-    // ——— Anropa modell (Mistral om finns, annars OpenAI)
     const useMistral = Boolean(env.MISTRAL_API_KEY);
     let text = "", used = useMistral ? "mistral" : "openai";
 
@@ -121,7 +110,6 @@ export async function onRequestPost({ request, env }) {
 
     if (!text) return j({ ok:false, error:"empty_text" }, 502);
 
-    // ——— Efterkontroll: räkna träffar
     const primary = L[lvl] || [];
     const combo   = LCUM[lvl] || [];
     const lower   = combo.filter(w => !primary.includes(w));
@@ -129,7 +117,6 @@ export async function onRequestPost({ request, env }) {
     const lowerCount = countHits(text, lower);
     const primCount  = countHits(text, primary);
 
-    // Säkerställ minimi
     if (primCount < mustPrimary) {
       const missingPrim = missingFrom(text, primary, mustPrimary - primCount);
       if (missingPrim.length) {
@@ -146,7 +133,6 @@ export async function onRequestPost({ request, env }) {
       }
     }
 
-    // Trimma längd + säkerställ slut
     const words = text.split(/\s+/);
     if (words.length > (maxWords + 40)) text = words.slice(0, maxWords).join(" ");
     if (!/[.!?…]$/.test(text)) text += ".";
@@ -159,7 +145,7 @@ export async function onRequestPost({ request, env }) {
   }
 }
 
-// ——— helpers ———
+// helpers
 function j(obj, status=200){
   return new Response(JSON.stringify(obj), {
     status,
@@ -203,10 +189,8 @@ function missingFrom(text, list, need){
   }
   return miss;
 }
-
 function levelBlock(title, items){
   if (!items || !items.length) return `${title}: (ingen lista tillhandahållen)`;
-  // Korta listor i prompten för att undvika överladdning: caps 60 uttryck
   const cap = items.slice(0, 60);
   return `${title}: ${cap.join(", ")}`;
 }
