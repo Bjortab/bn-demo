@@ -1,162 +1,120 @@
-// /functions/api/generate.js
-export default {
-  async fetch(request, env) {
-    try {
-      if (request.method !== "POST") {
-        return new Response(JSON.stringify({ ok:false, error:"method_not_allowed" }), { status: 405 });
-      }
-      const { idea = "", level = 2, minutes = 5 } = await request.json();
-      const min = Math.max(1, Math.min(15, Number(minutes) || 5));
-      const lvl = Math.max(1, Math.min(5, Number(level) || 2));
-      if (!idea.trim()) {
-        return new Response(JSON.stringify({ ok:false, error:"empty_idea" }), { status: 400 });
-      }
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blush Narratives</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="card top">
+    <div class="brand"><strong>Blush</strong><span> Narratives</span></div>
+    <nav>
+      <a href="#" data-view="create" class="active">Skapa</a>
+      <a href="#" data-view="connect">BlushConnect</a>
+    </nav>
+  </header>
 
-      const targetWords = Math.round(min * 170);
-      const minWords = Math.max(220, Math.round(targetWords * 0.9));
-      const maxWords = Math.round(targetWords * 1.1);
+  <main class="card" id="view-create">
+    <h2>Skapa & lyssna</h2>
 
-      // Lexikon per nivå – tvingas in med “MUST USE ...”
-      const soft = [
-        "varsamma händer", "lätta beröringar", "blickar som dröjer sig kvar", "hjärtat slog snabbare",
-        "värme som växte", "läppar som möttes", "mjuk viskning", "pirrande förväntan", "kroppar nära", "andas i takt"
-      ];
-      const warm = [
-        "hetare kyssar", "händer som utforskar", "läppar mot halsen", "fingrar som letar sig in under tyget",
-        "ryggradens båge", "värme mellan låren", "hon drog honom närmare", "han pressade henne mjukt mot väggen",
-        "bett på underläppen", "dov längtan i rösten"
-      ];
-      const hot4 = [
-        "hennes våta sköte", "han trängde långsamt in", "vågor av njutning", "höfter som möter",
-        "tungan som cirklar", "fingrar som glider i rytm", "han tog tag om hennes höfter",
-        "hennes stön blev djupare", "de tappade andan", "hon red honom i stadig takt"
-      ];
-      const explicit5 = [
-        "hans kuk gled in och ut", "hennes fitta pulserade runt honom", "han slickade hennes klitoris",
-        "hon red honom hårt", "han kom djupare för varje tag", "hon var blöt och hungrig",
-        "han grep hennes höfter och ökade tempot", "hans tunga lekte med hennes klitoris",
-        "hon kom i vågor", "han fyllde henne med sin hetta"
-      ];
+    <div class="row">
+      <div class="field">
+        <label for="length">Längd</label>
+        <select id="length">
+          <option value="3">3 min</option>
+          <option value="5" selected>5 min</option>
+          <option value="8">8 min</option>
+        </select>
+      </div>
 
-      const mustUseByLevel = {
-        1: soft,
-        2: warm,
-        3: warm.concat(soft),
-        4: hot4,
-        5: explicit5.concat(hot4) // 5 = MER explicit + 4:ans intensitet
-      };
+      <div class="field">
+        <label>Snusk-nivå</label>
+        <div class="row compact">
+          <label><input type="radio" name="spice" value="1" checked> 1</label>
+          <label><input type="radio" name="spice" value="2"> 2</label>
+          <label><input type="radio" name="spice" value="3"> 3</label>
+          <label><input type="radio" name="spice" value="4"> 4</label>
+          <label><input type="radio" name="spice" value="5"> 5</label>
+        </div>
+      </div>
 
-      // Säkra att #5 verkligen använder grova termer
-      const mustCount = (lvl === 5) ? 6 : (lvl === 4 ? 4 : 2);
+      <div class="field">
+        <label for="voice">Röst</label>
+        <select id="voice">
+          <option value="verse" selected>Verse (mjuk)</option>
+          <option value="alloy">Alloy (neutral)</option>
+          <option value="aria">Aria</option>
+          <option value="shimmer">Shimmer</option>
+          <option value="sage">Sage</option>
+          <option value="nova">Nova</option>
+        </select>
+      </div>
 
-      const rules = `
-Du skriver på svenska. Alltid vuxna och samtycke. Ingen våldtäkt, inga minderåriga, ingen incest.
-Skapa EN sammanhängande erotisk novell i jag-form eller tredje person (håll dig konsekvent).
-Mål: ${minWords}-${maxWords} ord. INGA cliffhangers.
-Avsluta alltid med 1 kort avrundande mening som markerar efterspel/andhämtning.
+      <div class="field">
+        <label for="speed">Hastighet</label>
+        <select id="speed">
+          <option value="1.0" selected>1.00x</option>
+          <option value="1.1">1.10x</option>
+          <option value="1.25">1.25x</option>
+          <option value="1.4">1.40x</option>
+        </select>
+      </div>
+    </div>
 
-NIVÅ: ${lvl}
-— Ton:
-1 = romantiskt antydande,
-2 = varm, suggestiv,
-3 = tydligt sensuell,
-4 = explicit sensuell med fylliga kroppsliga beskrivningar,
-5 = mest explicit språk (icke-grafiskt våldsamt — men grova ord tillåtna).
+    <div class="field">
+      <label for="idea">Din idé</label>
+      <textarea id="idea" placeholder="Kort beskrivning (t.ex. 'första mötet i hissen…')" rows="5"></textarea>
+    </div>
 
-Du MÅSTE använda minst ${mustCount} element från listan nedan för nivå ${lvl}, vävda naturligt i texten (inte som lista):
-${mustUseByLevel[lvl].map(s => `- ${s}`).join("\n")}
-      `.trim();
+    <div class="row actions">
+      <button id="btnRead" class="primary">Skapa & läs</button>
+      <button id="btnMakeText" class="ghost">Skapa text</button>
+      <button id="btnDownload" class="ghost">Ladda ner .txt</button>
+      <span id="status" class="status"></span>
+    </div>
 
-      const user = `
-Idé/ingång: ${idea}
+    <audio id="player" controls preload="none"></audio>
 
-Skriv berättelsen nu. Håll tempus/person konsekvent. Undvik upprepningar.
-      `.trim();
+    <div class="field">
+      <h3>Berättelsetext</h3>
+      <textarea id="story" class="story" rows="10" placeholder="Texten dyker upp här…"></textarea>
+    </div>
+  </main>
 
-      // Kör Mistral om nyckel finns (friare innehåll)
-      const timeoutMs = 60000;
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
+  <!-- BlushConnect (v1: lokal profil + sparat) -->
+  <section class="card hidden" id="view-connect">
+    <h2>BlushConnect</h2>
+    <p class="muted">Första version: spara din profil lokalt. Senare kopplar vi på server-konton och matchning.</p>
 
-      let text = "";
-      if (env.MISTRAL_API_KEY) {
-        const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "mistral-large-latest",
-            temperature: (lvl >= 4 ? 0.9 : 0.75),
-            max_tokens: 2048,
-            messages: [
-              { role: "system", content: rules },
-              { role: "user", content: user }
-            ]
-          }),
-          signal: ctrl.signal
-        });
-        clearTimeout(t);
+    <div class="row">
+      <div class="field">
+        <label for="cnick">Visningsnamn</label>
+        <input id="cnick" placeholder="Ditt alias" />
+      </div>
+      <div class="field">
+        <label for="clevel">Favoritnivå</label>
+        <select id="clevel">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+      </div>
+    </div>
 
-        if (!r.ok) {
-          const e = await r.text().catch(() => "");
-          return new Response(JSON.stringify({ ok:false, error:"mistral_error", detail:e }), { status: 500 });
-        }
-        const data = await r.json();
-        text = (data.choices?.[0]?.message?.content || "").trim();
-      } else if (env.OPENAI_API_KEY) {
-        // Fallback till OpenAI om Mistral saknas (kan ibland mildra explicita nivåer)
-        const r = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            temperature: (lvl >= 4 ? 0.95 : 0.8),
-            max_tokens: 2048,
-            messages: [
-              { role: "system", content: rules },
-              { role: "user", content: user }
-            ]
-          }),
-          signal: ctrl.signal
-        });
-        clearTimeout(t);
+    <div class="row actions">
+      <button id="csave" class="primary">Spara profil</button>
+      <span id="cstatus" class="status"></span>
+    </div>
 
-        if (!r.ok) {
-          const e = await r.text().catch(() => "");
-          return new Response(JSON.stringify({ ok:false, error:"openai_error", detail:e }), { status: 500 });
-        }
-        const data = await r.json();
-        text = (data.choices?.[0]?.message?.content || "").trim();
-      } else {
-        return new Response(JSON.stringify({ ok:false, error:"no_model_key" }), { status: 500 });
-      }
+    <h3>Favoriter (lokalt)</h3>
+    <ul id="cfavs" class="list"></ul>
+  </section>
 
-      if (!text) {
-        return new Response(JSON.stringify({ ok:false, error:"empty_text" }), { status: 502 });
-      }
+  <footer class="card foot">© Blush Narratives</footer>
 
-      // Sista säkerhet: trimma till ungefärligt längdspann & lägg mjuk avslutning om saknas punkt på slutet
-      const words = text.split(/\s+/);
-      if (words.length > (maxWords + 50)) {
-        text = words.slice(0, maxWords).join(" ");
-        if (!/[.!?…]$/.test(text)) text += ".";
-        text += " När andetagen lugnat sig låg de kvar en stund och log.";
-      } else if (words.length < minWords && !/[.!?…]$/.test(text)) {
-        text += " De drog ett djupt, delat andetag och lät stillheten bära dem i mål.";
-      }
-
-      return new Response(JSON.stringify({ ok:true, text }), {
-        headers: { "Content-Type": "application/json" }
-      });
-
-    } catch (err) {
-      const msg = (err?.message || "").toLowerCase().includes("abort") ? "timeout" : err?.message || "server_error";
-      return new Response(JSON.stringify({ ok:false, error:"server_error", detail: msg }), { status: 500 });
-    }
-  }
-};
+  <script src="./app.js"></script>
+</body>
+</html>
