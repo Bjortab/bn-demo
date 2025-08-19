@@ -1,7 +1,7 @@
 /* ========= Helpers & State ========= */
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
-const KEY = 'bn-16';
+const KEY = 'bn-17';
 
 const store = {
   load(){ try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return{}} },
@@ -10,219 +10,92 @@ const store = {
 const S = () => store.load();
 const setS = p => { const s={...S(),...p}; store.save(s); return s; };
 
+/* ========= Config ========= */
+const RAW_LIVE = !!window.RAW_MODE_LIVE;
+const OPENAI_KEY   = window.OPENAI_API_KEY || "";
+const OPENAI_MODEL = window.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
+const OPENAI_VOICES = window.OPENAI_VOICES || ["alloy","verse","luna"];
+
 /* ========= Data ========= */
 const stories  = window.BN_STORIES || [];
 const chipsCfg = window.BN_CHIPS   || [];
 const people   = window.BN_PEOPLE  || [];
-const RAW_LIVE = !!window.RAW_MODE_LIVE;
 
-/* ========= Spice (nivå 1–5) =========
-   Viktigt: håller text icke-grafisk i demon. Level 5 använder mer direkt,
-   varm och intensiv ton – men undviker explicita beskrivningar. */
-function spice(text, lvl){
+/* ========= UI refs ========= */
+const audioEl = $('#audio');
+
+/* ========= Intensitet (1–5) ========= */
+function intensify(text, lvl){
+  // Gör nivåerna tydliga. 5 = varm/direkt, men ej grafiskt i demon.
   switch(+lvl){
-    case 1: return text
-      .replace(/sensuell/gi,"mjuk")
-      .replace(/beröring/gi,"varsam beröring");
-    case 2: return text
-      .replace(/beröring/gi,"varm beröring som dröjer kvar")
-      .replace(/långsam/gi,"långsam och närvarande");
-    case 3: return text
-      .replace(/beröring/gi,"känslig beröring som guidar")
-      .replace(/blickkontakt/gi,"långsam blickkontakt");
-    case 4: return text
-      .replace(/beröring/gi,"intensiv, fokuserad beröring där ni styr med ord");
+    case 1: return text.replace(/sensuell/gi,"mjuk").replace(/beröring/gi,"varsam beröring");
+    case 2: return text.replace(/beröring/gi,"varm beröring som dröjer kvar").replace(/långsam/gi,"långsam och närvarande");
+    case 3: return text.replace(/beröring/gi,"känslig beröring som guidar").replace(/blickkontakt/gi,"långsam blickkontakt");
+    case 4: return text.replace(/beröring/gi,"intensiv, fokuserad beröring där ni styr med ord");
     case 5:
       return RAW_LIVE
         ? text
            .replace(/långsam/gi,"medveten och laddad")
-           .replace(/beröring/gi,"het, nära beröring som bjuder in mer") // fortfarande icke-grafiskt
-           .replace(/guidning/gi,"tydliga, varma ord som leder")
-        : text
-           .replace(/sensuell/gi,"tydlig")
-           .replace(/beröring/gi,"intensiv beröring");
+           .replace(/beröring/gi,"het, nära beröring som bjuder in mer")
+           .replace(/ord/gi,"ord som leder tydligt och varmt")
+        : text.replace(/sensuell/gi,"tydlig").replace(/beröring/gi,"intensiv beröring");
     default: return text;
   }
 }
 
-/* ========= Röster (sv-SE default, visa-alla toggle) ========= */
+/* ========= Röster ========= */
 const synth = window.speechSynthesis;
 let showAllVoices = false;
 
-function getVoices(){
+function hasOpenAI(){ return !!OPENAI_KEY; }
+function getBrowserVoices(){
   const v = synth?.getVoices?.() || [];
   if(showAllVoices) return v;
   const sv = v.filter(x=>/sv-SE/i.test(x.lang));
-  return sv.length? sv : v; // fallback om device saknar sv-SE
+  return sv.length? sv : v;
 }
-
 function populateVoices(){
   const sel = $('#voiceSel'); if(!sel) return;
-  const voices = getVoices();
   sel.innerHTML = '';
-  const auto = document.createElement('option');
-  auto.value = ''; auto.textContent = 'Auto (sv-SE om möjligt)';
-  sel.appendChild(auto);
-  voices.forEach(v=>{
-    const o = document.createElement('option');
-    o.value = v.name; o.textContent = `${v.name} (${v.lang})`;
-    sel.appendChild(o);
-  });
+
+  if(hasOpenAI()){
+    // Visa OpenAI-favoriter + “Auto”
+    const auto = document.createElement('option'); auto.value=''; auto.textContent='Auto (OpenAI standard)';
+    sel.appendChild(auto);
+    OPENAI_VOICES.forEach(name=>{
+      const o = document.createElement('option'); o.value = name; o.textContent = name;
+      sel.appendChild(o);
+    });
+  }else{
+    const voices = getBrowserVoices();
+    const auto = document.createElement('option'); auto.value=''; auto.textContent='Auto (sv-SE om möjligt)';
+    sel.appendChild(auto);
+    voices.forEach(v=>{
+      const o = document.createElement('option'); o.value=v.name; o.textContent=`${v.name} (${v.lang})`; sel.appendChild(o);
+    });
+  }
+
+  // spara/återställ
   const saved = S().voice; if(saved) sel.value = saved;
   sel.onchange = ()=> { setS({voice: sel.value}); updateNowInfo(); };
+
   // spegla i Connect
   const vs2 = $('#voiceSel2'); if(vs2){ vs2.innerHTML = sel.innerHTML; vs2.value = sel.value; vs2.onchange = ()=>{ sel.value=vs2.value; sel.onchange(); }; }
 }
-
 if('speechSynthesis' in window){
-  window.speechSynthesis.onvoiceschanged = populateVoices;
-  setTimeout(populateVoices, 200);
+  window.speechSynthesis.onvoiceschanged = ()=>{ if(!hasOpenAI()) populateVoices(); };
+  setTimeout(()=>{ if(!hasOpenAI()) populateVoices(); }, 200);
 }
-
-$('#toggleVoices')?.addEventListener('click', (e)=>{
+$('#toggleVoices')?.addEventListener('click',(e)=>{
+  if(hasOpenAI()){ alert("OpenAI-läge visar redan en kuraterad röstlista."); return; }
   showAllVoices = !showAllVoices;
   e.currentTarget.textContent = showAllVoices? 'Visa färre röster' : 'Visa alla röster';
   e.currentTarget.setAttribute('aria-expanded', String(showAllVoices));
   populateVoices();
 });
 
-/* ========= Player / TTS ========= */
-let current = null, progressTimer = null;
-
-function pickVoice(){
-  const selVal = $('#voiceSel')?.value || $('#voiceSel2')?.value || '';
-  const voices = getVoices();
-  let v = voices.find(x => x.name === selVal) || voices.find(x=>/sv-SE/i.test(x.lang)) || voices[0];
-  return v || null;
-}
-
-function textFor(a){
-  const lvl = +(S().level||1);
-  if(!a){
-    // kort prov
-    return (lvl<5)
-      ? "Ett kort röstprov. Andas mjukt, landa i kroppen och låt orden vara varma och tydliga."
-      : "Ett direkt röstprov. Andningen är djup, orden hänger kvar och tempot är medvetet och nära.";
-  }
-  return `${spice(a.title,lvl)}. ${spice(a.ingress,lvl)}. ${spice(a.body,lvl)}`;
-}
-
-function speak(text){
-  if(!('speechSynthesis' in window)){ alert('Din webbläsare saknar talsyntes.'); return; }
-  try{ synth.cancel(); }catch{}
-  const u = new SpeechSynthesisUtterance(text);
-  const v = pickVoice();
-  if(v) u.voice = v;
-  u.lang = (v && v.lang) || 'sv-SE';
-  u.rate = +($('#rate').value||1);
-  u.onstart = startProgress;
-  u.onend   = ()=> stopProgress(true);
-  synth.speak(u);
-  updateNowInfo();
-}
-
-function play(a){
-  current = a || current;
-  if(!current){
-    $('#nowTitle').textContent = `Röstprov för nivå ${S().level||1}`;
-    $('#nowSub').textContent   = 'Sensuell provläsning';
-    speak(textFor(null)); return;
-  }
-  $('#nowTitle').textContent = spice(current.title, +(S().level||1));
-  $('#nowSub').textContent   = 'Spelar upp...';
-  speak(textFor(current));
-}
-
-function updateNowInfo(){
-  const name = $('#voiceSel')?.selectedOptions?.[0]?.textContent?.split('(')[0]?.trim() || 'Auto';
-  const rate = (+$('#rate').value||1).toFixed(2).replace(/\.00$/,'');
-  $('#nowInfo').textContent = `Röst: ${name} • Tempo: ${rate}x`;
-}
-
-$('#btnPlay').addEventListener('click',()=>{
-  if(synth.speaking && !synth.paused){ synth.pause(); stopProgress(); $('#btnPlay').textContent='Lyssna nu'; $('#nowSub').textContent='Pausad'; }
-  else if(synth.paused){ synth.resume(); startProgress(); $('#btnPlay').textContent='⏸'; $('#nowSub').textContent='Spelar'; }
-  else { play(current); $('#btnPlay').textContent='⏸'; }
-});
-
-$('#rate').addEventListener('input', ()=>{
-  setS({rate:+$('#rate').value}); updateNowInfo();
-  if(synth.speaking){ synth.cancel(); play(current); }
-});
-
-$('#back10').addEventListener('click', ()=> speak("Spolar tillbaka tio sekunder."));
-$('#fwd10').addEventListener('click',  ()=> speak("Spolar fram tio sekunder."));
-$('#voicePreview').addEventListener('click', ()=> speak("Detta är en kort provläsning med din valda röst."));
-
-function startProgress(){
-  $('#btnPlay').textContent='⏸'; $('#seek').value = 0;
-  clearInterval(progressTimer);
-  progressTimer = setInterval(()=>{
-    const val = Math.min(100, (+$('#seek').value + 0.9));
-    $('#seek').value = val;
-  }, 200);
-}
-function stopProgress(done=false){
-  clearInterval(progressTimer); progressTimer=null;
-  if(done){ $('#seek').value = 0; $('#btnPlay').textContent='Lyssna nu'; $('#nowSub').textContent='Klar'; }
-}
-
-/* ========= Nivåer (1–5) & chips ========= */
-function setLevel(l){
-  setS({level:+l});
-  $$('#createBox .lvl').forEach(b=> b.setAttribute('aria-pressed', b.dataset.lvl===String(l)));
-  $('#nowTitle').textContent = `Röstprov för nivå ${l}`;
-  render();
-}
-$$('#createBox .lvl').forEach(b=> b.addEventListener('click',()=> setLevel(b.dataset.lvl)));
-
-function renderChips(){
-  const wrap = $('#chips'); wrap.innerHTML='';
-  chipsCfg.forEach(c=>{
-    const el = document.createElement('button');
-    el.className = 'chip'; el.textContent = c.label; el.dataset.id = c.id;
-    el.onclick = ()=>{
-      el.classList.toggle('active');
-      const ids = $$('#chips .chip.active').map(x=>x.dataset.id);
-      setS({chips: ids}); render();
-    };
-    wrap.appendChild(el);
-  });
-  (S().chips||[]).forEach(id => $(`#chips .chip[data-id="${id}"]`)?.classList.add('active'));
-}
-
-/* ========= Flöde ========= */
-const tpl = $('#card-tpl');
-function card(el, a, lvl){
-  const c = tpl.content.cloneNode(true);
-  c.querySelector('.title').textContent   = spice(a.title, lvl);
-  c.querySelector('.ingress').textContent = spice(a.ingress, lvl);
-  c.querySelector('.save').addEventListener('click',()=>save(a));
-  c.querySelector('.open').addEventListener('click',()=>play(a));
-  el.appendChild(c);
-}
-function render(){
-  const lvl = +(S().level||1);
-  const activeChips = S().chips||[];
-  const byLvl   = a => a.lvl?.includes(lvl);
-  const byChips = a => activeChips.length ? (a.cats||[]).some(x=>activeChips.includes(x)) : true;
-
-  $('#feed').innerHTML  = '';
-  $('#saved').innerHTML = '';
-  stories.filter(byLvl).filter(byChips).forEach(a=> card($('#feed'), a, lvl));
-  (S().saved||[]).forEach(a=> card($('#saved'), a, lvl));
-  renderPeople();
-}
-function save(a){
-  const s = S(); s.saved = s.saved||[];
-  if(!s.saved.find(x=>x.id===a.id)) s.saved.push(a);
-  setS({saved:s.saved}); render();
-}
-
-/* ========= Generator (180–300 ord, nivåstyrt) =========
-   OBS: Håller språket icke-grafiskt i demot. Level 5 är direktare/hetare men
-   utan explicita beskrivningar. */
-function generateStory(prompt, lvl){
+/* ========= Generator ========= */
+function generateText(prompt, lvl, minutes){
   const base = (prompt||'En kväll som börjar stilla och blir varmare.').trim();
   const intro = [
     `Det börjar enkelt: ${base}.`, 
@@ -230,153 +103,104 @@ function generateStory(prompt, lvl){
     `Stämningen är tydlig från start: ${base.toLowerCase()}.`
   ][Math.floor(Math.random()*3)];
 
-  const body1 = `Andningen blir långsammare. Blicken stannar lite längre. Orden blir mjuka och tydliga, som om varje mening vill framkalla mer närvaro.`;
-  const body2 = (lvl<3)
+  const p2 = `Andningen blir långsammare. Blicken stannar längre. Orden blir mjuka och tydliga — varje mening kallar fram mer närvaro.`;
+  const p3 = (lvl<3)
     ? `Beröringen är varsam och omtänksam. Ni beskriver vad som känns tryggt, och det som känns bra får stanna kvar.`
     : (lvl<5)
       ? `Beröringen håller kvar värmen. Ni guidar med ord, testar tempo, pausar när kroppen säger till och fortsätter när det känns rätt.`
-      : `Allt blir mer direkt och hett. Orden är varmare och mer uttrycksfulla, ni bjuder in mer – ändå lyhört och kontrollerat.`;
+      : `Allt blir mer direkt och hett. Orden är varmare och mer uttrycksfulla, ni bjuder in mer — lyhört och kontrollerat.`;
 
-  const body3 = `Ni läser av små signaler: ett andetag, en rörelse, ett hummande svar. Värmen är där, ni styr tillsammans, inget forceras.`;
-  const body4 = (lvl<3)
-    ? `När stunden känns full, rundar ni av försiktigt. Ni håller om varandra, tackar för det som delades och låter lugnet bli kvar.`
+  const p4 = `Ni läser små signaler: ett andetag, en rörelse, ett hummande svar. Värmen är där, ni styr tillsammans.`;
+  const p5 = (lvl<3)
+    ? `När stunden känns full, rundar ni av försiktigt. Ni håller om varandra och låter lugnet bli kvar.`
     : (lvl<5)
-      ? `När stunden mognar, saktar ni ned. Några sista ord – “mer här”, “precis så” – och en mjuk eftervård där ni landar tillsammans.`
-      : `När intensiteten klingar av, stannar ni upp. Ni ger eftervård: vatten, hud mot hud, ett leende som säger allt.`;
+      ? `När stunden mognar, saktar ni ned. Några sista ord — “mer här”, “precis så” — och en mjuk eftervård där ni landar.`
+      : `När intensiteten klingar av, stannar ni upp. Eftervård: vatten, hud mot hud, ett leende som säger allt.`;
 
-  const out = [intro, body1, body2, body3, body4].join(' ');
-  // sträva efter 180–300 ord (enkel utfyllnad om för kort)
-  const target = 200;
-  if(out.split(/\s+/).length < target){
-    const pad = ` Ni tar tid på er. Varje liten paus blir en inbjudan. Det är tryggt, varmt och tydligt – bara ni två och det ni vill.`;
-    return out + pad;
+  // Bastext
+  let text = [intro,p2,p3,p4,p5].join(' ');
+  text = intensify(text, lvl);
+
+  // Önska längd (ca ord/min ~150 * tempo 1.0). Vi gör enkel uppfyllnad.
+  const targetWords = {1: 180, 3: 450, 5: 750}[minutes] || 180;
+  while(text.split(/\s+/).length < targetWords){
+    text += ' ' + intensify(`Ta tid på er. Låt pauserna bjuda in. Säg vad du vill ha. Andas tillsammans och håll kvar när det känns rätt.`, lvl);
   }
-  return out;
+  return text;
 }
 
-/* “Skapa” – generera + läs upp + visa modal + spara */
-$('#btnGenerate').addEventListener('click', ()=>{
-  const lvl = +(S().level||1);
-  const text = generateStory($('#prompt').value, lvl);
-  $('#mTitle').textContent   = `Skapad berättelse — nivå ${lvl}`;
-  $('#mIngress').textContent = 'Texten läses upp automatiskt.';
-  $('#mBody').textContent    = text;
-  $('#genStatus').textContent = 'Skapad!';
-  setTimeout(()=> $('#genStatus').textContent='', 1200);
-  speak(text);
-  $('#modal').showModal();
+/* ========= TTS play (OpenAI eller Web Speech) ========= */
+let current = null, progressTimer = null;
 
-  // möjliggör sparning av genererade
-  $('#mSave').onclick = ()=>{
-    const item = { id: 'gen-'+Date.now(), lvl:[lvl], cats:['sensuellt'], title:`Egen berättelse (nivå ${lvl})`, ingress:text.slice(0,120)+'…', body:text };
-    save(item);
-    $('#modal').close();
+function updateNowInfo(){
+  const name = $('#voiceSel')?.value || 'Auto';
+  const rate = (+$('#rate').value||1).toFixed(2).replace(/\.00$/,'');
+  $('#nowInfo').textContent = `Röst: ${name || 'Auto'} • Tempo: ${rate}x`;
+}
+
+async function speakOpenAI(text){
+  // Skapar riktig mp3 via OpenAI TTS och spelar i <audio>
+  const voice = $('#voiceSel').value || OPENAI_VOICES[0] || 'alloy';
+  const rate  = +($('#rate').value||1);
+  const body = {
+    model: OPENAI_MODEL,
+    voice,
+    input: text
   };
-});
-$('#closeModal').addEventListener('click', ()=> $('#modal').close());
-
-/* ========= Connect ========= */
-$('#openConnect').addEventListener('click',()=> openConnect());
-$('#closeConnect').addEventListener('click',()=> closeConnect());
-function openConnect(){ $('#connect').classList.add('active'); document.body.classList.add('no-scroll'); syncConnectUI(); }
-function closeConnect(){ $('#connect').classList.remove('active'); document.body.classList.remove('no-scroll'); }
-
-function syncConnectUI(){
-  const s = S();
-  // nivåknappar
-  $$('#connect .lvl[data-lvl]').forEach(b=>{
-    b.classList.toggle('active', +b.dataset.lvl===+(s.level||1));
-    b.onclick = ()=> setLevel(b.dataset.lvl);
+  // fetch
+  const res = await fetch("https://api.openai.com/v1/audio/speech",{
+    method:"POST",
+    headers:{
+      "Authorization":`Bearer ${OPENAI_KEY}`,
+      "Content-Type":"application/json"
+    },
+    body: JSON.stringify(body)
   });
-  // röst spegling
-  const vs2 = $('#voiceSel2');
-  if(vs2){ vs2.innerHTML = $('#voiceSel').innerHTML; vs2.value = $('#voiceSel').value; vs2.onchange = ()=>{ $('#voiceSel').value=vs2.value; $('#voiceSel').onchange(); }; }
-  // privacy
-  $('#privacyChk').checked = !!s.privacy;
-  $('#privacyChk').onchange = e => { setS({privacy:e.target.checked}); };
-  // profil
-  $('#alias').value = s.alias || '';
-  $('#age').value   = s.age || '';
-  $('#about').value = s.about || '';
-  $('#alias').oninput = e=> setS({alias:e.target.value});
-  $('#age').oninput   = e=> setS({age:+e.target.value||''});
-  $('#about').oninput = e=> setS({about:e.target.value});
-
-  // filter
-  $$('#connect .lvl[data-filter]').forEach(b=>{
-    b.classList.toggle('active', (s.filterLevel||'')===+b.dataset.filter);
-    b.onclick = ()=>{
-      const newVal = (+b.dataset.filter===s.filterLevel) ? '' : +b.dataset.filter;
-      setS({filterLevel:newVal}); renderPeople();
-    };
-  });
-  $('#prefFilter').value = s.prefFilter || '';
-  $('#prefFilter').onchange = e=> { setS({prefFilter:e.target.value}); renderPeople(); };
+  if(!res.ok){ throw new Error("OpenAI TTS misslyckades"); }
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  audioEl.src = url;
+  audioEl.playbackRate = rate;
+  await audioEl.play();
+  startAudioProgress();
 }
 
-/* Dela/importera preferenser */
-$('#shareLink').addEventListener('click',()=>{
-  const s = S();
-  const payload = btoa(unescape(encodeURIComponent(JSON.stringify({
-    level: s.level||1, voice: $('#voiceSel').value || '', privacy: !!s.privacy,
-    alias: s.alias||'', age: s.age||'', about: s.about||''
-  }))));
-  const base = location.origin + location.pathname;
-  const link = `${base}#bn=${payload}`;
-  (navigator.clipboard?.writeText(link)||Promise.reject()).then(()=>{
-    $('#shareStatus').textContent='Länk kopierad!'; setTimeout(()=> $('#shareStatus').textContent='', 1200);
-  }).catch(()=>{ prompt('Kopiera länken:', link); });
-});
-(function importPrefsFromHash(){
-  const m = location.hash.match(/#bn=([^&]+)/);
-  if(!m) return;
-  try{
-    const obj = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-    const merged = { ...S(), level: obj.level||1, privacy: !!obj.privacy, alias: obj.alias||'', age: obj.age||'', about: obj.about||'' };
-    store.save(merged);
-    setTimeout(()=> { if(obj.voice){ $('#voiceSel').value = obj.voice; setS({voice:obj.voice}); updateNowInfo(); } }, 300);
-    history.replaceState(null, document.title, location.pathname + location.search);
-  }catch{}
-})();
-
-/* ========= People ========= */
-function renderPeople(){
-  const wrap = $('#people'); if(!wrap) return;
-  wrap.innerHTML='';
-  const s = S();
-  const list = people
-    .filter(p => !s.filterLevel || p.level===s.filterLevel)
-    .filter(p => !s.prefFilter || p.pref===s.prefFilter);
-  const tpl = $('#person-tpl');
-  list.forEach(p=>{
-    const t = tpl.content.cloneNode(true);
-    t.querySelector('.p-alias').textContent = p.alias;
-    t.querySelector('.p-about').textContent = p.about;
-    t.querySelector('.p-badge').textContent = `Nivå ${p.level} • ${p.pref}`;
-    t.querySelector('.p-meta').textContent = 'Lokal demo — ingen riktig matchning ännu.';
-    wrap.appendChild(t);
-  });
+function startAudioProgress(){
+  clearInterval(progressTimer);
+  progressTimer = setInterval(()=>{
+    if(!audioEl.duration || isNaN(audioEl.duration)) return;
+    const pct = (audioEl.currentTime / audioEl.duration) * 100;
+    $('#seek').value = Math.min(100, Math.max(0, pct));
+  }, 200);
+}
+function stopAudioProgress(done=false){
+  clearInterval(progressTimer); progressTimer=null;
+  if(done){ $('#seek').value = 0; $('#btnPlay').textContent='Lyssna nu'; $('#nowSub').textContent='Klar'; }
 }
 
-/* ========= Bottom-nav ========= */
-$('.bottom [data-tab="home"]').addEventListener('click', e=> setActiveTab(e.target));
-$('.bottom [data-tab="feed"]').addEventListener('click', e=> { setActiveTab(e.target); window.scrollTo({top: $('#feed').offsetTop-60, behavior:'smooth'}); });
-$('.bottom [data-tab="saved"]').addEventListener('click', e=> { setActiveTab(e.target); window.scrollTo({top: $('#saved').offsetTop-60, behavior:'smooth'}); });
-function setActiveTab(btn){ $$('.bottom button').forEach(b=> b.classList.toggle('active', b===btn)); }
+// Web Speech fallback (estimerad progress)
+function pickBrowserVoice(){
+  const selVal = $('#voiceSel')?.value || '';
+  const voices = getBrowserVoices();
+  return voices.find(x=>x.name===selVal) || voices.find(x=>/sv-SE/i.test(x.lang)) || voices[0] || null;
+}
+function speakBrowser(text){
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickBrowserVoice();
+  if(v) u.voice = v;
+  u.lang = (v && v.lang) || 'sv-SE';
+  u.rate = +($('#rate').value||1);
+  u.onstart = startEstimatedProgress.bind(null, text, u.rate);
+  u.onend   = ()=> stopEstimatedProgress(true);
+  synth.speak(u);
+  updateNowInfo();
+}
 
-/* ========= Panic ========= */
-$('#panic').addEventListener('click', e=>{
-  e.preventDefault(); try{ (window.speechSynthesis||{}).cancel?.(); }catch{}
-  window.location.href='https://www.google.se';
-});
-
-/* ========= Init ========= */
-(function init(){
-  const s = S();
-  renderChips();
-  setLevel(s.level||1);
-  if(s.privacy){ $('#privacy').setAttribute('aria-pressed','true'); }
-  const savedRate = +s.rate || 1; $('#rate').value = savedRate; updateNowInfo();
-  populateVoices();
-  render();
-})();
+function startEstimatedProgress(text, rate){
+  $('#btnPlay').textContent='⏸'; $('#nowSub').textContent='Spelar upp...';
+  $('#seek').value = 0;
+  clearInterval(progressTimer);
+  const words = text.split(/\s+/).length;
+  const wpm   = 150 * rate; // ungefär
+  const total = (
