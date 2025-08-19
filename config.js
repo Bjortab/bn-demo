@@ -1,6 +1,6 @@
 // === OpenAI TTS (riktiga röster) ===
 // Fyll i din API-nyckel för att använda OpenAI TTS. Lämna tom för fallback (Web Speech).
-window.OPENAI_API_KEY   = ""; // <-- sätt "sk-..." här för demo (lägg inte publikt i längden)
+window.OPENAI_API_KEY   = "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"; // <-- sätt "sk-..." här för demo (lägg inte publikt i längden)
 window.OPENAI_TTS_MODEL = "gpt-4o-mini-tts"; // modellnamn för TTS
 // Tillgängliga röster (exempel): alloy, verse, luna, coral, sage
 window.OPENAI_VOICES    = ["alloy","verse","luna"];
