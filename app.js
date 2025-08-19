@@ -1,62 +1,128 @@
-// app.js – frontend-logik för BN
-
 document.addEventListener("DOMContentLoaded", () => {
-  const ideaInput = document.getElementById("idea");
-  const levelSelect = document.getElementById("level");
-  const minutesSelect = document.getElementById("minutes");
-  const createBtn = document.getElementById("createBtn");
-  const output = document.getElementById("output");
+  // Safe helpers
+  const $  = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 
-  if (!ideaInput || !levelSelect || !minutesSelect || !createBtn || !output) {
-    console.error("❌ app.js: Kunde inte hitta alla UI-element.");
-    return;
+  // Elements (may be null on broken HTML – guard!)
+  const openConnectBtn = $("#openConnect");
+  const closeConnectBtn = $("#closeConnect");
+  const connectPanel   = $("#connect");
+  const levelRow       = $("#levelRow");
+  const playPauseBtn   = $("#playPause");
+  const seekBar        = $("#seek");
+  const storyTitle     = $("#storyTitle");
+  const storyDesc      = $("#storyDesc");
+  const generateBtn    = $("#generateStory");
+  const customPrompt   = $("#customPrompt");
+  const storyDialog    = $("#storyDialog");
+  const dialogTitle    = $("#dialogTitle");
+  const dialogContent  = $("#dialogContent");
+  const closeDialogBtn = $("#closeDialog");
+
+  // ==== Enable clicks even if something overlays ====
+  // (CSS already disables pointer-events när connect är stängd)
+
+  // ==== BlushConnect ====
+  openConnectBtn?.addEventListener("click", () => {
+    connectPanel?.setAttribute("aria-hidden","false");
+  });
+  closeConnectBtn?.addEventListener("click", () => {
+    connectPanel?.setAttribute("aria-hidden","true");
+  });
+
+  // ==== Levels (visuellt + spar i sessionStorage) ====
+  levelRow?.addEventListener("click", e=>{
+    const b = e.target.closest(".lvl");
+    if(!b) return;
+    $$(".lvl").forEach(x=>x.setAttribute("aria-pressed","false"));
+    b.setAttribute("aria-pressed","true");
+    sessionStorage.setItem("bn-level", b.dataset.level);
+  });
+
+  // ==== TTS (Web Speech) ====
+  const synth = window.speechSynthesis;
+  let speaking = false, progressTimer = null;
+  const sampleText = "Det här är ett kort, sensuellt röstprov. Luta dig tillbaka, andas mjukt, och låt orden landa långsamt.";
+
+  function pickVoice(){
+    try{
+      const v = synth?.getVoices?.() || [];
+      const sv = v.filter(x=>/sv-SE/i.test(x.lang));
+      return sv[0] || v.find(x=>/sv/i.test(x.lang)) || v[0] || null;
+    }catch{return null}
   }
 
-  createBtn.addEventListener("click", async () => {
-    const idea = ideaInput.value.trim();
-    const level = parseInt(levelSelect.value, 10);
-    const minutes = parseInt(minutesSelect.value, 10);
+  function speak(text){
+    if(!("speechSynthesis" in window)){ alert("Din webbläsare saknar talsyntes."); return; }
+    try{ synth.cancel(); }catch{}
+    const u = new SpeechSynthesisUtterance(text);
+    const v = pickVoice();
+    if(v) u.voice = v;
+    u.lang  = (v && v.lang) || "sv-SE";
+    u.rate  = 0.95;
+    u.pitch = 1.05;
+    u.onstart = startProgress;
+    u.onend   = ()=> stopProgress(true);
+    synth.speak(u);
+  }
 
-    if (!idea) {
-      output.textContent = "⚠️ Ange en idé först!";
-      return;
-    }
+  function startProgress(){
+    speaking = true;
+    if(playPauseBtn) playPauseBtn.textContent = "⏸";
+    if(seekBar) seekBar.value = 0;
+    clearInterval(progressTimer);
+    progressTimer = setInterval(()=>{
+      if(!seekBar) return;
+      const val = Math.min(100, (+seekBar.value + 2));
+      seekBar.value = val;
+    }, 200);
+  }
+  function stopProgress(done=false){
+    speaking = false;
+    clearInterval(progressTimer); progressTimer=null;
+    if(playPauseBtn) playPauseBtn.textContent = "▶";
+    if(done && seekBar) seekBar.value = 0;
+  }
 
-    // Läs senaste “used”-fraser från localStorage
-    const lastUsed = JSON.parse(localStorage.getItem("bn_used") || "[]");
-
-    output.textContent = "⏳ Skapar berättelse...";
-
-    try {
-      const resp = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          idea,
-          level,
-          minutes,
-          exclude: lastUsed.slice(-60) // undvik senaste ~60 fraserna
-        })
-      });
-
-      const data = await resp.json();
-
-      if (!resp.ok || !data.ok) {
-        console.error("❌ API error:", data);
-        output.textContent = "Fel från servern. Se konsolen.";
-        return;
-      }
-
-      // Visa texten
-      output.textContent = data.text;
-
-      // Uppdatera anti-upprepningslistan
-      const merged = Array.from(new Set(lastUsed.concat(data.used || [])));
-      localStorage.setItem("bn_used", JSON.stringify(merged.slice(-200)));
-
-    } catch (err) {
-      console.error("❌ Fetch error:", err);
-      output.textContent = "Nätverksfel. Försök igen.";
+  playPauseBtn?.addEventListener("click", ()=>{
+    if(speaking && !synth?.paused){
+      synth.pause?.(); if(playPauseBtn) playPauseBtn.textContent="▶";
+    }else if(synth?.paused){
+      synth.resume?.(); if(playPauseBtn) playPauseBtn.textContent="⏸";
+    }else{
+      if(storyTitle) storyTitle.textContent = "Röstprov spelas";
+      if(storyDesc)  storyDesc.textContent  = "Sensuell provläsning via talsyntes";
+      speak(sampleText);
     }
   });
+
+  seekBar?.addEventListener("input", ()=>{/* visual only */});
+
+  // ==== Create (placeholder) ====
+  generateBtn?.addEventListener("click", ()=>{
+    const prompt = (customPrompt?.value||"").trim();
+    if(!prompt) return alert("Skriv något först!");
+    if(dialogTitle)   dialogTitle.textContent   = "Din berättelse";
+    if(dialogContent) dialogContent.textContent = `Skapad utifrån: "${prompt}"\n\n(Här kommer AI-text och uppläsning i nästa steg)`;
+    storyDialog?.showModal?.();
+  });
+  closeDialogBtn?.addEventListener("click", ()=> storyDialog?.close?.());
+
+  // ==== Demo-personer ====
+  const peopleList = $("#peopleList");
+  [{name:"Luna",level:"3"},{name:"Adrian",level:"5"},{name:"Mika",level:"1"}]
+  .forEach(p=>{
+    if(!peopleList) return;
+    const div = document.createElement("div");
+    div.className="person";
+    div.innerHTML = `<div class="p-top"><span class="p-alias">${p.name}</span><span class="p-badge">Nivå ${p.level}</span></div>`;
+    peopleList.appendChild(div);
+  });
+
+  // Trigger röstlista-initialisering i iOS
+  if("speechSynthesis" in window){
+    const touchVoices = ()=> synth.getVoices();
+    window.speechSynthesis.onvoiceschanged = touchVoices;
+    setTimeout(touchVoices, 200);
+  }
 });
