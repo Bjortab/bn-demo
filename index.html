@@ -3,38 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Blush Narratives — v1.5</title>
+  <title>Blush Narratives — v1.6</title>
   <meta name="theme-color" content="#0f1117" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=15" />
-  <script defer src="config.js?v=15"></script>
-  <script defer src="app.js?v=15"></script>
+  <link rel="stylesheet" href="styles.css?v=16" />
+  <script defer src="config.js?v=16"></script>
+  <script defer src="app.js?v=16"></script>
 </head>
 <body>
-  <!-- Top -->
+  <!-- Topbar -->
   <header class="top">
     <div class="row">
       <div class="logo">Blush Narratives</div>
       <div class="right">
-        <button id="privacy" class="ghost" aria-pressed="false">Privat</button>
+        <button id="privacy" class="ghost" aria-pressed="false" title="Integritetsläge">Privat</button>
         <button id="openConnect" class="ghost">BlushConnect</button>
-      </div>
-    </div>
-
-    <!-- Onboarding -->
-    <div class="onboarding">
-      <div class="levels" role="group" aria-label="Erotiknivå">
-        <button class="lvl" data-lvl="1" aria-pressed="true">1</button>
-        <button class="lvl" data-lvl="2">2</button>
-        <button class="lvl" data-lvl="3">3</button>
-        <button class="lvl" data-lvl="4">4</button>
-        <button class="lvl" data-lvl="5">5</button>
-      </div>
-
-      <div class="voicepick">
-        <label for="voiceSel" class="sr">Röst</label>
-        <select id="voiceSel" aria-label="Välj röst"></select>
-        <button id="voicePreview" class="ghost sm">Lyssna</button>
       </div>
     </div>
   </header>
@@ -42,11 +25,12 @@
   <!-- Spelare -->
   <section class="player card" id="player">
     <div class="meta">
-      <div id="nowTitle">Ingen berättelse vald</div>
-      <div id="nowSub" class="muted">Tryck på ett kort nedan för att börja lyssna</div>
+      <div id="nowTitle">Röstprov för nivå 1</div>
+      <div id="nowSub" class="muted">Tryck “Lyssna nu” för en kort provläsning.</div>
+      <div id="nowInfo" class="muted small">Röst: Auto • Tempo: 1.0x</div>
     </div>
     <div class="controls">
-      <button id="btnPlay" aria-label="Spela/Pausa">▶</button>
+      <button id="btnPlay" aria-label="Lyssna nu">Lyssna nu</button>
       <input id="seek" type="range" min="0" max="100" value="0" />
       <div class="more">
         <label class="sr" for="rate">Tempo</label>
@@ -59,6 +43,34 @@
     </div>
   </section>
 
+  <!-- Skapa egen berättelse (med nivåer & röst) -->
+  <section id="createBox" class="container card">
+    <h3>Skapa egen berättelse</h3>
+
+    <div class="create-controls">
+      <div class="levels" role="group" aria-label="Erotiknivå">
+        <button class="lvl" data-lvl="1" aria-pressed="true">1</button>
+        <button class="lvl" data-lvl="2">2</button>
+        <button class="lvl" data-lvl="3">3</button>
+        <button class="lvl" data-lvl="4">4</button>
+        <button class="lvl" data-lvl="5">5</button>
+      </div>
+
+      <div class="voicepick">
+        <label for="voiceSel" class="sr">Röst</label>
+        <select id="voiceSel" aria-label="Välj röst"></select>
+        <button id="voicePreview" class="ghost sm">Lyssna</button>
+        <button id="toggleVoices" class="link sm" aria-expanded="false">Visa alla röster</button>
+      </div>
+    </div>
+
+    <textarea id="prompt" rows="3" placeholder="Skriv stämning/plats/roll: ex. 'En förtrolig kväll i köket, lågt ljus och nära röster…'"></textarea>
+    <div class="create-row">
+      <button id="btnGenerate" class="btn">Generera</button>
+      <span id="genStatus" class="status"></span>
+    </div>
+  </section>
+
   <!-- Chips -->
   <section class="filters container">
     <div class="chips" id="chips"></div>
@@ -67,25 +79,15 @@
   <!-- Flöde -->
   <main class="container">
     <h2>Rekommenderat</h2>
-    <div id="feed" class="grid"></div>
+    <div id="feed" class="grid compact"></div>
 
     <h2>Sparat</h2>
-    <div id="saved" class="grid"></div>
-
-    <section class="cta-create card" id="createBox">
-      <h3>Skapa egen berättelse (Premium)</h3>
-      <p class="muted">Skriv några rader om stämning, plats och roll – vi genererar och läser upp direkt.</p>
-      <div class="create-row">
-        <textarea id="prompt" rows="3" placeholder="Ex: Mjuk kväll på balkongen, långsam rytm, varma ord…"></textarea>
-        <button id="btnGenerate" class="btn">Generera</button>
-      </div>
-      <p id="premiumGate" class="muted small">Premium krävs – låst i demot.</p>
-    </section>
+    <div id="saved" class="grid compact"></div>
   </main>
 
   <!-- BlushConnect -->
   <aside id="connect" aria-hidden="true">
-    <div class="sheet">
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="BlushConnect">
       <header class="sheet-head">
         <h3>BlushConnect</h3>
         <button id="closeConnect" class="ghost sm">Stäng</button>
@@ -94,7 +96,7 @@
         <div class="card">
           <h4>Din profil (lokal)</h4>
           <div class="pref two">
-            <label>Alias <input id="alias" placeholder="Ditt namn/alias" /></label>
+            <label>Alias <input id="alias" placeholder="Ditt alias" /></label>
             <label>Ålder <input id="age" type="number" min="18" max="99" /></label>
           </div>
           <div class="pref">
@@ -116,12 +118,12 @@
             </label>
           </div>
           <div class="pref">
-            <label class="toggle"><input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker)</span></label>
+            <label class="toggle"><input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker i historik)</span></label>
           </div>
         </div>
 
         <div class="card">
-          <h4>Utforska andra (lokalt demo)</h4>
+          <h4>Utforska andra (demo)</h4>
           <div class="pref two">
             <label>Nivåfilter
               <div class="levels small">
@@ -146,7 +148,7 @@
 
         <div class="card">
           <h4>Dela preferenser</h4>
-          <p class="muted small">Skapa en länk med din nivå/röst/privat-läge. Öppnas på andra enheten → importeras lokalt.</p>
+          <p class="muted small">Skapa en länk med din nivå/röst/privat-läge. Öppnas på annan enhet → importeras lokalt.</p>
           <button id="shareLink" class="btn sm">Kopiera delningslänk</button>
           <span id="shareStatus" class="status"></span>
         </div>
@@ -164,7 +166,7 @@
 
   <!-- Mallar -->
   <template id="card-tpl">
-    <article class="card">
+    <article class="card mini">
       <h4 class="title"></h4>
       <p class="ingress"></p>
       <div class="actions">
@@ -190,7 +192,10 @@
       <h3 id="mTitle"></h3>
       <p id="mIngress" class="muted"></p>
       <div id="mBody"></div>
-      <button id="closeModal" class="ghost">Stäng</button>
+      <div class="actions right">
+        <button id="mSave" class="btn sm">Spara</button>
+        <button id="closeModal" class="ghost">Stäng</button>
+      </div>
     </article>
   </dialog>
 </body>
