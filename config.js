@@ -1,7 +1,12 @@
-// Demo-flagga: styr hur “rå” nivå 5 får vara.
-// I demot håller vi språket icke-grafiskt. När ni kopplar backend för live
-// kan ni sätta RAW_MODE_LIVE=true och generera från server.
-window.RAW_MODE_LIVE = true; // <- du bad om "så rå som live": här tillåter vi mer direkt ton (men ej grafiska ord i demot).
+// === OpenAI TTS (riktiga röster) ===
+// Fyll i din API-nyckel för att använda OpenAI TTS. Lämna tom för fallback (Web Speech).
+window.OPENAI_API_KEY   = ""; // <-- sätt "sk-..." här för demo (lägg inte publikt i längden)
+window.OPENAI_TTS_MODEL = "gpt-4o-mini-tts"; // modellnamn för TTS
+// Tillgängliga röster (exempel): alloy, verse, luna, coral, sage
+window.OPENAI_VOICES    = ["alloy","verse","luna"];
+
+// “Live-rå” nivå 5 i demon (utan grafiska ord)
+window.RAW_MODE_LIVE = true;
 
 // Chips
 window.BN_CHIPS = [
