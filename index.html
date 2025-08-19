@@ -3,12 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Blush Narratives — v1.6</title>
+  <title>Blush Narratives — v1.7</title>
   <meta name="theme-color" content="#0f1117" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=16" />
-  <script defer src="config.js?v=16"></script>
-  <script defer src="app.js?v=16"></script>
+  <link rel="stylesheet" href="styles.css?v=17" />
+  <script defer src="config.js?v=17"></script>
+  <script defer src="app.js?v=17"></script>
 </head>
 <body>
   <!-- Topbar -->
@@ -41,9 +40,11 @@
         </div>
       </div>
     </div>
+    <!-- Riktig audio när OpenAI används -->
+    <audio id="audio" preload="auto"></audio>
   </section>
 
-  <!-- Skapa egen berättelse (med nivåer & röst) -->
+  <!-- Skapa egen berättelse -->
   <section id="createBox" class="container card">
     <h3>Skapa egen berättelse</h3>
 
@@ -61,6 +62,12 @@
         <select id="voiceSel" aria-label="Välj röst"></select>
         <button id="voicePreview" class="ghost sm">Lyssna</button>
         <button id="toggleVoices" class="link sm" aria-expanded="false">Visa alla röster</button>
+      </div>
+
+      <div class="lengths" role="group" aria-label="Längd">
+        <label><input type="radio" name="len" value="1" checked /> 1 min</label>
+        <label><input type="radio" name="len" value="3" /> 3 min</label>
+        <label><input type="radio" name="len" value="5" /> 5 min</label>
       </div>
     </div>
 
@@ -83,10 +90,14 @@
 
     <h2>Sparat</h2>
     <div id="saved" class="grid compact"></div>
+
+    <!-- Spacer så menyn inte skymmer sista raden -->
+    <div style="height: 120px"></div>
   </main>
 
   <!-- BlushConnect -->
   <aside id="connect" aria-hidden="true">
+    <div class="backdrop" id="connectBackdrop"></div>
     <div class="sheet" role="dialog" aria-modal="true" aria-label="BlushConnect">
       <header class="sheet-head">
         <h3>BlushConnect</h3>
