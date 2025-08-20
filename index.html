@@ -3,11 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Blush Narratives — v1.7</title>
+  <title>Blush Narratives — v1.7 (build 19)</title>
   <meta name="theme-color" content="#0f1117" />
-  <link rel="stylesheet" href="styles.css?v=17" />
-  <script defer src="config.js?v=17"></script>
-  <script defer src="app.js?v=17"></script>
+  <link rel="stylesheet" href="styles.css?v=19" />
+  <script defer src="config.js?v=19"></script>
+  <script defer src="app.js?v=19"></script>
+
+  <!-- Manifest/SW avstängt i demo för att undvika cache-låsningar -->
+  <!--
+  <link rel="manifest" href="manifest.webmanifest">
+  <script> if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js'); } </script>
+  -->
 </head>
 <body>
   <!-- Topbar -->
@@ -40,7 +46,6 @@
         </div>
       </div>
     </div>
-    <!-- Riktig audio när OpenAI används -->
     <audio id="audio" preload="auto"></audio>
   </section>
 
@@ -49,6 +54,7 @@
     <h3>Skapa egen berättelse</h3>
 
     <div class="create-controls">
+      <!-- Nivåer 1–5 -->
       <div class="levels" role="group" aria-label="Erotiknivå">
         <button class="lvl" data-lvl="1" aria-pressed="true">1</button>
         <button class="lvl" data-lvl="2">2</button>
@@ -83,7 +89,7 @@
     <div class="chips" id="chips"></div>
   </section>
 
-  <!-- Flöde -->
+  <!-- Flöde + Sparat -->
   <main class="container">
     <h2>Rekommenderat</h2>
     <div id="feed" class="grid compact"></div>
@@ -91,7 +97,6 @@
     <h2>Sparat</h2>
     <div id="saved" class="grid compact"></div>
 
-    <!-- Spacer så menyn inte skymmer sista raden -->
     <div style="height: 120px"></div>
   </main>
 
@@ -130,6 +135,21 @@
           </div>
           <div class="pref">
             <label class="toggle"><input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker i historik)</span></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>API-nyckel (lokal)</h4>
+          <p class="muted small">Klistra in din OpenAI-nyckel här (sparas endast i denna enhet). Dela den inte.</p>
+          <div class="pref two">
+            <label>Nyckel
+              <input id="apiKeyInput" type="password" placeholder="sk-..." />
+            </label>
+            <div>
+              <button id="saveApiKey" class="btn sm">Spara lokalt</button>
+              <button id="clearApiKey" class="ghost sm">Rensa</button>
+              <span id="apiKeyStatus" class="status"></span>
+            </div>
           </div>
         </div>
 
