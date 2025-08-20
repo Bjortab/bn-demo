@@ -3,31 +3,57 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Blush Narratives — v1.7 (build 19)</title>
-  <meta name="theme-color" content="#0f1117" />
-  <link rel="stylesheet" href="styles.css?v=19" />
-  <script defer src="config.js?v=19"></script>
-  <script defer src="app.js?v=19"></script>
+  <title>Blush Narratives — v1.7 (build 21, no-cache)</title>
 
-  <!-- Manifest/SW avstängt i demo för att undvika cache-låsningar -->
+  <!-- Klient-side no-cache hints (Safari lyder ofta dessa) -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma"        content="no-cache" />
+  <meta http-equiv="Expires"       content="0" />
+  <meta name="theme-color" content="#0f1117" />
+
+  <!-- Ladda CSS/JS med unik timestamp varje sidladdning -->
+  <script>
+    (function () {
+      const ts = Date.now();                    // unik query varje gång
+      const head = document.getElementsByTagName('head')[0];
+
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'styles.css?ts=' + ts;
+      head.appendChild(css);
+
+      // Lägg till config (om du har en fristående config.js – annars kan du ta bort detta)
+      const cfg = document.createElement('script');
+      cfg.defer = true;
+      cfg.src = 'config.js?ts=' + ts;
+      head.appendChild(cfg);
+
+      const app = document.createElement('script');
+      app.defer = true;
+      app.src = 'app.js?ts=' + ts;
+      head.appendChild(app);
+    })();
+  </script>
+
+  <!-- OBS: Manifest & SW avstängda i demon för att undvika cache-låsningar -->
   <!--
   <link rel="manifest" href="manifest.webmanifest">
   <script> if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js'); } </script>
   -->
 </head>
 <body>
-  <!-- Topbar -->
+  <!-- ======= UI markup (oförändrat från senaste bygg) ======= -->
+
   <header class="top">
     <div class="row">
       <div class="logo">Blush Narratives</div>
       <div class="right">
-        <button id="privacy" class="ghost" aria-pressed="false" title="Integritetsläge">Privat</button>
+        <button id="privacy" class="ghost" aria-pressed="false">Privat</button>
         <button id="openConnect" class="ghost">BlushConnect</button>
       </div>
     </div>
   </header>
 
-  <!-- Spelare -->
   <section class="player card" id="player">
     <div class="meta">
       <div id="nowTitle">Röstprov för nivå 1</div>
@@ -49,12 +75,9 @@
     <audio id="audio" preload="auto"></audio>
   </section>
 
-  <!-- Skapa egen berättelse -->
   <section id="createBox" class="container card">
     <h3>Skapa egen berättelse</h3>
-
     <div class="create-controls">
-      <!-- Nivåer 1–5 -->
       <div class="levels" role="group" aria-label="Erotiknivå">
         <button class="lvl" data-lvl="1" aria-pressed="true">1</button>
         <button class="lvl" data-lvl="2">2</button>
@@ -62,34 +85,29 @@
         <button class="lvl" data-lvl="4">4</button>
         <button class="lvl" data-lvl="5">5</button>
       </div>
-
       <div class="voicepick">
         <label for="voiceSel" class="sr">Röst</label>
         <select id="voiceSel" aria-label="Välj röst"></select>
         <button id="voicePreview" class="ghost sm">Lyssna</button>
         <button id="toggleVoices" class="link sm" aria-expanded="false">Visa alla röster</button>
       </div>
-
       <div class="lengths" role="group" aria-label="Längd">
         <label><input type="radio" name="len" value="1" checked /> 1 min</label>
         <label><input type="radio" name="len" value="3" /> 3 min</label>
         <label><input type="radio" name="len" value="5" /> 5 min</label>
       </div>
     </div>
-
-    <textarea id="prompt" rows="3" placeholder="Skriv stämning/plats/roll: ex. 'En förtrolig kväll i köket, lågt ljus och nära röster…'"></textarea>
+    <textarea id="prompt" rows="3" placeholder="Skriv stämning/plats/roll…"></textarea>
     <div class="create-row">
       <button id="btnGenerate" class="btn">Generera</button>
       <span id="genStatus" class="status"></span>
     </div>
   </section>
 
-  <!-- Chips -->
   <section class="filters container">
     <div class="chips" id="chips"></div>
   </section>
 
-  <!-- Flöde + Sparat -->
   <main class="container">
     <h2>Rekommenderat</h2>
     <div id="feed" class="grid compact"></div>
@@ -97,10 +115,9 @@
     <h2>Sparat</h2>
     <div id="saved" class="grid compact"></div>
 
-    <div style="height: 120px"></div>
+    <div style="height:120px"></div>
   </main>
 
-  <!-- BlushConnect -->
   <aside id="connect" aria-hidden="true">
     <div class="backdrop" id="connectBackdrop"></div>
     <div class="sheet" role="dialog" aria-modal="true" aria-label="BlushConnect">
@@ -133,18 +150,16 @@
               <select id="voiceSel2"></select>
             </label>
           </div>
-          <div class="pref">
-            <label class="toggle"><input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker i historik)</span></label>
-          </div>
+          <div class="pref"><label class="toggle">
+            <input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker i historik)</span>
+          </label></div>
         </div>
 
         <div class="card">
           <h4>API-nyckel (lokal)</h4>
-          <p class="muted small">Klistra in din OpenAI-nyckel här (sparas endast i denna enhet). Dela den inte.</p>
+          <p class="muted small">Klistra in din OpenAI-nyckel här (sparas endast i denna enhet).</p>
           <div class="pref two">
-            <label>Nyckel
-              <input id="apiKeyInput" type="password" placeholder="sk-..." />
-            </label>
+            <label>Nyckel <input id="apiKeyInput" type="password" placeholder="sk-..." /></label>
             <div>
               <button id="saveApiKey" class="btn sm">Spara lokalt</button>
               <button id="clearApiKey" class="ghost sm">Rensa</button>
@@ -179,7 +194,7 @@
 
         <div class="card">
           <h4>Dela preferenser</h4>
-          <p class="muted small">Skapa en länk med din nivå/röst/privat-läge. Öppnas på annan enhet → importeras lokalt.</p>
+          <p class="muted small">Skapa en länk med din nivå/röst/privat-läge.</p>
           <button id="shareLink" class="btn sm">Kopiera delningslänk</button>
           <span id="shareStatus" class="status"></span>
         </div>
@@ -187,7 +202,6 @@
     </div>
   </aside>
 
-  <!-- Bottennav -->
   <nav class="bottom">
     <button data-tab="home" class="active">Hem</button>
     <button data-tab="feed">Flöde</button>
@@ -195,7 +209,6 @@
     <button id="panic">Panik</button>
   </nav>
 
-  <!-- Mallar -->
   <template id="card-tpl">
     <article class="card mini">
       <h4 class="title"></h4>
@@ -209,10 +222,7 @@
 
   <template id="person-tpl">
     <article class="person">
-      <div class="p-top">
-        <div class="p-alias"></div>
-        <div class="p-badge"></div>
-      </div>
+      <div class="p-top"><div class="p-alias"></div><div class="p-badge"></div></div>
       <div class="p-about"></div>
       <div class="p-meta"></div>
     </article>
