@@ -1,7 +1,7 @@
-// BN build v19 — cache-bust
-console.log("BN build v19");
+// BN build v21 — hard no-cache + SW kill
+console.log("BN build v21 (no-cache)");
 
-// Avregistrera ev. gamla service workers (undvik cache-låsningar)
+// Avregistrera ev. gamla service workers (undvik cache-låsningar helt)
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations()
     .then(rs => rs.forEach(r => r.unregister()))
@@ -11,7 +11,7 @@ if ('serviceWorker' in navigator) {
 /* ========= Helpers & State ========= */
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
-const KEY = 'bn-19';
+const KEY = 'bn-21';
 
 const store = {
   load(){ try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return{}} },
@@ -21,9 +21,9 @@ const S = () => store.load();
 const setS = p => { const s={...S(),...p}; store.save(s); return s; };
 
 /* ========= Config ========= */
-const RAW_LIVE = !!window.RAW_MODE_LIVE;
-const OPENAI_MODEL = window.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-const OPENAI_VOICES = window.OPENAI_VOICES || ["alloy","verse","luna"];
+const RAW_LIVE      = !!window.RAW_MODE_LIVE;
+const OPENAI_MODEL  = window.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
+const OPENAI_VOICES = window.OPENAI_VOICES    || ["alloy","verse","luna"];
 
 /* ========= Data ========= */
 const stories  = window.BN_STORIES || [];
@@ -34,15 +34,8 @@ const people   = window.BN_PEOPLE  || [];
 const audioEl = $('#audio');
 
 /* ========= Lokal API-nyckel ========= */
-function getApiKey(){
-  try{ return localStorage.getItem("OPENAI_API_KEY") || ""; } catch { return ""; }
-}
-function setApiKey(k){
-  try{
-    if(k) localStorage.setItem("OPENAI_API_KEY", k);
-    else  localStorage.removeItem("OPENAI_API_KEY");
-  }catch{}
-}
+function getApiKey(){ try{ return localStorage.getItem("OPENAI_API_KEY") || ""; } catch { return ""; } }
+function setApiKey(k){ try{ if(k) localStorage.setItem("OPENAI_API_KEY", k); else localStorage.removeItem("OPENAI_API_KEY"); }catch{} }
 function hasOpenAI(){ return !!getApiKey(); }
 
 /* ========= Intensitet (1–5) ========= */
@@ -160,10 +153,7 @@ async function speakOpenAI(text){
 
   const res = await fetch("https://api.openai.com/v1/audio/speech",{
     method:"POST",
-    headers:{
-      "Authorization":`Bearer ${key}`,
-      "Content-Type":"application/json"
-    },
+    headers:{ "Authorization":`Bearer ${key}`, "Content-Type":"application/json" },
     body: JSON.stringify({ model: OPENAI_MODEL, voice, input: text })
   });
   if(!res.ok){ throw new Error("OpenAI TTS misslyckades"); }
@@ -188,14 +178,13 @@ function stopAudioProgress(done=false){
   if(done){ $('#seek').value = 0; $('#btnPlay').textContent='Lyssna nu'; $('#nowSub').textContent='Klar'; }
 }
 
-// Web Speech fallback (estimerad progress)
 function getBrowserVoice(){
   const selVal = $('#voiceSel')?.value || '';
-  const voices = getBrowserVoices();
+  const voices = (window.speechSynthesis?.getVoices?.() || []);
   return voices.find(x=>x.name===selVal) || voices.find(x=>/sv-SE/i.test(x.lang)) || voices[0] || null;
 }
 function speakBrowser(text){
-  synth.cancel();
+  window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   const v = getBrowserVoice();
   if(v) u.voice = v;
@@ -203,7 +192,7 @@ function speakBrowser(text){
   u.rate = +($('#rate').value||1);
   u.onstart = startEstimatedProgress.bind(null, text, u.rate);
   u.onend   = ()=> stopEstimatedProgress(true);
-  synth.speak(u);
+  window.speechSynthesis.speak(u);
   updateNowInfo();
 }
 function startEstimatedProgress(text, rate){
@@ -238,7 +227,6 @@ async function speak(text){
   }
 }
 
-/* Spela vald berättelse eller röstprov */
 function play(a){
   current = a || current;
   if(!current){
@@ -246,8 +234,8 @@ function play(a){
     speak(generateText("Ett kort röstprov", S().level||1, 1));
     return;
   }
-  $('#nowTitle').textContent = intensify(current.title, S().level||1);
-  speak(generateText(`${current.title}. ${current.ingress}`, S().level||1, 1));
+  $('#nowTitle').textContent = intensify(a.title, S().level||1);
+  speak(generateText(`${a.title}. ${a.ingress}`, S().level||1, 1));
 }
 
 /* Player UI */
@@ -285,7 +273,7 @@ $$('#createBox .lvl').forEach(b=> b.addEventListener('click',()=> setLevel(b.dat
 
 function renderChips(){
   const wrap = $('#chips'); wrap.innerHTML='';
-  chipsCfg.forEach(c=>{
+  (window.BN_CHIPS||[]).forEach(c=>{
     const el = document.createElement('button');
     el.className = 'chip'; el.textContent = c.label; el.dataset.id = c.id;
     el.onclick = ()=>{
@@ -337,7 +325,6 @@ $('#btnGenerate').addEventListener('click', async ()=>{
   $('#mBody').textContent    = text;
   $('#modal').showModal();
 
-  // Autoplay direkt
   speak(text);
 });
 $('#closeModal').addEventListener('click', ()=> $('#modal').close());
@@ -346,7 +333,7 @@ $('#mSave').addEventListener('click', ()=>{
   save(a); $('#modal').close();
 });
 
-/* ========= Connect (öppna/stäng/backdrop/back) ========= */
+/* ========= Connect ========= */
 const sheet = $('#connect');
 function openConnect(){ sheet.classList.add('active'); document.body.classList.add('no-scroll'); sheet.setAttribute('aria-hidden','false'); history.pushState({bn:'connect'},''); }
 function closeConnect(){ sheet.classList.remove('active'); document.body.classList.remove('no-scroll'); sheet.setAttribute('aria-hidden','true'); if(history.state?.bn==='connect') history.back(); }
@@ -363,20 +350,20 @@ $('#saveApiKey').addEventListener('click', ()=>{
   $('#apiKeyInput').value = '';
   $('#apiKeyStatus').textContent='Sparad lokalt!';
   setTimeout(()=>$('#apiKeyStatus').textContent='', 1500);
-  populateVoices(); // växla röstlista till OpenAI-läget
+  populateVoices();
 });
 $('#clearApiKey').addEventListener('click', ()=>{
   setApiKey('');
   $('#apiKeyStatus').textContent='Rensad';
   setTimeout(()=>$('#apiKeyStatus').textContent='', 1500);
-  populateVoices(); // tillbaka till webbläsarröster
+  populateVoices();
 });
 
 function renderPeople(){
   const root = $('#people'); root.innerHTML='';
   const fLevel = (S().connectFilterLevel||0);
   const fPref  = (S().connectPref||'');
-  people
+  (window.BN_PEOPLE||[])
     .filter(p=> !fLevel || p.level===+fLevel)
     .filter(p=> !fPref || p.pref===fPref)
     .forEach(p=>{
@@ -416,7 +403,7 @@ $('.bottom [data-tab="feed"]').addEventListener('click', ()=> $('#feed').scrollI
 $('.bottom [data-tab="saved"]').addEventListener('click', ()=> $('#saved').scrollIntoView({behavior:'smooth'}));
 $('#panic').addEventListener('click', ()=>{
   try{ audioElRef.pause(); }catch{}
-  try{ synth.cancel(); }catch{}
+  try{ window.speechSynthesis.cancel(); }catch{}
   alert("Panikläge: uppspelning stoppad.");
 });
 
@@ -436,7 +423,6 @@ $('#privacy').addEventListener('click', (e)=>{
   renderChips();
   render();
 
-  // Import från delningslänk
   const sp = new URLSearchParams(location.search);
   if(sp.has('lvl')) setLevel(sp.get('lvl'));
   if(sp.has('voice')) { setS({voice:sp.get('voice')}); populateVoices(); }
