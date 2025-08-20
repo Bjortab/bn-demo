@@ -1,32 +1,84 @@
-// === Demo-konfig (ingen nyckel i repo) ===
-// Modell + rekommenderade röster för OpenAI TTS.
-// Själva API-nyckeln lägger du in lokalt i appen (BlushConnect → "API-nyckel (lokal)").
-window.OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
-window.OPENAI_VOICES    = ["alloy","verse","luna"];
+const generateBtn = document.getElementById("generateStoryBtn");
+const storyOutput = document.getElementById("storyOutput");
+const playBtn = document.getElementById("playAudioBtn");
+const backBtn = document.getElementById("backToMain");
+const navButtons = document.querySelectorAll(".bottom-nav button");
+const sections = document.querySelectorAll("main section");
 
-// “Live-rå” nivå 5 i demon (utan grafiska ord)
-window.RAW_MODE_LIVE = true;
+let selectedLevel = 1;
+let generatedStory = "";
 
-// Chips
-window.BN_CHIPS = [
-  { id:'romantik',  label:'Romantik' },
-  { id:'lekfullt',  label:'Lekfullt' },
-  { id:'sensuellt', label:'Sensuellt' },
-  { id:'återkoppling', label:'Eftervård' }
-];
+// Välj nivå
+document.querySelectorAll(".level-buttons button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    selectedLevel = btn.getAttribute("data-level");
+    alert(`Du valde nivå ${selectedLevel}`);
+  });
+});
 
-// Stories (kompakta kort i flödet)
-window.BN_STORIES = [
-  {id:"a1", lvl:[1,2,3],       cats:['romantik'], title:"Kvällsritual för närhet", ingress:"10 min mjuk landning + varm blickkontakt.", body:"Sänk tempot. Hand över hjärtat, tre djupa andetag i takt. Sitt nära. Säg vad du längtar efter ikväll."},
-  {id:"a2", lvl:[2,3,4,5],     cats:['lekfullt','sensuellt'], title:"Hemma-dejt: enkel", ingress:"Musik, ljus, tre lekfulla moment.", body:"Byt miljö hemma. Tre moment: långsam beröring, ögonkontakt i 30 sek, eftervård."},
-  {id:"a3", lvl:[1,2,3,4],     cats:['sensuellt'], title:"Kontakt när stressen biter", ingress:"Microövning när nervsystemet är uppe i varv.", body:"Lång utandning, skaka loss 30 sek, varm hand där det känns. Säg: 'jag är här'."},
-  {id:"a4", lvl:[3,4,5],       cats:['sensuellt','återkoppling'], title:"Sensuell guidning", ingress:"Långsam rytm, styr med ord.", body:"Lyssna på kroppen. Be om mer eller mindre. Avsluta med eftervård och vatten."}
-];
+// Generera berättelse
+generateBtn.addEventListener("click", async () => {
+  const userInput = document.getElementById("userPrompt").value || "Överraska mig!";
+  
+  if (OFFLINE_MODE) {
+    // Dummy-text
+    generatedStory = `✨ (Nivå ${selectedLevel}) Här skulle en AI-berättelse komma om "${userInput}". Detta är simulerat offline-läge.`;
+    storyOutput.textContent = generatedStory;
+  } else {
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "Du är en sensuell berättarröst." },
+            { role: "user", content: `Skriv en erotisk novell nivå ${selectedLevel}: ${userInput}` }
+          ],
+          max_tokens: 400
+        })
+      });
 
-// People (demo)
-window.BN_PEOPLE = [
-  {alias:'Lumi', level:1, pref:'romantik',  about:'Gillar mjuka upplägg och långsam rytm.'},
-  {alias:'Noah', level:3, pref:'lekfullt',  about:'Nyfiken på lek och skratt — med ramar.'},
-  {alias:'Iris', level:5, pref:'sensuellt', about:'Gillar direkt språk och varm intensitet.'},
-  {alias:'Mika', level:4, pref:'romantik',  about:'Vill ha mellan–hög intensitet med tryggt tempo.'}
-];
+      const data = await response.json();
+      generatedStory = data.choices[0].message.content;
+      storyOutput.textContent = generatedStory;
+    } catch (err) {
+      storyOutput.textContent = "Fel: Kunde inte hämta berättelse.";
+    }
+  }
+});
+
+// Spela upp berättelse (simulerat ljud i offline)
+playBtn.addEventListener("click", () => {
+  if (!generatedStory) {
+    alert("Generera en berättelse först!");
+    return;
+  }
+  if (OFFLINE_MODE) {
+    alert("🔊 Offline-läge: här skulle berättelsen läsas upp.");
+  } else {
+    alert("🔊 Ljud via OpenAI TTS (ej implementerat ännu).");
+  }
+});
+
+// Navigering
+navButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    const target = btn.getAttribute("data-target");
+    sections.forEach(sec => sec.style.display = "none");
+    document.getElementById(target).style.display = "block";
+  });
+});
+
+// Tillbaka-knapp i BlushConnect
+backBtn.addEventListener("click", () => {
+  sections.forEach(sec => sec.style.display = "none");
+  document.getElementById("story-generator").style.display = "block";
+});
+
+// Init – visa bara första sektionen
+sections.forEach(sec => sec.style.display = "none");
+document.getElementById("story-generator").style.display = "block";
