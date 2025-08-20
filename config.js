@@ -1,8 +1,7 @@
-// === OpenAI TTS (riktiga röster) ===
-// Fyll i din API-nyckel för att använda OpenAI TTS. Lämna tom för fallback (Web Speech).
-window.OPENAI_API_KEY   = ""; // <-- sätt "sk-..." här för demo (lägg inte publikt i längden)
-window.OPENAI_TTS_MODEL = "gpt-4o-mini-tts"; // modellnamn för TTS
-// Tillgängliga röster (exempel): alloy, verse, luna, coral, sage
+// === Demo-konfig (ingen nyckel i repo) ===
+// Modell + rekommenderade röster för OpenAI TTS.
+// Själva API-nyckeln lägger du in lokalt i appen (BlushConnect → "API-nyckel (lokal)").
+window.OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
 window.OPENAI_VOICES    = ["alloy","verse","luna"];
 
 // “Live-rå” nivå 5 i demon (utan grafiska ord)
