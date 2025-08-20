@@ -1,243 +1,69 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Blush Narratives — v1.7 (build 21, no-cache)</title>
-
-  <!-- Klient-side no-cache hints (Safari lyder ofta dessa) -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma"        content="no-cache" />
-  <meta http-equiv="Expires"       content="0" />
-  <meta name="theme-color" content="#0f1117" />
-
-  <!-- Ladda CSS/JS med unik timestamp varje sidladdning -->
-  <script>
-    (function () {
-      const ts = Date.now();                    // unik query varje gång
-      const head = document.getElementsByTagName('head')[0];
-
-      const css = document.createElement('link');
-      css.rel = 'stylesheet';
-      css.href = 'styles.css?ts=' + ts;
-      head.appendChild(css);
-
-      // Lägg till config (om du har en fristående config.js – annars kan du ta bort detta)
-      const cfg = document.createElement('script');
-      cfg.defer = true;
-      cfg.src = 'config.js?ts=' + ts;
-      head.appendChild(cfg);
-
-      const app = document.createElement('script');
-      app.defer = true;
-      app.src = 'app.js?ts=' + ts;
-      head.appendChild(app);
-    })();
-  </script>
-
-  <!-- OBS: Manifest & SW avstängda i demon för att undvika cache-låsningar -->
-  <!--
-  <link rel="manifest" href="manifest.webmanifest">
-  <script> if('serviceWorker' in navigator){ navigator.serviceWorker.register('/sw.js'); } </script>
-  -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blush Narratives</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- ======= UI markup (oförändrat från senaste bygg) ======= -->
-
-  <header class="top">
-    <div class="row">
-      <div class="logo">Blush Narratives</div>
-      <div class="right">
-        <button id="privacy" class="ghost" aria-pressed="false">Privat</button>
-        <button id="openConnect" class="ghost">BlushConnect</button>
-      </div>
-    </div>
+  <header>
+    <h1>Blush Narratives</h1>
   </header>
 
-  <section class="player card" id="player">
-    <div class="meta">
-      <div id="nowTitle">Röstprov för nivå 1</div>
-      <div id="nowSub" class="muted">Tryck “Lyssna nu” för en kort provläsning.</div>
-      <div id="nowInfo" class="muted small">Röst: Auto • Tempo: 1.0x</div>
-    </div>
-    <div class="controls">
-      <button id="btnPlay" aria-label="Lyssna nu">Lyssna nu</button>
-      <input id="seek" type="range" min="0" max="100" value="0" />
-      <div class="more">
-        <label class="sr" for="rate">Tempo</label>
-        <input id="rate" type="range" min="0.8" max="1.3" step="0.05" value="1" />
-        <div class="skip">
-          <button id="back10" class="ghost sm" title="Spola tillbaka 10 s">⏪ 10s</button>
-          <button id="fwd10"  class="ghost sm" title="Spola fram 10 s">10s ⏩</button>
-        </div>
+  <main>
+    <!-- Välj nivå -->
+    <section id="onboarding">
+      <h2>Välj intensitet</h2>
+      <div class="level-buttons">
+        <button data-level="1">Nivå 1</button>
+        <button data-level="3">Nivå 3</button>
+        <button data-level="5">Nivå 5</button>
       </div>
-    </div>
-    <audio id="audio" preload="auto"></audio>
-  </section>
+    </section>
 
-  <section id="createBox" class="container card">
-    <h3>Skapa egen berättelse</h3>
-    <div class="create-controls">
-      <div class="levels" role="group" aria-label="Erotiknivå">
-        <button class="lvl" data-lvl="1" aria-pressed="true">1</button>
-        <button class="lvl" data-lvl="2">2</button>
-        <button class="lvl" data-lvl="3">3</button>
-        <button class="lvl" data-lvl="4">4</button>
-        <button class="lvl" data-lvl="5">5</button>
+    <!-- Generera berättelse -->
+    <section id="story-generator">
+      <h2>Skapa egen berättelse</h2>
+      <textarea id="userPrompt" placeholder="Skriv din idé här..."></textarea>
+      <button id="generateStoryBtn">Generera berättelse</button>
+      <div id="storyOutput"></div>
+      <div id="audioControls">
+        <button id="playAudioBtn">▶️ Lyssna</button>
       </div>
-      <div class="voicepick">
-        <label for="voiceSel" class="sr">Röst</label>
-        <select id="voiceSel" aria-label="Välj röst"></select>
-        <button id="voicePreview" class="ghost sm">Lyssna</button>
-        <button id="toggleVoices" class="link sm" aria-expanded="false">Visa alla röster</button>
-      </div>
-      <div class="lengths" role="group" aria-label="Längd">
-        <label><input type="radio" name="len" value="1" checked /> 1 min</label>
-        <label><input type="radio" name="len" value="3" /> 3 min</label>
-        <label><input type="radio" name="len" value="5" /> 5 min</label>
-      </div>
-    </div>
-    <textarea id="prompt" rows="3" placeholder="Skriv stämning/plats/roll…"></textarea>
-    <div class="create-row">
-      <button id="btnGenerate" class="btn">Generera</button>
-      <span id="genStatus" class="status"></span>
-    </div>
-  </section>
+    </section>
 
-  <section class="filters container">
-    <div class="chips" id="chips"></div>
-  </section>
+    <!-- Rekommenderade -->
+    <section id="recommended">
+      <h2>Rekommenderat</h2>
+      <ul>
+        <li>🔥 Passionerad kväll</li>
+        <li>🌹 Hemligt möte</li>
+        <li>✨ Förbjudna drömmar</li>
+      </ul>
+    </section>
 
-  <main class="container">
-    <h2>Rekommenderat</h2>
-    <div id="feed" class="grid compact"></div>
+    <!-- Favoriter -->
+    <section id="favorites">
+      <h2>Dina favoriter</h2>
+      <p>Här sparas dina berättelser.</p>
+    </section>
 
-    <h2>Sparat</h2>
-    <div id="saved" class="grid compact"></div>
-
-    <div style="height:120px"></div>
+    <!-- BlushConnect -->
+    <section id="blushConnect">
+      <h2>BlushConnect</h2>
+      <p>Här kan du möta andra BN-användare.</p>
+      <button id="backToMain">⬅ Tillbaka</button>
+    </section>
   </main>
 
-  <aside id="connect" aria-hidden="true">
-    <div class="backdrop" id="connectBackdrop"></div>
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="BlushConnect">
-      <header class="sheet-head">
-        <h3>BlushConnect</h3>
-        <button id="closeConnect" class="ghost sm">Stäng</button>
-      </header>
-      <div class="sheet-body">
-        <div class="card">
-          <h4>Din profil (lokal)</h4>
-          <div class="pref two">
-            <label>Alias <input id="alias" placeholder="Ditt alias" /></label>
-            <label>Ålder <input id="age" type="number" min="18" max="99" /></label>
-          </div>
-          <div class="pref">
-            <label>Om dig</label>
-            <textarea id="about" rows="2" placeholder="Kort beskrivning…"></textarea>
-          </div>
-          <div class="pref two">
-            <label>Favoritnivå
-              <div class="levels small">
-                <button class="lvl" data-lvl="1">1</button>
-                <button class="lvl" data-lvl="2">2</button>
-                <button class="lvl" data-lvl="3">3</button>
-                <button class="lvl" data-lvl="4">4</button>
-                <button class="lvl" data-lvl="5">5</button>
-              </div>
-            </label>
-            <label>Röst
-              <select id="voiceSel2"></select>
-            </label>
-          </div>
-          <div class="pref"><label class="toggle">
-            <input type="checkbox" id="privacyChk" /> <span>Integritetsläge (dölj rubriker i historik)</span>
-          </label></div>
-        </div>
-
-        <div class="card">
-          <h4>API-nyckel (lokal)</h4>
-          <p class="muted small">Klistra in din OpenAI-nyckel här (sparas endast i denna enhet).</p>
-          <div class="pref two">
-            <label>Nyckel <input id="apiKeyInput" type="password" placeholder="sk-..." /></label>
-            <div>
-              <button id="saveApiKey" class="btn sm">Spara lokalt</button>
-              <button id="clearApiKey" class="ghost sm">Rensa</button>
-              <span id="apiKeyStatus" class="status"></span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h4>Utforska andra (demo)</h4>
-          <div class="pref two">
-            <label>Nivåfilter
-              <div class="levels small">
-                <button class="lvl" data-filter="1">1</button>
-                <button class="lvl" data-filter="2">2</button>
-                <button class="lvl" data-filter="3">3</button>
-                <button class="lvl" data-filter="4">4</button>
-                <button class="lvl" data-filter="5">5</button>
-              </div>
-            </label>
-            <label>Preferens
-              <select id="prefFilter">
-                <option value="">Alla</option>
-                <option value="romantik">Romantik</option>
-                <option value="lekfullt">Lekfullt</option>
-                <option value="sensuellt">Sensuellt</option>
-              </select>
-            </label>
-          </div>
-          <div id="people" class="people"></div>
-        </div>
-
-        <div class="card">
-          <h4>Dela preferenser</h4>
-          <p class="muted small">Skapa en länk med din nivå/röst/privat-läge.</p>
-          <button id="shareLink" class="btn sm">Kopiera delningslänk</button>
-          <span id="shareStatus" class="status"></span>
-        </div>
-      </div>
-    </div>
-  </aside>
-
-  <nav class="bottom">
-    <button data-tab="home" class="active">Hem</button>
-    <button data-tab="feed">Flöde</button>
-    <button data-tab="saved">Sparat</button>
-    <button id="panic">Panik</button>
+  <nav class="bottom-nav">
+    <button data-target="story-generator">🎙 Berättelser</button>
+    <button data-target="favorites">⭐ Favoriter</button>
+    <button data-target="blushConnect">💞 Connect</button>
   </nav>
 
-  <template id="card-tpl">
-    <article class="card mini">
-      <h4 class="title"></h4>
-      <p class="ingress"></p>
-      <div class="actions">
-        <button class="save">Spara</button>
-        <button class="open">Lyssna</button>
-      </div>
-    </article>
-  </template>
-
-  <template id="person-tpl">
-    <article class="person">
-      <div class="p-top"><div class="p-alias"></div><div class="p-badge"></div></div>
-      <div class="p-about"></div>
-      <div class="p-meta"></div>
-    </article>
-  </template>
-
-  <dialog id="modal">
-    <article class="card">
-      <h3 id="mTitle"></h3>
-      <p id="mIngress" class="muted"></p>
-      <div id="mBody"></div>
-      <div class="actions right">
-        <button id="mSave" class="btn sm">Spara</button>
-        <button id="closeModal" class="ghost">Stäng</button>
-      </div>
-    </article>
-  </dialog>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
