@@ -8,7 +8,7 @@ body{
   margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   background:radial-gradient(1200px 800px at 10% -10%, #1b2233 0%, var(--bg) 55%);
   color:var(--text);
-  padding-bottom:calc(120px + env(safe-area-inset-bottom)); /* extra för bottenmeny */
+  padding-bottom:calc(120px + env(safe-area-inset-bottom));
 }
 body.no-scroll{overflow:hidden}
 
@@ -70,7 +70,7 @@ textarea{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.18);ba
 .bottom button{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:10px;padding:8px 6px;font-size:13px}
 .bottom button.active{background:#fff;color:#0f1117;border-color:#fff}
 
-/* Connect (scroll-lock + overlay + back) */
+/* Connect */
 #connect{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .25s ease;z-index:50}
 #connect.active{pointer-events:auto;opacity:1}
 #connect .backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
