@@ -1,62 +1,136 @@
-:root{
-  --bg:#0f0f12; --card:#1b1c22; --muted:#a2a7ad; --txt:#f5f7fa;
-  --accent:#ff5ca8; --accent2:#8a2be2; --chip:#24252d;
-}
-*{box-sizing:border-box} html,body{height:100%}
-body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  background:var(--bg);color:var(--txt);display:flex;flex-direction:column}
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blush Narratives</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Blush Narratives</div>
+    <span class="badge">v0.3 demo (offline safe)</span>
+    <button id="btnConnect" class="link">BlushConnect</button>
+  </header>
 
-.topbar{display:flex;align-items:center;gap:.75rem;padding:.8rem 1rem;
-  background:linear-gradient(90deg,var(--accent2),var(--accent));position:sticky;top:0;z-index:20}
-.topbar .brand{font-weight:700}
-.topbar .badge{margin-left:auto;opacity:.9}
-.topbar .link{background:transparent;border:1px solid rgba(255,255,255,.6);color:#fff;
-  padding:.4rem .7rem;border-radius:.5rem;cursor:pointer}
+  <!-- HEM -->
+  <main id="home">
+    <!-- Röstprov -->
+    <section class="card" id="playerCard">
+      <h2>Röstprov</h2>
+      <div class="row gap">
+        <button id="btnPlay" class="btn primary">Lyssna nu</button>
+        <div class="sliderRow">
+          <label>Tempo</label>
+          <input id="tempo" type="range" min="0.8" max="1.2" step="0.05" value="1" />
+          <span id="tempoVal">1.00×</span>
+        </div>
+      </div>
+    </section>
 
-main{flex:1;overflow:auto;padding:1rem}
-.card{background:var(--card);border-radius:12px;padding:1rem;margin:0 0 1rem 0;
-  box-shadow:0 6px 20px rgba(0,0,0,.25)}
-h2{margin:.2rem 0 1rem}
-.row{display:flex;align-items:center;justify-content:space-between}
-.row.gap{gap:.6rem;flex-wrap:wrap}
-.row.right{justify-content:flex-end}
-.grid2{display:grid;grid-template-columns:1fr;gap:1rem}
-@media(min-width:720px){.grid2{grid-template-columns:1fr 1fr}}
+    <!-- Skapa egen berättelse -->
+    <section class="card" id="genCard">
+      <div class="row">
+        <h2>Skapa egen berättelse</h2>
+        <div class="chips right compact" id="levelChips" title="Nivå">
+          <button class="chip lvl active" data-level="1">1</button>
+          <button class="chip lvl" data-level="2">2</button>
+          <button class="chip lvl" data-level="3">3</button>
+          <button class="chip lvl" data-level="4">4</button>
+          <button class="chip lvl" data-level="5">5</button>
+        </div>
+      </div>
 
-.chips{display:flex;gap:.5rem;flex-wrap:wrap;margin:.4rem 0}
-.chips.right{margin-left:auto}
-.chip{background:var(--chip);border:1px solid #2c2e36;color:var(--txt);
-  padding:.45rem .8rem;border-radius:999px;cursor:pointer}
-.chip.active{background:var(--accent);border-color:transparent}
-.chips.compact .chip{padding:.25rem .6rem}
+      <div class="chips compact">
+        <button class="chip tag" data-tag="romantisk">Romantisk</button>
+        <button class="chip tag" data-tag="lekfull">Lekfull</button>
+        <button class="chip tag" data-tag="sensuell">Sensuell</button>
+        <button class="chip tag" data-tag="äventyrlig">Äventyrlig</button>
+      </div>
 
-.controls{display:flex;gap:.6rem;flex-wrap:wrap;margin:.6rem 0}
-select,input[type="password"],#profile{
-  background:#121319;border:1px solid #2b2d36;color:var(--txt);
-  padding:.55rem .6rem;border-radius:.5rem;min-width:220px}
-.lengths{display:flex;gap:1rem;align-items:center}
-textarea{width:100%;min-height:110px;background:#121319;border:1px solid #2b2d36;color:var(--txt);
-  padding:.7rem;border-radius:.6rem;margin:.6rem 0}
+      <div class="controls">
+        <select id="voice"></select>
+        <div class="lengths">
+          <label><input type="radio" name="len" value="1" checked> 1 min</label>
+          <label><input type="radio" name="len" value="3"> 3 min</label>
+          <label><input type="radio" name="len" value="5"> 5 min</label>
+        </div>
+      </div>
 
-.btn{background:#2c2e36;color:#fff;border:none;padding:.65rem 1rem;border-radius:.6rem;cursor:pointer}
-.btn.primary{background:var(--accent)}
-.btn:disabled{opacity:.6;cursor:not-allowed}
+      <textarea id="userPrompt" placeholder="Skriv din idé, stämning, plats..."></textarea>
 
-.sliderRow{display:flex;align-items:center;gap:.6rem} #tempo{width:160px}
-.story{white-space:pre-wrap;background:#121319;border:1px dashed #2b2d36;border-radius:.6rem;
-  padding:.8rem;margin-top:.8rem;min-height:2.2rem}
+      <div class="row gap">
+        <button id="btnGenerate" class="btn primary">Generera</button>
+        <button id="btnPreview" class="btn">Förhandsvisa</button>
+      </div>
 
-.recs{display:grid;grid-template-columns:1fr;gap:.6rem}
-@media(min-width:680px){.recs{grid-template-columns:1fr 1fr}}
-.rec{background:#14151b;border:1px solid #2b2d36;border-radius:.7rem;padding:.8rem}
-.rec .title{font-weight:600}
-.rec .ing{color:var(--muted);font-size:.95rem;margin:.3rem 0 .6rem}
+      <div id="storyOutput" class="story"></div>
+      <audio id="audio" preload="auto"></audio>
+    </section>
 
-.bottom{position:sticky;bottom:0;background:#121319;border-top:1px solid #2b2d36;
-  display:flex;gap:.35rem;padding:.35rem;z-index:15}
-.bottom .tab{flex:1;background:#1a1c24;border:1px solid #2b2d36;border-radius:.5rem;padding:.55rem;color:#e7e9ee}
-.bottom .tab.active{background:var(--accent2);border-color:transparent}
+    <!-- Rekommenderat -->
+    <section class="card" id="recCard">
+      <h2>Rekommenderat</h2>
+      <div class="recs" id="recs"></div>
+    </section>
+    <div style="height:80px"></div><!-- luft ovanför bottennav -->
+  </main>
 
-dialog{border:none;border-radius:10px;padding:1rem;background:#1c1d25;color:var(--txt);max-width:min(680px,92vw)}
-dialog::backdrop{background:rgba(0,0,0,.55)}
-.ingress{color:#cbd0d6}
+  <!-- SPARAT -->
+  <main id="favorites" hidden>
+    <section class="card">
+      <h2>Sparat</h2>
+      <div id="favList" class="recs"></div>
+    </section>
+    <div style="height:80px"></div>
+  </main>
+
+  <!-- BLUSHCONNECT -->
+  <main id="connect" hidden>
+    <section class="card">
+      <h2>BlushConnect</h2>
+      <p>Demo-inställningar och lokal API-nyckel (behövs ej i offline-läge).</p>
+      <div class="grid2">
+        <div>
+          <label for="apiKey">API-nyckel (lagras lokalt):</label>
+          <input id="apiKey" type="password" placeholder="sk-••••" />
+          <div class="row gap">
+            <button id="btnSaveKey" class="btn primary">Spara lokalt</button>
+            <button id="btnClearKey" class="btn">Rensa</button>
+          </div>
+          <small id="keyStatus"></small>
+        </div>
+        <div>
+          <label for="profile">Alias:</label>
+          <input id="profile" placeholder="Ditt alias (demo)" />
+          <label for="pref">Preferenser:</label>
+          <select id="pref">
+            <option>Romantisk</option><option>Lekfull</option>
+            <option>Sensuell</option><option>Äventyrlig</option>
+          </select>
+        </div>
+      </div>
+      <div class="row right"><button id="btnBack" class="btn">Tillbaka</button></div>
+    </section>
+    <div style="height:80px"></div>
+  </main>
+
+  <!-- Bottennav -->
+  <nav class="bottom">
+    <button class="tab active" data-target="home">Hem</button>
+    <button class="tab" data-target="favorites">Sparat</button>
+    <button class="tab" data-target="connect">BlushConnect</button>
+  </nav>
+
+  <!-- Modal -->
+  <dialog id="modal">
+    <h3 id="mTitle">Förhandsvisning</h3>
+    <p id="mIngress" class="ingress"></p>
+    <div id="mBody"></div>
+    <div class="row right"><button id="mClose" class="btn">Stäng</button></div>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
