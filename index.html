@@ -14,12 +14,8 @@
   </header>
 
   <main id="home">
-    <!-- Röstsprov / nivå -->
     <section class="card" id="levelCard">
-      <div class="row">
-        <h2>Röstprov för nivå <span id="levelLabel">1</span></h2>
-      </div>
-
+      <div class="row"><h2>Röstprov för nivå <span id="levelLabel">1</span></h2></div>
       <div class="chips" id="levelChips">
         <button class="chip lvl active" data-level="1">1</button>
         <button class="chip lvl" data-level="2">2</button>
@@ -27,7 +23,6 @@
         <button class="chip lvl" data-level="4">4</button>
         <button class="chip lvl" data-level="5">5</button>
       </div>
-
       <div class="row gap">
         <button id="btnPlay" class="btn primary">Lyssna nu</button>
         <div class="sliderRow">
@@ -38,63 +33,48 @@
       </div>
     </section>
 
-    <!-- Skapa egen berättelse -->
     <section class="card" id="genCard">
       <h2>Skapa egen berättelse</h2>
-
       <div class="chips compact">
         <button class="chip tag" data-tag="romantisk">Romantisk</button>
         <button class="chip tag" data-tag="lekfull">Lekfull</button>
         <button class="chip tag" data-tag="sensuell">Sensuell</button>
         <button class="chip tag" data-tag="äventyrlig">Äventyrlig</button>
       </div>
-
       <div class="controls">
-        <select id="voice">
-          <option value="auto">Auto (sv-SE om möjligt)</option>
-        </select>
-
+        <select id="voice"><option value="auto">Auto (sv-SE om möjligt)</option></select>
         <div class="lengths">
           <label><input type="radio" name="len" value="1" checked /> 1 min</label>
           <label><input type="radio" name="len" value="3" /> 3 min</label>
           <label><input type="radio" name="len" value="5" /> 5 min</label>
         </div>
       </div>
-
       <textarea id="userPrompt" placeholder="Skriv din idé, plats, stämning..."></textarea>
-
       <div class="row gap">
         <button id="btnGenerate" class="btn primary">Generera</button>
         <button id="btnPreview" class="btn">Förhandsvisa</button>
       </div>
-
       <div id="storyOutput" class="story"></div>
       <audio id="audio" preload="auto"></audio>
     </section>
 
-    <!-- Rekommenderat -->
     <section class="card" id="recCard">
       <h2>Rekommenderat</h2>
       <div class="recs" id="recs"></div>
     </section>
   </main>
 
-  <!-- Favoriter -->
   <main id="favorites" hidden>
-    <section class="card">
-      <h2>Sparat</h2>
-      <div id="favList" class="recs"></div>
-    </section>
+    <section class="card"><h2>Sparat</h2><div id="favList" class="recs"></div></section>
   </main>
 
-  <!-- BlushConnect -->
   <main id="connect" hidden>
     <section class="card">
       <h2>BlushConnect</h2>
       <p>Konto & lokala inställningar för demo.</p>
       <div class="grid2">
         <div>
-          <label for="apiKey">API-nyckel (lagras lokalt för denna enhet):</label>
+          <label for="apiKey">API-nyckel (lagras lokalt):</label>
           <input id="apiKey" type="password" placeholder="sk-••••" />
           <div class="row gap">
             <button id="btnSaveKey" class="btn primary">Spara lokalt</button>
@@ -107,16 +87,12 @@
           <input id="profile" placeholder="Alias..." />
           <label for="pref">Preferenser:</label>
           <select id="pref">
-            <option>Romantisk</option>
-            <option>Lekfull</option>
-            <option>Sensuell</option>
-            <option>Äventyrlig</option>
+            <option>Romantisk</option><option>Lekfull</option>
+            <option>Sensuell</option><option>Äventyrlig</option>
           </select>
         </div>
       </div>
-      <div class="row right">
-        <button id="btnBack" class="btn">Tillbaka</button>
-      </div>
+      <div class="row right"><button id="btnBack" class="btn">Tillbaka</button></div>
     </section>
   </main>
 
@@ -130,9 +106,7 @@
     <h3 id="mTitle">Förhandsvisning</h3>
     <p id="mIngress" class="ingress"></p>
     <div id="mBody"></div>
-    <div class="row right">
-      <button id="mClose" class="btn">Stäng</button>
-    </div>
+    <div class="row right"><button id="mClose" class="btn">Stäng</button></div>
   </dialog>
 
   <script src="config.js"></script>
