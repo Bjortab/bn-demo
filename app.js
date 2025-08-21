@@ -1,5 +1,5 @@
-/* BN v0.3 — återställd, nivåer 1–5, offline-säker */
-(()=> {
+/* BN v0.4 — Online med OpenAI TTS + text (fallback tydlig) */
+(() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 
   // refs
@@ -9,11 +9,10 @@
   const recsEl=$('#recs'), favList=$('#favList');
   const tabs=$$('.bottom .tab'), mains=$$('main'), btnConnect=$('#btnConnect'), btnBack=$('#btnBack');
   const apiKeyIn=$('#apiKey'), keyStatus=$('#keyStatus');
-  const modal=$('#modal'), mTitle=$('#mTitle'), mIngress=$('#mIngress'), mBody=$('#mBody');
-  $('#mClose').addEventListener('click',()=>modal.close());
+  const modal=$('#modal'), mTitle=$('#mTitle'), mIngress=$('#mIngress'), mBody=$('#mBody'); $('#mClose').addEventListener('click',()=>modal.close());
 
   // state
-  let state={level:1, tempo:1.0, voice:'auto', lengthMin:1, story:'', favs:JSON.parse(localStorage.getItem('bn:favs')||'[]')};
+  let state={level:1, tempo:1.0, voice:'alloy', lengthMin:1, story:'', favs:JSON.parse(localStorage.getItem('bn:favs')||'[]')};
 
   // nav
   function show(id){ mains.forEach(m=>m.hidden=m.id!==id); tabs.forEach(t=>t.classList.toggle('active',t.dataset.target===id)); }
@@ -26,11 +25,11 @@
   // tempo
   tempo.addEventListener('input',()=>{ state.tempo=+tempo.value; tempoVal.textContent=state.tempo.toFixed(2)+'×'; });
 
-  // röster
-  function initVoices() {
+  // röster (mappas till OpenAI voice)
+  function initVoices(){
     voiceSel.innerHTML='';
     (window.DEMO_VOICES||[]).forEach(v=>{ const o=document.createElement('option'); o.value=v.id; o.textContent=v.label; voiceSel.appendChild(o); });
-    voiceSel.value=state.voice;
+    state.voice = voiceSel.value || 'alloy';
   }
   initVoices();
   voiceSel.addEventListener('change',()=>state.voice=voiceSel.value);
@@ -38,65 +37,121 @@
   // längd
   lenRadios.forEach(r=>r.addEventListener('change',()=>state.lengthMin=+document.querySelector('input[name="len"]:checked').value));
 
-  // demo-story
+  // demo-text (fallback om OFFLINE_MODE=true)
   function demoStory(prompt, level, minutes){
     const tones={1:'romantisk',2:'nyfiken',3:'sensuell',4:'intensiv',5:'ingående'};
     const tone=tones[level]||'sensuell';
-    const body = [
-      `(${minutes} min • nivå ${level} • ${tone})`,
-      `Hon möter blicken — ett halvt steg närmare. ${prompt||'Överraskningen du önskade'} blir till en mjuk öppning.`,
-      `Tempot är långsamt, rösten varm. Pauserna får plats.`,
-      `Berättelsen pendlar mellan förväntan och närhet tills rytmen hittar hem.`
-    ].join('\n');
-    return body;
+    return `(${minutes} min • nivå ${level} • ${tone})\n`+
+      `Hon möter blicken — ett halvt steg närmare. ${prompt||'Överraskningen du önskade'} blir till en mjuk öppning.\n`+
+      `Tempot är långsamt, rösten varm. Pauserna får plats.\n`+
+      `Berättelsen pendlar mellan förväntan och närhet tills rytmen hittar hem.`;
   }
 
-  // speak (web speech API för demo)
-  function speak(text){
-    try{
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang='sv-SE'; u.rate=state.tempo;
-      speechSynthesis.speak(u);
-    }catch{ alert('Text-till-tal ej tillgängligt i denna webbläsare.'); }
+  // ==== OPENAI HELPERS ====
+  const OPENAI_BASE = 'https://api.openai.com/v1';
+
+  function ensureKey(){
+    const key = (window.getApiKey && window.getApiKey()) || window.OPENAI_API_KEY || '';
+    if (!key || !key.startsWith('sk-')) throw new Error('Ingen giltig API-nyckel hittad. Öppna BlushConnect och spara nyckeln lokalt.');
+    return key;
   }
 
-  // generera (offline)
+  async function aiStory(prompt, level, minutes){
+    const key = ensureKey();
+    const res = await fetch(`${OPENAI_BASE}/chat/completions`,{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
+      body:JSON.stringify({
+        model:'gpt-4o-mini',
+        messages:[
+          {role:'system',content:'Du är en svensk sensuell berättarröst. Skriv på svenska. Anpassa explicit-nivå till användarens nivå (1–5).'},
+          {role:'user',content:`Skriv en erotisk novell på svenska. Nivå ${level}. Längd ca ${minutes} minuter uppläsning. Prompt: ${prompt || 'Överraska mig'}.`}
+        ],
+        max_tokens: 900,
+        temperature: 0.9
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || 'API-fel (text)');
+    return data.choices?.[0]?.message?.content?.trim() || '—';
+  }
+
+  async function ttsPlay(text, voiceId, rate){
+    const key = ensureKey();
+    // OpenAI TTS: gpt-4o-mini-tts → mp3
+    const res = await fetch(`${OPENAI_BASE}/audio/speech`, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice: voiceId || 'alloy',
+        input: text,
+        format: 'mp3'
+      })
+    });
+    if (!res.ok) {
+      let msg = 'API-fel (TTS)';
+      try { const j = await res.json(); msg = j?.error?.message || msg; } catch{}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    audio.src = url;
+    audio.playbackRate = Math.max(0.5, Math.min(2, rate||1));
+    await audio.play();
+  }
+
+  // ====== UI handlers ======
   $('#btnGenerate').addEventListener('click', async ()=>{
     const tag = (Array.from(document.querySelectorAll('.chip.tag.active')).map(b=>b.dataset.tag)[0]) || '';
     const prompt = [promptEl.value.trim(), tag].filter(Boolean).join(', ');
-    out.textContent='Genererar...'; $('#btnGenerate').disabled=true;
+
+    out.textContent = window.OFFLINE_MODE ? 'Genererar (offline)...' : 'Genererar via OpenAI...';
+    $('#btnGenerate').disabled = true;
+
     try{
-      state.story = demoStory(prompt, state.level, state.lengthMin);
+      state.story = window.OFFLINE_MODE ? demoStory(prompt, state.level, state.lengthMin)
+                                        : await aiStory(prompt, state.level, state.lengthMin);
       out.textContent = state.story;
-    }catch(e){ out.textContent = 'Fel: '+e.message; }
-    finally{ $('#btnGenerate').disabled=false; }
+    }catch(e){
+      out.textContent = 'Fel: ' + e.message;
+    }finally{
+      $('#btnGenerate').disabled = false;
+    }
   });
 
-  // tag toggles
-  $$('#genCard .chip.tag').forEach(b=>b.addEventListener('click',()=>b.classList.toggle('active')));
-
-  // preview
   $('#btnPreview').addEventListener('click', ()=>{
     if(!state.story){ out.textContent='Generera först.'; return; }
     mTitle.textContent='Förhandsvisning';
-    mIngress.textContent=`Nivå ${state.level} • ${state.lengthMin} min • Tempo ${state.tempo.toFixed(2)}×`;
+    mIngress.textContent=`Nivå ${state.level} • ${state.lengthMin} min • Tempo ${state.tempo.toFixed(2)}× • Röst ${state.voice}`;
     mBody.textContent=state.story;
     modal.showModal();
   });
 
-  // röstprov
-  btnPlay.addEventListener('click', ()=>{
-    const sample = demoStory('Ett kort röstprov för att känna tonen.', state.level, 1);
-    speak(sample);
+  btnPlay.addEventListener('click', async ()=>{
+    if(!state.story){ out.textContent='Generera först.'; return; }
+    try{
+      if (window.OFFLINE_MODE) {
+        // Fallback: web speech (robotröst)
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(state.story);
+        u.lang = 'sv-SE'; u.rate = state.tempo;
+        speechSynthesis.speak(u);
+      } else {
+        await ttsPlay(state.story, state.voice, state.tempo);
+      }
+    }catch(e){
+      out.textContent = 'Fel (uppspelning): ' + e.message;
+    }
   });
 
-  // rek + sparat
+  // Rekommenderat + sparat (oförändrat)
   function renderFavs(){
     favList.innerHTML = state.favs.length? '' : '<div class="rec">Inga sparade berättelser ännu.</div>';
     state.favs.forEach(f=>{
       const el=document.createElement('div'); el.className='rec';
-      el.innerHTML=`<div class="title">${f.title}</div><div class="ing">${f.ing||''}</div><div class="row gap"><button class="btn" data-act="listen" data-id="${f.id}">Lyssna</button></div>`;
+      el.innerHTML=`<div class="title">${f.title}</div><div class="ing">${f.ing||''}</div>
+        <div class="row gap"><button class="btn" data-act="listen" data-id="${f.id}">Lyssna</button></div>`;
       favList.appendChild(el);
     });
   }
@@ -105,19 +160,30 @@
 
   (window.DEMO_RECS||[]).forEach(r=>{
     const el=document.createElement('div'); el.className='rec';
-    el.innerHTML=`<div class="title">${r.title}</div><div class="ing">${r.ing}</div><div class="row gap"><button class="btn" data-act="save" data-id="${r.id}">Spara</button><button class="btn" data-act="listen" data-id="${r.id}">Lyssna</button></div>`;
+    el.innerHTML=`<div class="title">${r.title}</div><div class="ing">${r.ing}</div>
+      <div class="row gap"><button class="btn" data-act="save" data-id="${r.id}">Spara</button>
+      <button class="btn" data-act="listen" data-id="${r.id}">Lyssna</button></div>`;
     recsEl.appendChild(el);
   });
-  recsEl.addEventListener('click',e=>{
+  recsEl.addEventListener('click',async e=>{
     const b=e.target.closest('button[data-act]'); if(!b) return;
     const rec=(window.DEMO_RECS||[]).find(x=>x.id===b.dataset.id); if(!rec) return;
     if(b.dataset.act==='save'){ saveFav({id:'fav-'+Date.now(), title:rec.title, ing:rec.ing}); b.textContent='Sparat ✓'; }
-    else { speak(`${rec.title}. ${rec.ing}`); }
+    else {
+      try{
+        if (window.OFFLINE_MODE) {
+          speechSynthesis.cancel();
+          const u=new SpeechSynthesisUtterance(`${rec.title}. ${rec.ing}`); u.lang='sv-SE'; u.rate=state.tempo; speechSynthesis.speak(u);
+        } else {
+          await ttsPlay(`${rec.title}. ${rec.ing}`, state.voice, state.tempo);
+        }
+      } catch(e){ out.textContent='Fel (rek-lyssna): '+e.message; }
+    }
   });
 
   // Connect: API-key lokal
   (function initKeyUI(){
-    apiKeyIn.value=window.getApiKey();
+    apiKeyIn.value = (window.getApiKey && window.getApiKey()) || window.OPENAI_API_KEY || '';
     keyStatus.textContent = apiKeyIn.value ? 'Nyckel är lagrad lokalt.' : 'Ingen nyckel sparad.';
     $('#btnSaveKey').addEventListener('click',()=>{ window.setApiKey(apiKeyIn.value.trim()); keyStatus.textContent='Nyckel sparad lokalt.'; });
     $('#btnClearKey').addEventListener('click',()=>{ window.clearApiKey(); apiKeyIn.value=''; keyStatus.textContent='Nyckel rensad.'; });
