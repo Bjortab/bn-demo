@@ -1,23 +1,26 @@
-// Kör offline (ingen API krävs). När du vill testa riktiga röster: sätt false.
-window.OFFLINE_MODE = true;
+// config.js
+// Slå PÅ riktiga API-anrop
+window.OFFLINE_MODE = false;
 
-// Demo-röster (etiketter).
+// Lagra nyckeln lokalt (helst via BlushConnect; för snabbtest kan du sätta den här)
+window.OPENAI_API_KEY = window.OPENAI_API_KEY || localStorage.getItem('OPENAI_API_KEY') || "";
+
+// Hjälpfunktioner
+window.getApiKey   = () => window.OPENAI_API_KEY || localStorage.getItem('OPENAI_API_KEY') || "";
+window.setApiKey   = (k) => { localStorage.setItem('OPENAI_API_KEY', k||""); window.OPENAI_API_KEY = k||""; };
+window.clearApiKey = ()  => { localStorage.removeItem('OPENAI_API_KEY'); window.OPENAI_API_KEY = ""; };
+
+// Demo-röster (etiketter för listan – mappas till OpenAI TTS-voice nedan)
 window.DEMO_VOICES = [
-  { id:'auto',    label:'Auto (sv-SE om möjligt)' },
-  { id:'soft-f',  label:'Mjuk • kvinna (demo)' },
-  { id:'warm-m',  label:'Varm • man (demo)' },
-  { id:'neutral', label:'Neutral (demo)' },
-  { id:'whisper', label:'Viskande (demo)' }
+  { id:'alloy',    label:'Alloy (neutral)' },
+  { id:'verse',    label:'Verse (mjuk)' },
+  { id:'aria',     label:'Aria (kvinna)' },
+  { id:'coral',    label:'Coral (man)'   }
 ];
 
-// Demo-rekommenderat
+// Rekommenderat (oförändrat)
 window.DEMO_RECS = [
   { id:'r1', title:'Kvällsritual för närhet', ing:'Mjuk landning + varm blickkontakt.' },
   { id:'r2', title:'Kontakt när stressen biter', ing:'Microwinding när nervsystemet är uppe i varv.' },
   { id:'r3', title:'Sensuell guidning', ing:'Långsam rytm med ord som dröjer kvar.' }
 ];
-
-// Lokal API-nyckel (för när OFFLINE_MODE=false)
-window.getApiKey  = () => localStorage.getItem('OPENAI_API_KEY') || '';
-window.setApiKey  = (k) => localStorage.setItem('OPENAI_API_KEY', k||'');
-window.clearApiKey= () => localStorage.removeItem('OPENAI_API_KEY');
