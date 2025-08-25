@@ -2,143 +2,125 @@
 <html lang="sv" data-theme="dark">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Blush Narratives — v0.4 online</title>
-  <meta name="color-scheme" content="dark light" />
-  <link rel="preload" href="styles.v040.css" as="style" />
-  <link rel="stylesheet" href="styles.v040.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blush Narratives — v0.5.0</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <strong>Blush Narratives</strong>
-      <span class="badge">v0.4 online</span>
-    </div>
-    <nav class="tabs" role="tablist" aria-label="Huvudmeny">
-      <button class="tab is-active" data-tab="home">Hem</button>
-      <button class="tab" data-tab="fav">Favoriter</button>
-      <button class="tab" data-tab="connect">BlushConnect</button>
-    </nav>
-    <div class="tools">
-      <button id="btnKey" class="chip">API-nyckel</button>
-      <button id="btnRescue" class="chip" title="Öppna mini-panel">Rescue</button>
+    <div class="brand">Blush Narratives</div>
+    <div class="top-actions">
+      <button id="btnApiKey" class="btn ghost">API-nyckel</button>
+      <button id="btnRescue" class="btn ghost">Rescue</button>
+      <span id="buildTag" class="build">BN v0.5.0</span>
     </div>
   </header>
 
-  <main id="page">
-    <!-- HEM -->
-    <section id="home" class="view is-active">
-      <section class="card" id="player">
-        <header class="row gap">
-          <h2>Röstprov</h2>
-          <div class="spacer"></div>
-          <div class="kv">Tempo</div>
-          <input id="tempo" type="range" min="0.7" max="1.6" step="0.05" value="1.0" />
-          <span id="tempoVal">1.00×</span>
-        </header>
+  <main class="container">
+    <section class="panel">
+      <div class="row stack">
+        <label class="lbl">Nivå</label>
+        <div class="level-row">
+          <button class="chip" data-level="1">1</button>
+          <button class="chip" data-level="2">2</button>
+          <button class="chip" data-level="3">3</button>
+          <button class="chip" data-level="4">4</button>
+          <button class="chip" data-level="5">5</button>
+        </div>
+      </div>
 
-        <div class="row wrap gap sm">
-          <div class="kv">Nivå</div>
-          <div class="chips" id="levelChips" role="group" aria-label="Nivå">
-            <button class="chip is-active" data-l="1">1</button>
-            <button class="chip" data-l="3">3</button>
-            <button class="chip" data-l="5">5</button>
+      <div class="row grid3">
+        <div>
+          <label class="lbl">Längd</label>
+          <div class="seg" id="lenGroup">
+            <button class="seg-btn" data-len="1">1 min</button>
+            <button class="seg-btn" data-len="3">3 min</button>
+            <button class="seg-btn" data-len="5">5 min</button>
           </div>
-
-          <div class="kv">Längd</div>
-          <div class="chips" id="lenChips" role="group" aria-label="Längd">
-            <button class="chip is-active" data-m="1">1 min</button>
-            <button class="chip" data-m="3">3 min</button>
-            <button class="chip" data-m="5">5 min</button>
-          </div>
-
-          <div class="kv">Röst</div>
-          <select id="voice">
-            <option value="alloy">Alloy (neutral)</option>
-            <option value="aria">Aria (kvinna)</option>
-            <option value="coral">Coral (man)</option>
-            <option value="verse">Verse (mjuk)</option>
+        </div>
+        <div>
+          <label class="lbl">Röst</label>
+          <select id="voiceSel" class="select">
+            <option value="alloy">Alloy</option>
+            <option value="coral">Coral</option>
+            <option value="verse">Verse</option>
+            <option value="sage">Sage</option>
           </select>
         </div>
-
-        <div class="row gap">
-          <textarea id="prompt" placeholder="Skriv din idé…"></textarea>
+        <div>
+          <label class="lbl">Tempo</label>
+          <div class="slider-row">
+            <input id="tempo" type="range" min="0.8" max="1.4" step="0.05" value="1.0" />
+            <span id="tempoVal">1.0×</span>
+          </div>
         </div>
+      </div>
 
-        <footer class="row gap">
-          <button id="btnGen" class="btn">Generera</button>
-          <button id="btnPlay" class="btn ghost">Lyssna</button>
-          <div class="spacer"></div>
-          <small id="status" class="muted">Redo</small>
-        </footer>
-      </section>
+      <div class="row stack">
+        <label class="lbl">Skapa egen berättelse</label>
+        <textarea id="idea" rows="6" placeholder="Skriv din idé…"></textarea>
+      </div>
 
-      <section class="card">
-        <header><h3>Text</h3></header>
-        <pre id="story" class="story">— ingen berättelse än —</pre>
-      </section>
-
-      <section class="grid">
-        <article class="card sm">
-          <header><h4>Kvällsritual för närhet</h4></header>
-          <p>Mjukt lugn + varm blickkontakt.</p>
-          <footer><button class="btn ghost sm" data-sample="nearhet">Lyssna</button></footer>
-        </article>
-        <article class="card sm">
-          <header><h4>Kontakt när stressen biter</h4></header>
-          <p>Microwinding när nervsystemet är uppe i varv.</p>
-          <footer><button class="btn ghost sm" data-sample="stress">Lyssna</button></footer>
-        </article>
-        <article class="card sm">
-          <header><h4>Sensuell guidning</h4></header>
-          <p>Långsam rytm, tid med ord.</p>
-          <footer><button class="btn ghost sm" data-sample="sensuell">Lyssna</button></footer>
-        </article>
-      </section>
+      <div class="row gap">
+        <button id="btnGenerate" class="btn primary">Generera</button>
+        <button id="btnListen" class="btn">Lyssna</button>
+        <button id="btnStop" class="btn ghost">Stoppa</button>
+        <span id="status" class="muted"></span>
+        <span id="ttsStatus" class="muted"></span>
+      </div>
     </section>
 
-    <!-- FAVORITER -->
-    <section id="fav" class="view">
-      <section class="card">
-        <header><h2>Sparat</h2></header>
-        <p class="muted">Kommer snart.</p>
-      </section>
+    <section class="panel">
+      <div class="row space">
+        <h3 class="lbl">Rekommenderat</h3>
+        <div class="chip-row" id="tagRow">
+          <button class="chip small active" data-tag="alla">Alla</button>
+          <button class="chip small" data-tag="romantik">Romantik</button>
+          <button class="chip small" data-tag="lekfullt">Lekfullt</button>
+          <button class="chip small" data-tag="sensuellt">Sensuellt</button>
+          <button class="chip small" data-tag="eftervård">Eftervård</button>
+        </div>
+      </div>
+      <div id="cards" class="cards"></div>
     </section>
 
-    <!-- CONNECT -->
-    <section id="connect" class="view">
-      <section class="card">
-        <header class="row gap">
-          <h2>BlushConnect</h2>
-          <span class="badge ghost">demo</span>
-          <div class="spacer"></div>
-          <button id="btnOpenKeyFromConnect" class="chip">API-nyckel</button>
-        </header>
-        <p class="muted">Profil, filter och matchning kommer i nästa steg. (Scroll-buggen från v0.3 är fixad.)</p>
-      </section>
+    <section class="panel">
+      <h3 class="lbl">Text</h3>
+      <div id="storyOut" class="story"></div>
     </section>
   </main>
 
-  <!-- API-nyckel modal -->
-  <dialog id="dlgKey">
-    <form method="dialog" class="card">
-      <header><h3>OpenAI API-nyckel</h3></header>
-      <p>Klistra in en nyckel som börjar med <code>sk-</code>. Den lagras lokalt i din webbläsare.</p>
-      <input id="keyInput" type="text" placeholder="sk-..." />
-      <footer class="row gap">
-        <button id="btnKeySave" class="btn">Spara</button>
-        <button id="btnKeyClear" class="btn ghost">Rensa</button>
-        <div class="spacer"></div>
-        <button class="btn ghost" value="cancel">Stäng</button>
-      </footer>
-      <small id="keyStatus" class="muted">Ingen nyckel lagrad.</small>
+  <!-- API-nyckel dialog -->
+  <dialog id="apiDlg" class="dialog">
+    <form method="dialog">
+      <h3>Lagra API-nyckel lokalt</h3>
+      <p class="muted">För TTS (röst) i klienten behöver du spara din nyckel lokalt. (Servern använder egen nyckel.)</p>
+      <input id="apiInput" class="input" placeholder="sk-..." />
+      <div class="row gap end">
+        <button value="cancel" class="btn ghost">Stäng</button>
+        <button id="saveApiBtn" class="btn primary">Spara</button>
+      </div>
     </form>
   </dialog>
 
-  <audio id="audio"></audio>
+  <!-- Rescue -->
+  <dialog id="rescDlg" class="dialog">
+    <form method="dialog">
+      <h3>BN Rescue</h3>
+      <div class="row stack">
+        <label class="lbl">Testa röst</label>
+        <button id="rescueSpeak" class="btn">Testa TTS</button>
+      </div>
+      <div class="row stack">
+        <label class="lbl">Nyckel (maskad)</label>
+        <pre id="maskKey" class="muted"></pre>
+      </div>
+      <div class="row gap end">
+        <button value="cancel" class="btn ghost">Stäng</button>
+      </div>
+    </form>
+  </dialog>
 
-  <script>console.log('BN v0.4 online');</script>
-  <script src="config.js"></script>
-  <script defer src="app.v040.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
