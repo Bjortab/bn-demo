@@ -1,219 +1,245 @@
-(() => {
-  const $ = sel => document.querySelector(sel);
-  const $$ = sel => Array.from(document.querySelectorAll(sel));
+// ---------- helpers ----------
+const $ = (sel, root=document)=>root.querySelector(sel);
+const $$ = (sel, root=document)=>[...root.querySelectorAll(sel)];
+const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
 
-  const LS = {
-    get k(){ return localStorage.getItem('OPENAI_API_KEY') || ""; },
-    set k(v){ localStorage.setItem('OPENAI_API_KEY', v || ""); },
-    get level(){ return +(localStorage.getItem('BN_level')||'1'); },
-    set level(v){ localStorage.setItem('BN_level', v); },
-    get minutes(){ return +(localStorage.getItem('BN_minutes')||'3'); },
-    set minutes(v){ localStorage.setItem('BN_minutes', v); },
-    get voice(){ return localStorage.getItem('BN_voice') || (window.BN_DEFAULTS?.voice || 'alloy'); },
-    set voice(v){ localStorage.setItem('BN_voice', v); },
-    get tempo(){ return +(localStorage.getItem('BN_tempo')||'1'); },
-    set tempo(v){ localStorage.setItem('BN_tempo', v); },
-  };
+const state = {
+  level:3, minutes:3, voice:'alloy', rate:1.0,
+  storyText:'', audio:null, lexicon:[], tag:'alla',
+  apiOnline:false
+};
 
-  const OPENAI_BASE = 'https://api.openai.com/v1';
-  const TEXT_MODEL = window.BN_DEFAULTS?.textModel || 'gpt-4o-mini';
-  const TTS_MODEL  = window.BN_DEFAULTS?.ttsModel  || 'gpt-4o-mini-tts';
-
-  // tabbar
-  $$('.tab').forEach(btn=>{
-    btn.addEventListener('click', () => {
-      $$('.tab').forEach(b=>b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      const id = btn.dataset.tab;
-      $$('.view').forEach(v=>v.classList.remove('is-active'));
-      $('#'+id).classList.add('is-active');
-    });
-  });
-
-  // init kontroller
-  // nivå
-  const levelChips = $('#levelChips');
-  levelChips.addEventListener('click', (e)=>{
-    const b = e.target.closest('.chip'); if(!b) return;
-    levelChips.querySelectorAll('.chip').forEach(x=>x.classList.remove('is-active'));
-    b.classList.add('is-active');
-    LS.level = +b.dataset.l;
-  });
-  // längd
-  const lenChips = $('#lenChips');
-  lenChips.addEventListener('click', (e)=>{
-    const b = e.target.closest('.chip'); if(!b) return;
-    lenChips.querySelectorAll('.chip').forEach(x=>x.classList.remove('is-active'));
-    b.classList.add('is-active');
-    LS.minutes = +b.dataset.m;
+// ---------- init ----------
+window.addEventListener('DOMContentLoaded', async ()=>{
+  // tempo
+  $('#tempo').addEventListener('input', e=>{
+    state.rate = Number(e.target.value);
+    $('#tempoVal').textContent = state.rate.toFixed(2)+'×';
   });
   // voice
-  const voiceSel = $('#voice'); voiceSel.value = LS.voice;
-  voiceSel.addEventListener('change', ()=> LS.voice = voiceSel.value);
-  // tempo
-  const tempo = $('#tempo'), tempoVal = $('#tempoVal');
-  tempo.value = String(LS.tempo || 1); tempoVal.textContent = (+tempo.value).toFixed(2)+'×';
-  tempo.addEventListener('input', ()=>{ LS.tempo = +tempo.value; tempoVal.textContent = (+tempo.value).toFixed(2)+'×'; });
+  $('#voiceSel').addEventListener('change', e=> state.voice = e.target.value);
 
-  // återställ tidigare val i UI
-  (function hydrate(){
-    // nivå
-    const l = LS.level;
-    levelChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('is-active', +x.dataset.l===l));
-    // längd
-    const m = LS.minutes || 1;
-    lenChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('is-active', +x.dataset.m===m));
-  })();
-
-  // status
-  function setStatus(msg, tone='muted'){ const el=$('#status'); el.className=tone; el.textContent=msg; }
-
-  // API-nyckel dialog
-  const dlg = $('#dlgKey'), keyInput = $('#keyInput'), keyStatus = $('#keyStatus');
-  function refreshKeyUI(){
-    keyInput.value = LS.k || (window.OPENAI_API_KEY||"");
-    keyStatus.textContent = (LS.k||window.OPENAI_API_KEY) ? 'Nyckel lagrad lokalt.' : 'Ingen nyckel lagrad.';
-  }
-  $('#btnKey').addEventListener('click', ()=>{ refreshKeyUI(); dlg.showModal(); });
-  $('#btnOpenKeyFromConnect').addEventListener('click', ()=>{ refreshKeyUI(); dlg.showModal(); });
-  $('#btnKeySave').addEventListener('click', (e)=>{ e.preventDefault(); const v=keyInput.value.trim(); if(!/^sk-/.test(v)){ keyStatus.textContent='Ogiltig nyckel (måste börja med sk-)'; return; } LS.k=v; keyStatus.textContent='Sparad.'; });
-  $('#btnKeyClear').addEventListener('click', (e)=>{ e.preventDefault(); LS.k=""; keyInput.value=""; keyStatus.textContent='Rensad.'; });
-
-  // Textgenerering
-  async function genText(prompt){
-    const apiKey = (LS.k || window.OPENAI_API_KEY || "").trim();
-    if(!/^sk-/.test(apiKey)) throw new Error('Ingen giltig API-nyckel. Öppna “API-nyckel” och spara din sk-nyckel.');
-
-    const level = LS.level || 1;
-    const minutes = LS.minutes || 1;
-
-    const sys = 'Du är en svensk sensuell berättarröst. Anpassa explicitnivå tydligt: 1 oskyldig, 3 mellan, 5 ingående. Ton: varm, naturlig.';
-    const user = `Skriv en erotisk berättelse på svenska.
-Nivå: ${level}
-Längd: ca ${minutes} min uppläsning.
-Prompt: ${prompt || 'Överraska mig med värme och närhet.'}`;
-
-    const res = await fetch(`${OPENAI_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-      body: JSON.stringify({
-        model: TEXT_MODEL,
-        messages: [{role:'system', content:sys},{role:'user', content:user}],
-        temperature: 0.95,
-        max_tokens: 1100
-      })
+  // nivå
+  $$('.level-row .chip').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      $$('.level-row .chip').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active'); state.level = Number(b.dataset.level);
     });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data?.error?.message || 'API-fel (text)');
-    return data.choices?.[0]?.message?.content?.trim() || '';
-  }
-
-  // TTS
-  async function playTTS(text){
-    const apiKey = (LS.k || window.OPENAI_API_KEY || "").trim();
-    if(!/^sk-/.test(apiKey)) throw new Error('Ingen giltig API-nyckel.');
-
-    const voice = LS.voice || 'alloy';
-    const res = await fetch(`${OPENAI_BASE}/audio/speech`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-      body: JSON.stringify({ model: TTS_MODEL, voice, input: text, format:'mp3' })
+  });
+  // längd
+  $$('#lenGroup .seg-btn').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      $$('#lenGroup .seg-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active'); state.minutes = Number(b.dataset.len);
     });
-    if(!res.ok){
-      let msg='API-fel (TTS)';
-      try{ const j=await res.json(); msg=j?.error?.message||msg; }catch{}
-      throw new Error(msg);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = $('#audio');
-    a.src = url; a.playbackRate = Math.max(.5, Math.min(2, LS.tempo||1));
-    await a.play();
-  }
+  });
+  // default UI
+  $(`.level-row .chip[data-level="3"]`)?.classList.add('active');
+  $(`#lenGroup .seg-btn[data-len="3"]`)?.classList.add('active');
 
-  // Händelser
-  let currentStory = '';
-  $('#btnGen').addEventListener('click', async ()=>{
-    const p = $('#prompt').value.trim();
-    setStatus('Genererar…');
-    $('#story').textContent = '— genererar… —';
-    try{
-      currentStory = await genText(p);
-      $('#story').textContent = currentStory || '(tomt svar)';
-      setStatus('Klar', 'ok');
-    }catch(e){
-      $('#story').textContent = 'Fel: '+e.message;
-      setStatus('Fel: '+e.message, 'err');
-    }
+  // actions
+  $('#btnGenerate').addEventListener('click', onGenerate);
+  $('#btnListen').addEventListener('click', onListen);
+  $('#btnStop').addEventListener('click', onStop);
+
+  // dialogs
+  $('#btnApiKey').addEventListener('click', openApiDialog);
+  $('#saveApiBtn').addEventListener('click', saveApiKey);
+  $('#btnRescue').addEventListener('click', openRescue);
+
+  // tags
+  $$('#tagRow .chip').forEach(ch=>{
+    ch.addEventListener('click', ()=>{
+      $$('#tagRow .chip').forEach(x=>x.classList.remove('active'));
+      ch.classList.add('active'); state.tag = ch.dataset.tag; renderCards();
+    });
   });
 
-  $('#btnPlay').addEventListener('click', async ()=>{
-    if(!currentStory){ setStatus('Generera först.'); return; }
-    setStatus('Spelar upp…');
-    try{
-      await playTTS(currentStory);
-      setStatus('Uppspelning');
-    }catch(e){
-      setStatus('Fel: '+e.message, 'err');
-    }
-  });
+  // health (om Pages Functions finns)
+  try {
+    const h = await fetch('/api/health?'+Date.now(), {cache:'no-store'});
+    state.apiOnline = h.ok;
+  } catch { state.apiOnline = false; }
 
-  // Smakprovskort
-  document.addEventListener('click', async (e)=>{
-    const b = e.target.closest('[data-sample]');
-    if(!b) return;
-    const kind = b.dataset.sample;
-    const samples = {
-      nearhet: 'Ta min hand. Stanna upp, låt blicken vila, och andas tillsammans. Rösten är låg, varm och mjuk.',
-      stress: 'När det rusar i kroppen: sakta ner, känn fötterna mot golvet. Låt orden landa som mjuka vågor.',
-      sensuell: 'Rytmen är långsam. Varje ord placerat med omsorg. Värmen stiger, ett steg närmare.'
-    };
-    const text = samples[kind] || 'Mjuk förhandsvisning.';
-    try{
-      await playTTS(text);
-      setStatus('Spelar smakprov');
-    }catch(err){
-      setStatus('Fel: '+err.message, 'err');
-    }
-  });
+  // lexikon
+  try{
+    const res = await fetch('lexicon.json?'+Date.now());
+    state.lexicon = await res.json();
+  }catch{ state.lexicon=[]; }
+  renderCards();
 
-  // Rescue-knapp – öppnar mini-panel (inget Console-trix längre)
-  $('#btnRescue').addEventListener('click', ()=>{
-    if(window.__BN_RESCUE__) return alert('Rescue är redan öppet.');
-    // Liten inline-variant: ladda samma panel som i tidigare patch (lite kortare)
-    (function(){
-      window.__BN_RESCUE__=true;
-      const box=document.createElement('div');
-      box.style.cssText='position:fixed;right:16px;bottom:16px;z-index:999999;background:#111;border:1px solid #333;border-radius:10px;padding:10px;color:#eee;width:min(420px,92vw)';
-      box.innerHTML = `
-        <div style="font-weight:700;background:linear-gradient(90deg,#ff4bb5,#7a5cff);padding:8px;border-radius:8px;color:#fff">BN Rescue</div>
-        <div style="margin-top:8px;display:flex;gap:6px"><input id="rKey" placeholder="sk-..." style="flex:1;background:#0b0d10;border:1px solid #2a2a2a;border-radius:8px;padding:6px;color:#eee"/><button id="rSave">Spara</button></div>
-        <div style="margin-top:8px"><textarea id="rPrompt" placeholder="Skriv din idé…" style="width:100%;min-height:90px;background:#0b0d10;border:1px solid #2a2a2a;border-radius:8px;padding:6px;color:#eee"></textarea></div>
-        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
-          <label>Nivå <select id="rL"><option>1</option><option>3</option><option selected>5</option></select></label>
-          <label>Längd <select id="rM"><option>1</option><option selected>3</option><option>5</option></select></label>
-          <label>Röst <select id="rV"><option>alloy</option><option>aria</option><option>coral</option><option>verse</option></select></label>
-          <label>Tempo <input id="rT" type="range" min="0.7" max="1.6" step="0.05" value="1.0"/></label>
+  console.log('BN v0.5.0', {apiOnline: state.apiOnline});
+});
+
+// ---------- API-nyckel dialog (för TTS i klienten) ----------
+function openApiDialog(){
+  $('#apiInput').value = localStorage.getItem('OPENAI_API_KEY') || '';
+  $('#apiDlg').showModal();
+}
+function saveApiKey(e){
+  e.preventDefault();
+  const v = $('#apiInput').value.trim();
+  if(!v.startsWith('sk-')) { alert('Ogiltig nyckel (börjar inte med sk-)'); return; }
+  localStorage.setItem('OPENAI_API_KEY', v);
+  $('#apiDlg').close();
+}
+
+// ---------- Rescue ----------
+function openRescue(){
+  const dlg = $('#rescDlg');
+  const k = localStorage.getItem('OPENAI_API_KEY') || '';
+  $('#maskKey').textContent = k ? k.slice(0,6)+'…'+k.slice(-4) : '(saknas)';
+  $('#rescueSpeak').onclick = async (ev)=>{
+    ev.preventDefault();
+    try { await playTTS('Detta är ett test av rösten i Blush Narratives.', 'alloy', 1.0); }
+    catch(err){ alert('TTS-fel: '+err.message); }
+  };
+  dlg.showModal();
+}
+
+// ---------- Rekommenderat ----------
+function renderCards(){
+  const cont = $('#cards'); cont.innerHTML = '';
+  const items = state.lexicon.filter(x=> state.tag==='alla' || x.tags.includes(state.tag));
+  for(const it of items){
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="title">${it.title}</div>
+      <div class="desc">${it.desc}</div>
+      <div class="tags">${it.tags.map(t=>`<span class="badge">${t}</span>`).join(' ')}</div>
+      <div class="row">
+        <div class="row gap">
+          <button class="btn ghost btnSave">Spara</button>
+          <button class="btn btnListen">Lyssna</button>
         </div>
-        <div style="margin-top:8px;display:flex;gap:6px"><button id="rGen">Generera</button><button id="rPlay">Lyssna</button><button id="rClose">Stäng</button></div>
-        <pre id="rOut" style="margin-top:8px;white-space:pre-wrap;color:#a8acb6">— ingen berättelse än —</pre>`;
-      document.body.appendChild(box);
-      const rK=box.querySelector('#rKey'), rS=box.querySelector('#rSave'), rP=box.querySelector('#rPrompt');
-      const rL=box.querySelector('#rL'), rM=box.querySelector('#rM'), rV=box.querySelector('#rV'), rT=box.querySelector('#rT');
-      const rG=box.querySelector('#rGen'), rPlay=box.querySelector('#rPlay'), rClose=box.querySelector('#rClose'), rOut=box.querySelector('#rOut');
-      rK.value = LS.k || '';
-      rS.onclick = ()=>{ LS.k=rK.value.trim(); rOut.textContent='Nyckel sparad.'; };
-      let rescueStory='';
-      rG.onclick = async ()=>{
-        try{
-          LS.level=+rL.value; LS.minutes=+rM.value; LS.voice=rV.value; LS.tempo=+rT.value;
-          rescueStory = await genText(rP.value.trim()); rOut.textContent=rescueStory||'(tomt)';
-        }catch(e){ rOut.textContent='Fel: '+e.message; }
-      };
-      rPlay.onclick = async ()=>{ if(!rescueStory){rOut.textContent='Generera först.';return;} try{ await playTTS(rescueStory); }catch(e){ rOut.textContent='Fel: '+e.message; } };
-      rClose.onclick = ()=>{ box.remove(); delete window.__BN_RESCUE__; };
-    })();
-  });
+        <span class="muted">${it.length || '3–5 min'}</span>
+      </div>`;
+    card.querySelector('.btnListen').addEventListener('click', async ()=>{
+      await generateOnlineOrFallback(`${it.title} — ${it.desc}`);
+      await onListen();
+    });
+    card.querySelector('.btnSave').addEventListener('click', ()=>{
+      const favs = JSON.parse(localStorage.getItem('BN_FAV')||'[]');
+      favs.push({t:it.title, d:it.desc, ts:Date.now()});
+      localStorage.setItem('BN_FAV', JSON.stringify(favs));
+    });
+    cont.appendChild(card);
+  }
+}
 
-  console.log('%cBN v0.4 online','background:#222;color:#0f0;padding:2px 6px');
-})();
+// ---------- Generering ----------
+function buildPrompt(idea, level, minutes){
+  const toneByLevel = {
+    1:'romantisk, mjuk och subtil',
+    2:'romantisk med sensuella undertoner',
+    3:'sensuell och närvarande, vuxen nivå',
+    4:'tydligt sensuell med vuxet språk',
+    5:'mycket explicit vuxet språk, hög intensitet (lagligt & samtycke)'
+  };
+  const len = {1:'kort',3:'mellan',5:'längre'}[minutes] || 'mellan';
+  return `Skriv en ${len} svensk berättelse i jag-form.
+Stil: ${toneByLevel[level]}.
+Utgå från idén: ${idea || '(ingen idé)'}.
+Avsluta mjukt.`;
+}
+
+async function generateOnlineOrFallback(idea){
+  $('#status').textContent = state.apiOnline ? 'Genererar (OpenAI)…' : 'Genererar (lokalt)…';
+  if (state.apiOnline) {
+    try {
+      const res = await fetch('/api/generate', {
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({ prompt: idea, level: state.level, minutes: state.minutes })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.ok && data.text) {
+          state.storyText = data.text.trim();
+          $('#storyOut').textContent = state.storyText;
+          $('#status').textContent = 'Klar';
+          return;
+        }
+      }
+      console.warn('API fallback — ogiltigt svar');
+    } catch (e) {
+      console.warn('API fallback — nätfel', e);
+    }
+  }
+  // Lokalt (fallback)
+  const text = synthLocalText(buildPrompt(idea, state.level, state.minutes));
+  state.storyText = text;
+  $('#storyOut').textContent = text;
+  $('#status').textContent = 'Klar (lokalt)';
+}
+
+function synthLocalText(seed){
+  const base = {
+    1:"Hon såg mig och log. Luften var mjuk och kvällen stilla. Vi tog det långsamt, ett steg i taget…",
+    2:"Hennes hand fann min. Närheten växte, andetagen blev varmare. Vi hittade ett lugnt tempo…",
+    3:"Vi kom närmare, huden svarade på minsta rörelse. Rösten bar värmen och blicken stannade…",
+    4:"Värmen slog upp mellan oss, beröringen blev tydlig och orden djärva. Inget dolt, bara vi…",
+    5:"Intensiteten tog över. Språket var naket och vuxet, varje rörelse uttalades utan skygglappar…"
+  }[state.level] || "";
+  const blocks = Math.max(3, Math.min(9, state.minutes*3));
+  let out = `(${state.minutes} min, nivå ${state.level})\n\n${base}\n\n`;
+  for(let i=0;i<blocks;i++) out += base.replace('…','.') + '\n\n';
+  return out.trim();
+}
+
+async function onGenerate(){
+  disable(true);
+  const idea = $('#idea').value.trim();
+  try { await generateOnlineOrFallback(idea); }
+  catch(e){ alert(e.message||'Fel vid generering'); }
+  finally { disable(false); }
+}
+
+// ---------- TTS ----------
+async function onListen(){
+  const text = state.storyText || $('#storyOut').textContent.trim();
+  if(!text){ alert('Ingen text att läsa.'); return; }
+  disable(true);
+  try { await playTTS(text, state.voice, state.rate); }
+  finally { disable(false); }
+}
+
+async function playTTS(text, voice='alloy', rate=1.0){
+  const key = localStorage.getItem('OPENAI_API_KEY');
+  if (!key) throw new Error('Spara din OpenAI-nyckel via knappen “API-nyckel”.');
+  const st = $('#ttsStatus'); st.textContent='Laddar röst…';
+  if (state.audio) try { state.audio.pause(); } catch {}
+  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+    method:'POST',
+    headers:{'content-type':'application/json', authorization:`Bearer ${key}`},
+    body: JSON.stringify({ model:'gpt-4o-mini-tts', voice, input:text, format:'mp3', speed:Math.max(0.5,Math.min(2.0,rate)) }),
+  });
+  if (!res.ok) { st.textContent=''; return speakFallback(text, rate); }
+  const blob = await res.blob(); const url = URL.createObjectURL(blob);
+  const audio = new Audio(url); audio.preload='auto';
+  audio.onended=()=>{ st.textContent=''; URL.revokeObjectURL(url); };
+  audio.onerror=()=>{ st.textContent=''; speakFallback(text, rate); };
+  await audio.play(); state.audio = audio; st.textContent='Spelar…';
+}
+
+function speakFallback(text, rate=1.0){
+  const s = window.speechSynthesis; const st = $('#ttsStatus');
+  if (!s) { alert('Ingen TTS-motor tillgänglig.'); return; }
+  s.cancel(); const u = new SpeechSynthesisUtterance(text);
+  u.lang='sv-SE'; u.rate=Math.max(0.8,Math.min(1.4,rate));
+  u.onstart=()=>st.textContent='Spelar (fallback)…'; u.onend=()=>st.textContent='';
+  s.speak(u);
+}
+
+// ---------- stop & UI ----------
+function onStop(){
+  $('#ttsStatus').textContent='';
+  try { if(state.audio){ state.audio.pause(); state.audio=null; } window.speechSynthesis?.cancel(); } catch {}
+}
+function disable(b){
+  ['btnGenerate','btnListen','btnStop'].forEach(id=>{
+    const el = $('#'+id); el.disabled=b; el.classList.toggle('disabled',b);
+  });
+  $('#status').textContent = b ? 'Jobbar…' : '';
+}
