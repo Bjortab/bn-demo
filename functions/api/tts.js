@@ -1,35 +1,49 @@
-export const onRequest = async ({ request, env }) => {
-  try {
-    const { text, voice = "alloy", speed = 1.0 } = await request.json();
-    if (!text || !text.trim()) return new Response("Missing text", { status: 400 });
+import { serverError } from "./_utils.js";
 
-    const apiKey = env.OPENAI_API_KEY;
-    if (!apiKey) throw new Error("OPENAI_API_KEY saknas i Cloudflare env.");
+export async function onRequest(context) {
+  try {
+    const { request, env } = context;
+
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST,OPTIONS", "Access-Control-Allow-Headers": "Authorization,Content-Type" } });
+    }
+    if (request.method !== "POST") {
+      return new Response("Use POST", { status: 405 });
+    }
+
+    const { text = "", voice = "alloy", speed = 1.0 } = await request.json().catch(() => ({}));
+    if (!env.OPENAI_API_KEY) return new Response("OPENAI_API_KEY missing", { status: 400 });
 
     const res = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
-      headers: { "authorization": `Bearer ${apiKey}`, "content-type": "application/json" },
+      headers: {
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
-        model: env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts",
-        input: text,
+        model: "gpt-4o-mini-tts",
         voice,
-        speed: Math.max(0.5, Math.min(2.0, Number(speed) || 1.0)),
-        format: "mp3"
+        input: text,
+        format: "mp3",
+        speed: Math.max(0.5, Math.min(2.0, Number(speed) || 1.0))
       })
     });
 
     if (!res.ok) {
-      const msg = await res.text().catch(()=>"TTS error");
-      return new Response(msg, { status: res.status });
+      const t = await res.text().catch(() => "");
+      return new Response(t || "TTS error", { status: res.status, headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
+    // stream mp3 through
     return new Response(res.body, {
+      status: 200,
       headers: {
-        "content-type": "audio/mpeg",
-        "cache-control": "no-store"
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "no-store",
+        "Access-Control-Allow-Origin": "*"
       }
     });
-  } catch (e) {
-    return new Response(String(e), { status: 500 });
+  } catch (err) {
+    return serverError(err);
   }
-};
+}
