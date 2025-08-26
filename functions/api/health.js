@@ -1,5 +1,5 @@
-import { json } from "./_utils";
-
 export async function onRequestGet() {
-  return json(200, { ok: true, ts: Date.now(), v: "v0.6.0" });
+  return new Response(JSON.stringify({ ok:true, v:"1.0", ts: Date.now() }), {
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control":"no-store" }
+  });
 }
