@@ -1,69 +1,100 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives</title>
-
-  <!-- Länk till stilmall -->
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" href="styles.css" as="style">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
+  <header class="topbar">
     <h1>Blush Narratives</h1>
-    <nav>
-      <button id="homeBtn">Hem</button>
-      <button id="favoritesBtn">Favoriter</button>
-      <button id="connectBtn">BlushConnect</button>
-      <button id="rescueBtn">Rescue</button>
+    <nav class="top-actions">
+      <button id="btnApiKey" class="ghost">API-nyckel</button>
+      <button id="btnRescue" class="ghost">Rescue</button>
     </nav>
   </header>
 
-  <main>
-    <section id="controls">
-      <label for="level">Nivå</label>
-      <select id="level">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-      </select>
-
-      <label for="length">Längd</label>
-      <select id="length">
-        <option value="1">1 min</option>
-        <option value="3">3 min</option>
-        <option value="5">5 min</option>
-      </select>
-
-      <label for="voice">Röst</label>
-      <select id="voice">
-        <option value="alloy">Alloy</option>
-        <option value="coral">Coral</option>
-        <option value="verse">Verse</option>
-      </select>
-
-      <label for="tempo">Tempo</label>
-      <input type="range" id="tempo" min="0.5" max="2" step="0.1" value="1" />
+  <main class="container">
+    <!-- Röstdemo / tempo -->
+    <section class="player-card">
+      <div class="row">
+        <label for="tempo">Tempo</label>
+        <input id="tempo" type="range" min="0.8" max="1.4" step="0.05" value="1.0" />
+        <span id="tempoVal">1.0×</span>
+      </div>
     </section>
 
-    <section id="story">
-      <textarea id="userIdea" placeholder="Skriv din idé..."></textarea>
-      <div>
-        <button id="generateBtn">Generera</button>
-        <button id="listenBtn">Lyssna</button>
-        <button id="stopBtn">Stop</button>
+    <!-- Skapa egen berättelse -->
+    <section class="composer-card">
+      <h2>Skapa egen berättelse</h2>
+
+      <div class="row pillrow">
+        <span>Nivå</span>
+        <div class="pillgroup" id="levels">
+          <button data-level="1" class="pill active">1</button>
+          <button data-level="3" class="pill">3</button>
+          <button data-level="5" class="pill">5</button>
+        </div>
+
+        <span>Längd</span>
+        <div class="pillgroup" id="lengths">
+          <button data-min="1" class="pill">1 min</button>
+          <button data-min="3" class="pill active">3 min</button>
+          <button data-min="5" class="pill">5 min</button>
+        </div>
+
+        <span>Röst</span>
+        <select id="voice">
+          <option value="auto">Auto</option>
+          <option value="alloy">Alloy</option>
+          <option value="coral">Coral</option>
+          <option value="verse">Verse</option>
+        </select>
       </div>
-      <div id="output"></div>
+
+      <textarea id="userIdea" placeholder="Skriv din idé…"></textarea>
+
+      <div class="actions">
+        <button id="btnGenerate" class="primary">Generera</button>
+        <button id="btnPlay" class="secondary">Lyssna</button>
+        <button id="btnStop" class="ghost">Stop</button>
+      </div>
+
+      <div id="output" class="output"></div>
     </section>
   </main>
 
-  <footer>
-    <p>&copy; 2025 Blush Narratives</p>
-  </footer>
+  <!-- Rescue panel -->
+  <dialog id="rescue">
+    <article>
+      <header>
+        <strong>BN Rescue</strong>
+        <button id="closeRescue" class="ghost">Stäng</button>
+      </header>
 
-  <!-- Ladda alltid app.js sist -->
+      <div class="grid">
+        <label>OpenAI API-nyckel
+          <input id="apiKeyInput" type="password" placeholder="sk-..." />
+        </label>
+        <button id="saveApiKey" class="primary">Spara nyckel lokalt</button>
+      </div>
+
+      <p class="muted">Nyckeln sparas i din webbläsare (<code>localStorage</code>). Ta bort via “Rensa nyckel”.</p>
+
+      <div class="actions">
+        <button id="btnTestTTS" class="secondary">Testa röst</button>
+        <button id="btnClearKey" class="ghost">Rensa nyckel</button>
+      </div>
+
+      <pre id="dbg" class="dbg"></pre>
+    </article>
+  </dialog>
+
+  <!-- (valfri) global konfig – om du vill hårdkoda nyckel i demo -->
+  <!-- <script defer src="config.js"></script> -->
+
   <script defer src="app.js"></script>
 </body>
 </html>
