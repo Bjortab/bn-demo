@@ -1,23 +1,100 @@
-[
-  {
-    "id": "kvallsritual-narhet",
-    "title": "Kvällsritual för närhet",
-    "minutes": 5,
-    "desc": "Mjuk nedvarvning med värme och mjuka beröringar.",
-    "tags": ["romantisk","värme"]
+{
+  "vocab": {
+    "L4_SOFT": [
+      "hans händer smekte hennes hud långsamt",
+      "hon blev våt mellan benen när han kom nära",
+      "han blev hård av hennes beröring",
+      "hon stönade mjukt mot hans hals",
+      "han trängde in långsamt och försiktigt",
+      "deras kroppar rörde sig i rytmisk takt",
+      "hon kände hur njutningen byggdes upp våg för våg",
+      "han kysste henne djupt och varmt",
+      "hon höll honom hårt mot sig och andades tungt",
+      "de kom närmare varandra för varje andetag",
+      "hon kunde inte hålla tillbaka längre",
+      "hennes kropp skakade av välbehag",
+      "varje rörelse gjorde henne mjuk och mottaglig",
+      "hon pressade sig närmare för att känna allt",
+      "hans andning blev tung av begär",
+      "hon ville ha mer, lite djupare, lite långsammare",
+      "de tappade tiden och rörde sig som en",
+      "han följde hennes tempo och hon styrde med höfterna",
+      "hon bet sig i läppen när han gled in",
+      "han masserade hennes höfter med varma händer",
+      "ett lågt stön lämnade hennes läppar",
+      "hon viskade hans namn när vågen kom",
+      "han vilade pannan mot hennes och log",
+      "hon öppnade sig för honom och tog emot",
+      "han höll hennes midja och drog henne närmare",
+      "hon lät handen glida över hans bröst",
+      "deras rörelser blev säkra och mjuka",
+      "hon kände värmen sprida sig i hela kroppen",
+      "han höll henne stadigt och lät henne styra",
+      "de kom tillsammans, nära, hud mot hud"
+    ],
+    "L5_STRONG": [
+      "han tryckte in kuken i hennes fitta och hon stönade högt",
+      "hon red honom hårt tills han tappade andan",
+      "han knullade henne bakifrån med fasta stötar",
+      "hon sög av honom djupt och lät tungan leka över ollonet",
+      "han kom i hennes mun och hon svalde allt",
+      "hon särade på benen och bad honom knulla henne hårdare",
+      "han höll om hennes höfter och drev in djupt igen och igen",
+      "hon slickade honom ren medan han pulserade i handen",
+      "sperman rann varmt längs hennes lår",
+      "hon tog honom i röven och stönade högt av njutning",
+      "han smällde till över rumpan och ökade tempot",
+      "hon pressade ner honom och red tills hon skakade",
+      "han kom över hennes ansikte och bröst, varmt och tungt",
+      "hon gnuggade klitoris hårt medan han tog henne",
+      "han fyllde hennes fitta med sin sperma",
+      "hon lät två fingrar glida in i röven samtidigt",
+      "han drog ut långsamt och körde in hårdare",
+      "hon skrek av njutning när han tog henne mot väggen",
+      "hennes stön blev råa när han tog tag i håret och höll henne nära",
+      "hon slickade i sig sperman medan hon log busigt",
+      "han tog henne djupt i halsen och hon höll honom där",
+      "hon bad om mer, snabbare, djupare, utan paus",
+      "han knullade henne på bordet och allt runtom försvann",
+      "hon vred på höfterna och tog emot varje stöt",
+      "han lät fingrarna cirkla runt hennes öppning innan han trängde in",
+      "hon arbetade med munnen och handen samtidigt tills han kom",
+      "han drog upp hennes ben och gick in till botten",
+      "hon lät tungan leka över hela kuken långsamt och hungrigt",
+      "han pulserade i henne medan hon kom om och om igen",
+      "hon ville ha mer, och han gav henne allt hon bad om"
+    ],
+    "BLOCKED": [
+      "minderårig",
+      "underårig",
+      "barn",
+      "syskon",
+      "icke-samtycke",
+      "övergrepp",
+      "drogad"
+    ]
   },
-  {
-    "id": "kontakt-nar-stressen-biter",
-    "title": "Kontakt när stressen biter",
-    "minutes": 3,
-    "desc": "Microwinding när nervsystemet är uppe i varv.",
-    "tags": ["stilla","andas"]
-  },
-  {
-    "id": "sensuell-guidning",
-    "title": "Sensuell guidning",
-    "minutes": 5,
-    "desc": "Långsam rytm, tydliga ord och pauser.",
-    "tags": ["sensuell"]
-  }
-]
+  "cards": [
+    {
+      "id": "kvallsritual-narhet",
+      "title": "Kvällsritual för närhet",
+      "length": "3–5 min",
+      "desc": "Mjuk nedvarvning med värme och mjuka beröringar.",
+      "tags": ["romantisk","värme"]
+    },
+    {
+      "id": "kontakt-nar-stressen-biter",
+      "title": "Kontakt när stressen biter",
+      "length": "3 min",
+      "desc": "Microwinding när nervsystemet är uppe i varv.",
+      "tags": ["stilla","andas"]
+    },
+    {
+      "id": "sensuell-guidning",
+      "title": "Sensuell guidning",
+      "length": "5 min",
+      "desc": "Långsam rytm, tydliga ord och pauser.",
+      "tags": ["sensuell"]
+    }
+  ]
+}
