@@ -1,0 +1,23 @@
+[
+  {
+    "id": "kvallsritual-narhet",
+    "title": "Kvällsritual för närhet",
+    "minutes": 5,
+    "desc": "Mjuk nedvarvning med värme och mjuka beröringar.",
+    "tags": ["romantisk","värme"]
+  },
+  {
+    "id": "kontakt-nar-stressen-biter",
+    "title": "Kontakt när stressen biter",
+    "minutes": 3,
+    "desc": "Microwinding när nervsystemet är uppe i varv.",
+    "tags": ["stilla","andas"]
+  },
+  {
+    "id": "sensuell-guidning",
+    "title": "Sensuell guidning",
+    "minutes": 5,
+    "desc": "Långsam rytm, tydliga ord och pauser.",
+    "tags": ["sensuell"]
+  }
+]
