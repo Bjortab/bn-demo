@@ -1,6 +1,6 @@
 {
   "L4_SOFT": [
-    "han blev hård", "hon blev våt", "trängde långsamt in", "kropp mot kropp",
+    "hon blev våt", "han blev hård", "trängde långsamt in", "kropp mot kropp",
     "rytmisk rörelse", "djupa kyssar", "hans hand över min höft",
     "hennes andetag i mitt öra", "kunde inte hålla tillbaka",
     "rörelsen ökade i takt", "vi tappade greppet om tiden",
@@ -9,21 +9,17 @@
     "läppar som söker", "blicken sa allt", "vi gav efter"
   ],
   "L5_STRONG": [
-    "kuk", "fitta", "knulla", "slicka", "suga", "kåthet",
-    "han körde in den i mig", "jag red honom", "hon red mig",
-    "trängde djupt in", "jag flöt över", "han pulserade i mig",
-    "vi knullade hårt", "jag tog honom i munnen", "han kom i mig",
-    "jag kom runt honom", "sperman rann", "jag skrek av njutning",
+    "kuk", "fitta", "knulla", "slicka", "suga",
+    "han körde in den i mig", "jag red honom", "trängde djupt in",
+    "han pulserade i mig", "vi knullade hårt", "jag tog honom i munnen",
+    "han kom i mig", "jag kom runt honom", "sperman rann", "jag skrek av njutning",
     "hårt och snabbt", "ritmiskt och djupt", "jag ville ha mer",
     "ansiktet hett av lust", "hon gapade efter luft", "jag tryckte mig mot honom",
     "han tog tag om min midja", "jag kramade om honom med benen",
-    "jag tog allt", "jag tappade kontrollen", "våra kroppar slog i takt",
-    "hon kinkade efter mer", "jag höll fast och gav henne allt"
+    "jag tog allt", "jag tappade kontrollen", "våra kroppar slog i takt"
   ],
   "BLOCKED": [
     "minderårig", "underårig", "barn", "tvång", "icke-samtycke",
-    "övergrepp", "drogad", "incest", "bror", "syster", "pappa", "mamma",
-    "köttiga gillande", "glokammare", "omtala", "förbjuda mig",
-    "kammare av längtan", "diskret ekade mitt stön"
+    "övergrepp", "drogad", "incest", "bror", "syster", "pappa", "mamma"
   ]
 }
