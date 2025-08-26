@@ -1,3 +1,6 @@
-import { ok } from "./_utils.js";
-
-export const onRequestGet = async () => ok({ ok: true, service: "bn-api", v: "v0.5.0" });
+export function json(status, data) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" }
+  });
+}
