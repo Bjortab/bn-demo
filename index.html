@@ -1,70 +1,77 @@
 <!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="topbar">
+  <header>
     <h1>Blush Narratives</h1>
-    <nav class="nav">
-      <button id="btnHealth" class="ghost">API-status</button>
-      <span id="status" class="muted"></span>
+    <nav>
+      <button id="homeBtn">Hem</button>
+      <button id="favoritesBtn">Favoriter</button>
+      <button id="connectBtn">BlushConnect</button>
+      <button id="rescueBtn">Rescue</button>
     </nav>
   </header>
 
-  <main class="wrap">
-    <section class="panel">
-      <div class="row">
-        <label>Nivå</label>
-        <div class="chips" id="chipsLevel">
-          <button data-level="1" class="chip">1</button>
-          <button data-level="3" class="chip">3</button>
-          <button data-level="5" class="chip chip-on">5</button>
-        </div>
-      </div>
+  <main>
+    <!-- Nivå -->
+    <div class="row">
+      <label for="level">Nivå</label>
+      <select id="level">
+        <option value="1">1</option>
+        <option value="3">3</option>
+        <option value="5">5</option>
+      </select>
+    </div>
 
-      <div class="row">
-        <label>Längd</label>
-        <div class="chips" id="chipsLen">
-          <button data-min="1" class="chip">1 min</button>
-          <button data-min="3" class="chip chip-on">3 min</button>
-          <button data-min="5" class="chip">5 min</button>
-        </div>
-      </div>
+    <!-- Längd -->
+    <div class="row">
+      <label for="length">Längd</label>
+      <select id="length">
+        <option value="1">1 min</option>
+        <option value="3">3 min</option>
+        <option value="5">5 min</option>
+      </select>
+    </div>
 
-      <div class="row">
-        <label>Röst</label>
-        <select id="voice">
-          <option value="alloy">Alloy</option>
-          <option value="verse">Verse</option>
-          <option value="coral">Coral</option>
-        </select>
+    <!-- Röst -->
+    <div class="row">
+      <label for="voice">Röst</label>
+      <select id="voice">
+        <option value="alloy">Alloy</option>
+        <option value="coral">Coral</option>
+        <option value="verse">Verse</option>
+      </select>
+    </div>
 
-        <label class="inline">Tempo</label>
-        <input id="rate" type="range" min="0.8" max="1.3" step="0.05" value="1.0">
-        <span id="rateVal">1.0×</span>
-      </div>
+    <!-- Tempo -->
+    <div class="row">
+      <label for="tempo">Tempo</label>
+      <input type="range" id="tempo" min="0.5" max="1.5" step="0.1" value="1.0">
+    </div>
 
-      <textarea id="idea" rows="6" placeholder="Skriv din idé…"></textarea>
-
+    <!-- Text input -->
+    <section id="story">
+      <textarea id="userIdea" placeholder="Skriv din idé..."></textarea>
       <div class="actions">
-        <button id="btnGenerate" class="primary">Generera</button>
-        <button id="btnListen">Lyssna</button>
-        <button id="btnStop" class="ghost">Stop</button>
+        <button id="generateBtn" class="primary">Generera</button>
+        <button id="listenBtn" class="secondary">Lyssna</button>
+        <button id="stopBtn" class="danger">Stop</button>
       </div>
-
-      <article id="story" class="story"></article>
-      <audio id="audio" preload="auto"></audio>
+      <div id="output"></div>
     </section>
   </main>
 
-  <footer class="foot">
-    <small id="buildTag">BN front v1.0 (CF server)</small>
+  <footer>
+    <small>BN front v1.0 (CF server)</small>
   </footer>
 
+  <!-- Scripts -->
+  <script defer src="config.js"></script>
   <script defer src="app.js"></script>
 </body>
 </html>
