@@ -1,62 +1,89 @@
-/* Globala inställningar */
-body {
-  font-family: system-ui, sans-serif;
-  margin: 0;
-  background: #111;
-  color: #eee;
+:root{
+  --bg:#0b0c10;
+  --panel:#14161c;
+  --ink:#e9ebf0;
+  --muted:#a9afbd;
+  --accent:#ff3f86;
+  --accent-2:#7c4dff;
+  --card:#11131a;
+  --stroke:#262a33;
+  --radius:14px;
+  --shadow:0 8px 24px rgba(0,0,0,.35);
 }
 
-header {
-  background: linear-gradient(90deg, #d63384, #6f42c1);
-  color: white;
-  padding: 1rem;
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font:16px/1.55 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto;
+  color:var(--ink);
+  background:
+    radial-gradient(1200px 800px at 10% 10%, #28162c, transparent 60%),
+    radial-gradient(1000px 600px at 90% 15%, #121a3a, transparent 55%),
+    var(--bg);
 }
 
-nav button {
-  margin: 0 0.5rem;
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 5px;
-  background: #333;
-  color: white;
-  cursor: pointer;
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px;border-bottom:1px solid var(--stroke);
+  background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  color:#fff;
+}
+.topbar h1{margin:0;font-size:20px}
+.top-actions{display:flex;gap:8px}
+
+.container{max-width:980px;margin:24px auto;padding:0 16px;display:grid;gap:16px}
+
+.player-card,.composer-card,dialog article{
+  background:var(--panel);border:1px solid var(--stroke);
+  border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;
 }
 
-main {
-  padding: 1rem;
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.row label{opacity:.9}
+
+.pillrow{align-items:center;gap:16px}
+.pillgroup{display:flex;gap:8px}
+.pill{
+  border:1px solid var(--stroke);background:var(--card);color:var(--ink);
+  padding:6px 10px;border-radius:999px;cursor:pointer
+}
+.pill.active{background:var(--accent);border-color:transparent;color:#fff}
+
+textarea{
+  width:100%;min-height:120px;margin-top:12px;
+  border:1px solid var(--stroke);background:var(--card);color:var(--ink);
+  border-radius:12px;padding:12px;resize:vertical
 }
 
-#controls label {
-  margin-right: 0.5rem;
+.actions{display:flex;gap:10px;margin-top:12px}
+button{
+  border:1px solid var(--stroke);background:var(--card);color:var(--ink);
+  border-radius:10px;padding:8px 12px;cursor:pointer
+}
+button.primary{background:var(--accent);border-color:transparent;color:#fff}
+button.secondary{background:#1a1f2b}
+button.ghost{background:transparent}
+
+select, input[type="password"]{
+  border:1px solid var(--stroke);background:var(--card);color:var(--ink);
+  border-radius:10px;padding:8px 10px;
 }
 
-#controls select, #controls input {
-  margin-right: 1rem;
+#tempo{width:220px}
+#tempoVal{opacity:.8}
+
+.output{
+  margin-top:14px;padding:14px;border:1px solid var(--stroke);
+  border-radius:12px;background:#0f1219;white-space:pre-wrap
 }
 
-textarea {
-  width: 100%;
-  height: 120px;
-  margin-top: 1rem;
-  background: #222;
-  color: #eee;
-  border: 1px solid #444;
-  padding: 0.5rem;
-  border-radius: 5px;
+dialog{
+  border:none;border-radius:16px;padding:0;background:transparent
 }
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog article header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+dialog article .grid{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.dbg{max-height:220px;overflow:auto;background:#0b0e15;border:1px solid var(--stroke);padding:10px;border-radius:10px}
 
-#output {
-  margin-top: 1rem;
-  padding: 1rem;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 5px;
-}
-
-footer {
-  background: #222;
-  color: #aaa;
-  text-align: center;
-  padding: 1rem;
-  margin-top: 2rem;
-}
+.muted{color:var(--muted);font-size:13px}
