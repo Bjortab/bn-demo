@@ -1,79 +1,62 @@
-// Enkel BN-frontend: generera -> spelas med riktig TTS via server
-
-const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
-
-const state = {
-  level: 3,
-  minutes: 3,
-  voice: "alloy",
-  speed: 1.0,
-  storyText: ""
-};
-
-// UI wire-up
-$("#levels").addEventListener("click", e=>{
-  if (e.target.matches(".chip")) { $$("#levels .chip").forEach(c=>c.classList.remove("active")); e.target.classList.add("active"); state.level = Number(e.target.dataset.level); }
-});
-$("#mins").addEventListener("click", e=>{
-  if (e.target.matches(".chip")) { $$("#mins .chip").forEach(c=>c.classList.remove("active")); e.target.classList.add("active"); state.minutes = Number(e.target.dataset.min); }
-});
-$("#voice").addEventListener("change", e=> state.voice = e.target.value);
-$("#tempo").addEventListener("input", e=> state.speed = Number(e.target.value));
-
-$("#btnGen").addEventListener("click", async ()=>{
-  try{
-    setBusy(true, "Genererar…");
-    const idea = $("#idea").value.trim();
-    const q = new URLSearchParams({ level: String(state.level), min: String(state.minutes), mood: "romantisk" });
-    const res = await fetch(`/functions/api/generate?${q}`, { method:"POST", body: idea });
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.error || "Fel vid generering");
-    state.storyText = json.text || "";
-    $("#story").textContent = state.storyText;
-  }catch(err){
-    alert("Kunde inte generera: " + err.message);
-  }finally{
-    setBusy(false);
-  }
-});
-
-$("#btnPlay").addEventListener("click", async ()=>{
-  try{
-    const text = (state.storyText || $("#story").textContent || $("#idea").value || "").trim();
-    if (!text) return alert("Generera en text först (eller skriv något i rutan).");
-    setBusy(true, "Skapar röst…");
-    const res = await fetch("/functions/api/tts", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ text, voice: state.voice, speed: state.speed })
-    });
-    if (!res.ok) throw new Error("TTS fel: " + (await res.text()));
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const audio = $("#audio");
-    audio.src = url;
-    await audio.play();
-  }catch(err){
-    alert(err.message || String(err));
-  }finally{
-    setBusy(false);
-  }
-});
-
-$("#btnStop").addEventListener("click", ()=>{
-  const a = $("#audio"); a.pause(); a.currentTime = 0;
-});
-
-function setBusy(on, msg=""){
-  $("#btnGen").disabled = on;
-  $("#btnPlay").disabled = on;
-  $("#btnStop").disabled = on;
-  if (on) { $("#btnGen").textContent = msg || "Jobbar…"; }
-  else    { $("#btnGen").textContent = "Generera"; }
+/* Globala inställningar */
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: #111;
+  color: #eee;
 }
 
-// Rescue (enkelt kvitto att bundle laddat)
-$("#btnRescue").addEventListener("click", ()=>{
-  alert("BN v0.4 online – bundle ok");
-});
+header {
+  background: linear-gradient(90deg, #d63384, #6f42c1);
+  color: white;
+  padding: 1rem;
+}
+
+nav button {
+  margin: 0 0.5rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 5px;
+  background: #333;
+  color: white;
+  cursor: pointer;
+}
+
+main {
+  padding: 1rem;
+}
+
+#controls label {
+  margin-right: 0.5rem;
+}
+
+#controls select, #controls input {
+  margin-right: 1rem;
+}
+
+textarea {
+  width: 100%;
+  height: 120px;
+  margin-top: 1rem;
+  background: #222;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 0.5rem;
+  border-radius: 5px;
+}
+
+#output {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 5px;
+}
+
+footer {
+  background: #222;
+  color: #aaa;
+  text-align: center;
+  padding: 1rem;
+  margin-top: 2rem;
+}
