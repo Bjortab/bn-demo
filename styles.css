@@ -1,33 +1,79 @@
-:root{
-  --bg:#111319; --panel:#1b1e27; --ink:#e9e9f0; --muted:#9aa0ae;
-  --brand:#a44cf4; --brand2:#ff4da6; --accent:#ff4da6; --ok:#3ddc97;
-  --chip:#2a2f3a; --chip-on:#ff4da6; --chip-on-ink:#fff;
-  --border:#2a2f3a; --shadow:0 10px 20px rgba(0,0,0,.35);
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
-}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0; font-family:var(--sans); background:radial-gradient(1200px at 30% 0,var(--brand) 0,transparent 30%),var(--bg);
-  color:var(--ink);
-}
-.top{display:flex;align-items:center;gap:16px;padding:12px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:rgba(17,19,25,.7);backdrop-filter:saturate(150%) blur(8px)}
-.top h1{font-size:20px;margin:0 8px 0 0}
-nav{margin-left:auto;display:flex;gap:8px}
-.tab{background:transparent;color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:6px 10px;cursor:pointer}
-.tab.active{border-color:var(--accent);color:#fff;box-shadow:0 0 0 2px rgba(255,77,166,.25) inset}
-.pill{background:linear-gradient(90deg,var(--brand),var(--brand2));border:0;color:#fff;border-radius:999px;padding:6px 12px}
+// Enkel BN-frontend: generera -> spelas med riktig TTS via server
 
-.wrap{max-width:920px;margin:24px auto;padding:0 16px}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:16px}
-.row{display:flex;align-items:center;gap:12px;margin:10px 0}
-.inline{margin-left:12px}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
-.chip{background:var(--chip);color:var(--ink);border:0;border-radius:12px;padding:6px 10px;cursor:pointer}
-.chip.active{background:var(--chip-on);color:var(--chip-on-ink)}
-textarea{width:100%;background:#0f1218;color:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px;resize:vertical}
-.actions{justify-content:flex-start;gap:10px}
-button{background:#2e3340;color:#fff;border:0;border-radius:10px;padding:8px 12px;cursor:pointer}
-button.primary{background:linear-gradient(90deg,var(--brand),var(--brand2))}
-.story{white-space:pre-wrap;line-height:1.65;border-top:1px dashed var(--border);margin-top:14px;padding-top:14px}
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+
+const state = {
+  level: 3,
+  minutes: 3,
+  voice: "alloy",
+  speed: 1.0,
+  storyText: ""
+};
+
+// UI wire-up
+$("#levels").addEventListener("click", e=>{
+  if (e.target.matches(".chip")) { $$("#levels .chip").forEach(c=>c.classList.remove("active")); e.target.classList.add("active"); state.level = Number(e.target.dataset.level); }
+});
+$("#mins").addEventListener("click", e=>{
+  if (e.target.matches(".chip")) { $$("#mins .chip").forEach(c=>c.classList.remove("active")); e.target.classList.add("active"); state.minutes = Number(e.target.dataset.min); }
+});
+$("#voice").addEventListener("change", e=> state.voice = e.target.value);
+$("#tempo").addEventListener("input", e=> state.speed = Number(e.target.value));
+
+$("#btnGen").addEventListener("click", async ()=>{
+  try{
+    setBusy(true, "Genererar…");
+    const idea = $("#idea").value.trim();
+    const q = new URLSearchParams({ level: String(state.level), min: String(state.minutes), mood: "romantisk" });
+    const res = await fetch(`/functions/api/generate?${q}`, { method:"POST", body: idea });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || "Fel vid generering");
+    state.storyText = json.text || "";
+    $("#story").textContent = state.storyText;
+  }catch(err){
+    alert("Kunde inte generera: " + err.message);
+  }finally{
+    setBusy(false);
+  }
+});
+
+$("#btnPlay").addEventListener("click", async ()=>{
+  try{
+    const text = (state.storyText || $("#story").textContent || $("#idea").value || "").trim();
+    if (!text) return alert("Generera en text först (eller skriv något i rutan).");
+    setBusy(true, "Skapar röst…");
+    const res = await fetch("/functions/api/tts", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ text, voice: state.voice, speed: state.speed })
+    });
+    if (!res.ok) throw new Error("TTS fel: " + (await res.text()));
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = $("#audio");
+    audio.src = url;
+    await audio.play();
+  }catch(err){
+    alert(err.message || String(err));
+  }finally{
+    setBusy(false);
+  }
+});
+
+$("#btnStop").addEventListener("click", ()=>{
+  const a = $("#audio"); a.pause(); a.currentTime = 0;
+});
+
+function setBusy(on, msg=""){
+  $("#btnGen").disabled = on;
+  $("#btnPlay").disabled = on;
+  $("#btnStop").disabled = on;
+  if (on) { $("#btnGen").textContent = msg || "Jobbar…"; }
+  else    { $("#btnGen").textContent = "Generera"; }
+}
+
+// Rescue (enkelt kvitto att bundle laddat)
+$("#btnRescue").addEventListener("click", ()=>{
+  alert("BN v0.4 online – bundle ok");
+});
