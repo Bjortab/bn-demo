@@ -1,136 +1,111 @@
-/* BN front v1.1 – 5/10/15 min & robust UI */
+// app.js
+const $ = (q) => document.querySelector(q);
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+// UI
+const elLevel  = $("#level");
+const elLen    = $("#length");
+const elVoice  = $("#voice");
+const elTempo  = $("#tempo");
+const elIdea   = $("#idea");
+const elOut    = $("#output");
+const btnGen   = $("#generateBtn");
+const btnPlay  = $("#listenBtn");
+const btnStop  = $("#stopBtn");
+const elApiOk  = $("#apiOk");
 
-const el = {
-  apiOk: $('#apiOk'),
-  idea: $('#idea'),
-  voice: $('#voice'),
-  tempo: $('#tempo'),
-  out: $('#output'),
-  gen: $('#generateBtn'),
-  play: $('#listenBtn'),
-  stop: $('#stopBtn'),
-};
-
-let currentStory = '';
-let currentAudio = null;
-let speaking = false;
-
-function getLevel() {
-  const r = $$('input[name="level"]:checked')[0];
-  return r ? Number(r.value) : 3;
-}
-function getMinutes() {
-  const r = $$('input[name="minutes"]:checked')[0];
-  return r ? Number(r.value) : 5;
-}
+// API bas (Cloudflare Pages)
+const BASE = location.origin + "/api";
 
 async function checkHealth() {
   try {
-    const r = await fetch('/api/health');
-    const j = await r.json();
-    el.apiOk.textContent = j.ok ? 'API: ok' : 'API: fel';
-    el.apiOk.style.background = j.ok ? '#1f2a21' : '#3b1b1b';
-  } catch {
-    el.apiOk.textContent = 'API: fel';
-    el.apiOk.style.background = '#3b1b1b';
+    const res = await fetch(BASE + "/health");
+    const ok  = res.ok;
+    if (elApiOk) elApiOk.textContent = ok ? "ok" : "fail";
+  } catch { if (elApiOk) elApiOk.textContent = "fail"; }
+}
+checkHealth();
+
+function setBusy(b) {
+  btnGen.disabled = b;
+  btnPlay.disabled = b;
+  btnStop.disabled = b;
+}
+
+async function safeJson(res) {
+  const text = await res.text();
+  try { return JSON.parse(text); } catch {
+    return { ok: false, error: "Ogiltig JSON", raw: text };
   }
 }
 
-function lockUI(locked) {
-  el.gen.disabled = locked;
-  el.play.disabled = locked || !currentStory;
-  $$('input[name="level"]').forEach(x => x.disabled = locked);
-  $$('input[name="minutes"]').forEach(x => x.disabled = locked);
-  el.voice.disabled = locked;
-  el.tempo.disabled = locked;
-  el.idea.disabled = locked;
-}
-
-async function generate() {
-  lockUI(true);
-  el.out.textContent = '(skapar berättelse …)';
-  currentStory = '';
-
-  const body = {
-    idea: (el.idea.value || '').trim(),
-    level: getLevel(),
-    minutes: getMinutes()
-  };
-
+btnGen?.addEventListener("click", async () => {
+  setBusy(true);
+  elOut.textContent = "(genererar …)";
   try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
+    const payload = {
+      level: Number(elLevel?.value || 3),
+      minutes: Number(elLen?.value || 5),
+      idea: (elIdea?.value || "").trim()
+    };
+    const res = await fetch(BASE + "/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || 'Okänt fel');
 
-    currentStory = data.story || '';
-    el.out.textContent = currentStory || '(tomt)';
-    el.play.disabled = !currentStory;
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      elOut.textContent = `Fel (generate): ${text || res.statusText}`;
+      return;
+    }
+
+    const data = await safeJson(res);
+    if (!data.ok) {
+      elOut.textContent = `Fel (generate json): ${data.error || "okänt"}`;
+      return;
+    }
+
+    elOut.textContent = data.story || "(tomt)";
   } catch (e) {
-    el.out.innerHTML = `<span class="error">Fel: ${e.message}</span>`;
+    elOut.textContent = `Undantag: ${e?.message || e}`;
   } finally {
-    lockUI(false);
+    setBusy(false);
   }
-}
+});
 
-async function ttsPlay() {
-  if (!currentStory || speaking) return;
-  speaking = true;
-  el.play.disabled = true;
-  el.play.textContent = 'Spelar upp…';
+let audioEl;
+btnPlay?.addEventListener("click", async () => {
+  const text = elOut.textContent.trim();
+  if (!text) return;
 
-  const body = {
-    text: currentStory,
-    voice: el.voice.value,
-    speed: Number(el.tempo.value)
-  };
-
+  setBusy(true);
   try {
-    const r = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body)
+    const res = await fetch(BASE + "/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        voice: (elVoice?.value || "alloy"),
+        speed: Number(elTempo?.value || 1.0)
+      })
     });
-    if (!r.ok) throw new Error('TTS error');
-    const j = await r.json();
-    const audioUrl = j.url;
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-    currentAudio = new Audio(audioUrl);
-    currentAudio.onended = () => { speaking = false; el.play.textContent = 'Lyssna'; el.play.disabled = false; };
-    await currentAudio.play();
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      alert(`TTS fel: ${t || res.statusText}`);
+      return;
+    }
+    const blob = await res.blob();
+    if (audioEl) { audioEl.pause(); audioEl = null; }
+    audioEl = new Audio(URL.createObjectURL(blob));
+    audioEl.play().catch(()=>{});
   } catch (e) {
-    el.out.insertAdjacentHTML('beforeend', `\n\n<span class="error">TTS fel: ${e.message}</span>`);
-    speaking = false;
-    el.play.textContent = 'Lyssna';
-    el.play.disabled = false;
+    alert(`TTS undantag: ${e?.message || e}`);
+  } finally {
+    setBusy(false);
   }
-}
+});
 
-function ttsStop() {
-  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
-  speaking = false;
-  el.play.textContent = 'Lyssna';
-  el.play.disabled = !currentStory;
-}
-
-function safeBind(node, type, fn) {
-  if (!node) return;
-  node.removeEventListener(type, fn);
-  node.addEventListener(type, fn, { passive: true });
-}
-
-function init() {
-  safeBind(el.gen, 'click', generate);
-  safeBind(el.play, 'click', ttsPlay);
-  safeBind(el.stop, 'click', ttsStop);
-  safeBind(el.tempo, 'input', () => $('.hint').textContent = `${Number(el.tempo.value).toFixed(2)}×`);
-
-  checkHealth();
-}
-document.addEventListener('DOMContentLoaded', init);
+btnStop?.addEventListener("click", () => {
+  try { window.speechSynthesis?.cancel(); } catch {}
+  try { audioEl?.pause(); } catch {}
+});
