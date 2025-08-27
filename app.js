@@ -1,149 +1,179 @@
-// app.js – Golden Copy v1.3b (ingen auto-timeout; Stop avbryter)
+// app.js — GC v1.3 (SSE streaming)
+
 const $ = (q) => document.querySelector(q);
 
-// UI element
-const elLevel  = $('#level');
-const elLen    = $('#length');
-const elVoice  = $('#voice');
-const elTempo  = $('#tempo');
-const elIdea   = $('#userIdea');
-const elOut    = $('#output');
-const btnGen   = $('#generateBtn');
-const btnPlay  = $('#listenBtn');
-const btnStop  = $('#stopBtn');
-const elApiOk  = $('#apiok');
+// UI-refs
+const elLevel   = $("#level");
+const elLength  = $("#length");
+const elVoice   = $("#voice");
+const elTempo   = $("#tempo");
+const elIdea    = $("#userIdea");
+const btnGen    = $("#generateBtn");
+const btnPlay   = $("#listenBtn");
+const btnStop   = $("#stopBtn");
+const elOut     = $("#output");
+const elOk      = $("#apiok");
 
-const BASE = location.origin + '/api';
+let audioEl = null;
+let busy = false;
 
-let audio = null;
-let isBusy = false;
-let keepPing = null;
-let currentAbort = null;
-
-// helpers
-function setBusy(on) {
-  isBusy = !!on;
-  btnGen.disabled = on;
-  btnPlay.disabled = on;
-  btnStop.disabled = on;
-  document.body.classList.toggle('busy', on);
+function setBusy(b) {
+  busy = b;
+  btnGen.disabled   = b;
+  btnPlay.disabled  = b;
+  btnStop.disabled  = b;
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(BASE + '/health');
-    const data = await res.json().catch(()=>({}));
-    const ok = res.ok && data.ok;
-    if (elApiOk) elApiOk.textContent = ok ? 'ok' : 'fail';
+    const res = await fetch("/api/health");
+    const ok  = res.ok;
+    if (elOk) elOk.textContent = ok ? "ok" : "fail";
   } catch {
-    if (elApiOk) elApiOk.textContent = 'fail';
+    if (elOk) elOk.textContent = "fail";
   }
 }
+checkHealth();
 
-function startKeepAlive() {
-  stopKeepAlive();
-  keepPing = setInterval(() => { fetch(BASE + '/health').catch(()=>{}); }, 60000);
-}
-function stopKeepAlive() {
-  if (keepPing) { clearInterval(keepPing); keepPing = null; }
-}
-
-function params() {
+// Läs val i UI
+function readParams() {
   return {
-    idea: (elIdea.value || '').trim(),
-    level: Number(elLevel.value || 3),
-    minutes: Number(elLen.value || 5),
-    voice: elVoice.value || 'alloy',
-    tempo: Number(elTempo.value || 1.0)
+    level: Number(elLevel?.value ?? 3),
+    minutes: Number(document.querySelector('input[name="len"]:checked')?.value ?? 5),
+    voice: elVoice?.value || "alloy",
+    tempo: Number(elTempo?.value ?? 1.0)
   };
 }
 
-function setText(t) { elOut.textContent = t || ''; }
+// Hjälp: robust SSE-tolkning (OpenAI Responses stream)
+function parseSSEChunk(raw, onDelta) {
+  // Delas upp på event (tomrad mellan)
+  const parts = raw.split("\n\n");
+  for (const p of parts) {
+    const lines = p.split("\n").filter(Boolean);
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        const obj = JSON.parse(payload);
+        // Vanliga typer i Responses-SSE: response.output_text.delta / message.delta etc.
+        const t = obj?.type || "";
+        if (t.endsWith(".delta")) {
+          const delta = obj?.delta ?? obj?.text ?? "";
+          if (delta) onDelta(delta);
+        } else if (t === "response.completed") {
+          // Ignorera – servern stänger ändå strömmen
+        } else if (typeof obj?.text === "string") {
+          onDelta(obj.text);
+        }
+      } catch {
+        // hoppa över felaktig rad
+      }
+    }
+  }
+}
 
-// —— Generate —— //
-btnGen?.addEventListener('click', async () => {
-  if (isBusy) return;
-  const { idea, level, minutes, voice, tempo } = params();
-  if (!idea) { setText('(skriv en idé först)'); return; }
-
-  // avbryt ev. tidigare
-  if (currentAbort) { try { currentAbort.abort(); } catch {} }
-  currentAbort = new AbortController();
-
+async function generate() {
+  if (busy) return;
   setBusy(true);
-  setText('(genererar …)');
+  elOut.textContent = "(genererar...)";
 
+  const { level, minutes } = readParams();
+  const idea = (elIdea?.value || "").trim();
+
+  // 1) Försök STREAM först
   try {
-    const res = await fetch(BASE + '/generate', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idea, level, minutes, voice, tempo }),
-      signal: currentAbort.signal
+    const res = await fetch("/api/generate?stream=1", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea, level, minutes })
     });
 
-    if (!res.ok) {
-      let detail = '';
-      try { const j = await res.json(); detail = j && j.error ? j.error : ''; } catch {}
-      setText(`(fel vid generering – ${res.status}${detail ? `: ${detail}` : ''})`);
+    if (res.ok && res.headers.get("content-type")?.includes("text/event-stream")) {
+      elOut.textContent = "";
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        parseSSEChunk(buffer, (delta) => {
+          elOut.textContent += delta;
+        });
+        // Håll inte på att växa buffer ohämmat: spara bara sista “ofullständiga” eventet
+        const lastGap = buffer.lastIndexOf("\n\n");
+        if (lastGap > 0) buffer = buffer.slice(lastGap + 2);
+      }
+
+      if (!elOut.textContent.trim()) {
+        elOut.textContent = "(tomt)";
+      }
+      setBusy(false);
       return;
     }
 
-    const data = await res.json().catch(()=> ({}));
-    const story = data && data.story ? String(data.story) : '';
-    if (!story) { setText('(kunde inte generera – tomt svar)'); return; }
-
-    setText(story);
-  } catch (err) {
-    if (err?.name === 'AbortError') {
-      setText('(avbrutet)');
-    } else {
-      console.error('generate error', err);
-      setText('(fel vid generering)');
+    // Om inte SSE – fall tillbaka till non-stream
+    const txt = await res.text();
+    try {
+      const data = JSON.parse(txt);
+      if (data?.ok && data?.story) {
+        elOut.textContent = data.story;
+      } else {
+        elOut.textContent = "(kunde inte generera)";
+      }
+    } catch {
+      elOut.textContent = "(fel vid generering)";
+    }
+  } catch (e) {
+    // 2) Fallback helt (non-stream direkt)
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idea, level, minutes })
+      });
+      const data = await res.json().catch(() => ({}));
+      elOut.textContent = data?.story || "(fel vid generering)";
+    } catch {
+      elOut.textContent = "(fel vid generering)";
     }
   } finally {
     setBusy(false);
   }
-});
+}
 
-// —— TTS —— //
-btnPlay?.addEventListener('click', async () => {
-  if (isBusy) return;
+// TTS – oförändrat (anropa /api/tts med elOut.textContent)
+async function speak() {
+  if (busy) return;
   const text = elOut.textContent.trim();
   if (!text) return;
 
   setBusy(true);
   try {
-    const res = await fetch(BASE + '/tts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, voice: elVoice.value || 'alloy', speed: Number(elTempo.value || 1.0) })
+    const { voice, tempo } = readParams();
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, voice, speed: tempo })
     });
-
-    if (!res.ok) {
-      let detail = '';
-      try { const j = await res.json(); detail = j && j.error ? j.error : ''; } catch {}
-      setText(`(TTS fel – ${res.status}${detail ? `: ${detail}` : ''})`);
-      return;
-    }
-
-    const buf = await res.arrayBuffer();
-    audio?.pause();
-    audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })));
-    await audio.play().catch(()=>{});
-  } catch (e) {
-    console.error('TTS error', e);
+    if (!res.ok) throw new Error("TTS error");
+    const blob = await res.blob();
+    (audioEl ||= document.querySelector("#audio")).src = URL.createObjectURL(blob);
+    await audioEl.play().catch(() => {});
+  } catch {
+    // tyst fel i demo
   } finally {
     setBusy(false);
   }
-});
+}
 
-// —— Stop —— //
-btnStop?.addEventListener('click', () => {
-  try { audio?.pause(); } catch {}
-  try { currentAbort?.abort(); } catch {}
-});
+function stopAudio() {
+  try { audioEl?.pause(); } catch {}
+}
 
-// init
-checkHealth();
-startKeepAlive();
-window.addEventListener('beforeunload', stopKeepAlive);
+btnGen?.addEventListener("click", generate);
+btnPlay?.addEventListener("click", speak);
+btnStop?.addEventListener("click", stopAudio);
