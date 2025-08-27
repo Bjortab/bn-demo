@@ -12,35 +12,52 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost({ env, request }) {
-  try {
-    const bad = (status, msg) =>
-      new Response(JSON.stringify({ ok: false, error: msg }), { status, headers: CORS });
+  const bad = (status, msg, extra) =>
+    new Response(JSON.stringify({ ok: false, error: msg, ...extra }), { status, headers: CORS });
 
-    if (!env.OPENAI_API_KEY) return bad(500, "OPENAI_API_KEY saknas i Cloudflare (Pages → Settings → Variables).");
+  try {
+    if (!env.OPENAI_API_KEY) {
+      return bad(500, "OPENAI_API_KEY saknas i Cloudflare (Pages → Settings → Variables).");
+    }
 
     const body = await request.json().catch(() => ({}));
-    const idea   = (body.idea ?? "").toString();
-    const level  = Number(body.level ?? 3);
-    const minutes = Number(body.minutes ?? 3);
+    const idea    = (body.idea ?? "").toString();
+    const level   = Number(body.level ?? 3); // 1,3,5
+    const minutes = Number(body.minutes ?? 3); // 1,3,5
+    const voice   = (body.voice ?? "alloy").toString();
 
     if (![1,3,5].includes(level)) return bad(400, "Ogiltig nivå.");
     if (![1,3,5].includes(minutes)) return bad(400, "Ogiltig längd (1/3/5).");
 
-    // ca 220–260 wpm → 700–900 tokens per 5 min. Vi begränsar per demo.
+    // Grovt: 180 tokens/min → 1 min ≈ 180, 3 min ≈ 540, 5 min ≈ 900
     const maxTokens = Math.max(120, Math.min(900, Math.round(180 * minutes)));
 
+    // Tryck hårdare på nivåordning
+    const levelHints = {
+      1: "Håll det romantiskt och varsamt. Undvik råa ord. Fokus på känslor, samtycke och närhet.",
+      3: "Sensuellt och tydligt men inte rått. Tillåt ord som beskriver lust, kropp och rörelse – men undvik grova könsord.",
+      5: "Explicit nivå. TILLÅT rå vokabulär på svenska där det är naturligt i flowet: fitta, kuk, kåt, blöt, slicka, suga, tränga in, knulla, spruta, sperma, orgasm, stön, anal (om samtyckt). Undvik övergrepp/icke-samtycke/barn/droger. Använd variation så det inte blir upprepningar."
+    };
+
     const system = [
-      `Du skriver korta erotiska berättelser på svenska.`,
-      `Nivå ${level}: 1=romantisk, 3=sensuell, 5=explicit.`,
-      `Säker stil: samtycke, trygg ton, inga olagligheter eller övergrepp.`,
-      `Variera uttryck, håll en röd tråd, undvik upprepningar.`
+      "Du skriver erotiska berättelser på svenska.",
+      "Allt innehåll är mellan vuxna människor och tydligt samtycke uttrycks. Inga minderåriga, inget tvång, inga olagligheter.",
+      `Nivåbeskrivning: ${levelHints[level]}`,
+      "Berättelsen ska ha röd tråd, inledning → stegring → klimax → lugn efteråt.",
+      "Skriv naturligt talad svenska som lämpar sig att läsas upp högt.",
+      "Undvik upprepning och klichéer. Variera ordval."
     ].join(" ");
+
+    // Din promptidé får påverka
+    const user = idea?.trim()
+      ? `Användaridé: ${idea}`
+      : "Skriv en ny berättelse utan användaridé.";
 
     const payload = {
       model: "gpt-4o-mini",
       input: [
         { role: "system", content: system },
-        { role: "user",   content: idea || "Skriv en kort berättelse." }
+        { role: "user",   content: user }
       ],
       max_output_tokens: maxTokens
     };
@@ -59,38 +76,30 @@ export async function onRequestPost({ env, request }) {
     catch { return bad(res.status || 502, "Kunde inte tolka serversvar."); }
 
     if (!res.ok) {
-      // Skicka tillbaka fel från OpenAI så vi ser vad som händer
-      return bad(res.status, (data && (data.error?.message || data.message)) || "OpenAI-fel.");
+      return bad(res.status, (data?.error?.message || data?.message || "OpenAI-fel."), { raw:data });
     }
 
-    // -------- Robust extraktion --------
+    // Robust extraktion (output_text eller nya output[])
     let story = "";
     if (typeof data.output_text === "string" && data.output_text.trim()) {
       story = data.output_text.trim();
-    } else if (Array.isArray(data.output) && data.output.length) {
-      // För nya Responses-schemat
-      const txtParts = [];
-      for (const block of data.output) {
-        if (Array.isArray(block.content)) {
-          for (const c of block.content) {
-            if ((c.type === "output_text" || c.type === "text") && c.text) {
-              txtParts.push(c.text);
-            }
+    } else if (Array.isArray(data.output)) {
+      const parts = [];
+      for (const blk of data.output) {
+        if (Array.isArray(blk.content)) {
+          for (const c of blk.content) {
+            if ((c.type === "output_text" || c.type === "text") && c.text) parts.push(c.text);
           }
         }
       }
-      story = txtParts.join("\n").trim();
+      story = parts.join("\n").trim();
     }
 
-    if (!story) {
-      // Något gick fel – returnera rådata för felsökning i devtools
-      return new Response(JSON.stringify({ ok: false, error: "EMPTY_STORY", raw: data }), { status: 200, headers: CORS });
-    }
+    if (!story) return bad(200, "EMPTY_STORY", { raw: data });
 
-    return new Response(JSON.stringify({ ok: true, story }), { headers: CORS });
+    return new Response(JSON.stringify({ ok: true, story, voice }), { headers: CORS });
+
   } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: String(e?.message || e) }), {
-      status: 500, headers: CORS
-    });
+    return bad(500, String(e?.message || e));
   }
 }
