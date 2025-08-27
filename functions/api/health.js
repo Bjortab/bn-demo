@@ -1,4 +1,4 @@
-import { json, corsHeaders } from "./_utils.js";
+import { jsonResponse, corsHeaders } from "./_utils.js";
 
 export async function onRequest(context) {
   const { request, env } = context;
@@ -9,7 +9,7 @@ export async function onRequest(context) {
   }
 
   const present = Boolean(env.OPENAI_API_KEY);
-  return json(
+  return jsonResponse(
     { ok: true, v: "1.0", ts: Date.now(), hasKey: present },
     200,
     corsHeaders(request)
