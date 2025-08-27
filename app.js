@@ -1,111 +1,127 @@
-// app.js – BN frontend v1.1 (robust init)
+// app.js — BN front v1.1 stabil
 (() => {
   const $ = (s) => document.querySelector(s);
 
-  // UI refs
-  const elLevel  = $('#level');
-  const elLen    = $('#length');
-  const elVoice  = $('#voice');
-  const elTempo  = $('#tempo');
-  const elIdea   = $('#idea');
-  const btnGen   = $('#generateBtn');
-  const btnPlay  = $('#listenBtn');
-  const btnStop  = $('#stopBtn');
-  const out      = $('#output');
-  const apiBadge = $('#apiStatus');
+  const el = {
+    apiOk: $("#apiOk"),
+    idea:  $("#idea"),
+    level: () => Number(document.querySelector('input[name="level"]:checked')?.value || 3),
+    minutes: () => Number(document.querySelector('input[name="minutes"]:checked')?.value || 3),
+    tempo: $("#tempo"),
+    voiceSel: $("#voice"),
 
-  // helper
-  function setBusy(on) {
-    [btnGen, btnPlay, btnStop].forEach(b => b && (b.disabled = !!on));
-  }
+    out: $("#output"),
+    genBtn: $("#generateBtn"),
+    listenBtn: $("#listenBtn"),
+    stopBtn: $("#stopBtn"),
+  };
 
-  async function apiHealth() {
+  // Init
+  (async () => {
     try {
-      const r = await fetch('/api/health', { cache:'no-store' });
-      const j = await r.json();
-      apiBadge.textContent = j.ok ? 'API: ok' : 'API: fel';
-      return !!j.ok;
-    } catch {
-      apiBadge.textContent = 'API: fel';
-      return false;
-    }
-  }
+      const r = await fetch("/api/health");
+      const h = await r.json().catch(()=>({}));
+      if (h.ok) el.apiOk && (el.apiOk.textContent = "API: ok");
+    } catch {}
+  })();
 
-  async function doGenerate() {
-    setBusy(true);
-    out.textContent = 'Genererar…';
+  // UI helpers
+  const setBusy = (busy) => {
+    el.genBtn?.toggleAttribute("disabled", busy);
+    el.listenBtn?.toggleAttribute("disabled", busy);
+    el.stopBtn?.toggleAttribute("disabled", false);
+  };
+  const show = (html) => { el.out.innerHTML = html; };
+  const showText = (t) => { el.out.textContent = t; };
+  const esc = (s) => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+  let audio;
+
+  // Generate only (no autoplay)
+  async function onGenerate() {
     try {
+      setBusy(true);
+      showText("Genererar …");
+
       const payload = {
-        idea: elIdea.value || '',
-        level: Number(elLevel.value || 3),
-        minutes: Number(elLen.value || 3)
+        idea: (el.idea.value || "").trim(),
+        level: el.level(),
+        minutes: el.minutes(),
+        voice: el.voiceSel?.value || "alloy"
       };
-      const r = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
+
+      const res = await fetch("/api/generate", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify(payload)
       });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j.ok) {
-        alert('Kunde inte generera: ' + (j.error || r.statusText));
-        out.textContent = '';
+      const data = await res.json().catch(()=> ({}));
+
+      if (!data || data.ok === false || !data.story) {
+        console.warn("Gen-fel:", data);
+        show(`<div class="error">${esc(data?.error || "(tomt)")}</div>`);
+        setBusy(false);
         return;
       }
-      out.textContent = j.story || '(tomt)';
+
+      show(`<pre class="story">${esc(data.story)}</pre>`);
+      // Efter lyckad gen: aktivera Lyssna, men autospelar inte (kräver klick)
+      el.listenBtn?.removeAttribute("disabled");
     } catch (e) {
       console.error(e);
-      alert('Ett fel uppstod vid generering.');
+      show(`<div class="error">Nätverksfel</div>`);
     } finally {
       setBusy(false);
     }
   }
 
-  let currentAudio = null;
-  async function doTTS() {
-    const text = out.textContent.trim();
-    if (!text) { alert('Ingen text att läsa'); return; }
-    setBusy(true);
+  // Play TTS
+  async function onListen() {
     try {
-      const payload = {
-        text,
-        voice: elVoice.value || 'alloy',
-        speed: Number(elTempo.value || 1.0)
+      const txt = el.out.textContent?.trim();
+      if (!txt) return;
+
+      el.listenBtn?.setAttribute("disabled","disabled"); // förhindra dubbelklick
+
+      const body = {
+        text: txt,
+        voice: el.voiceSel?.value || "alloy",
+        speed: Number(el.tempo?.value || 1.0)
       };
-      const r = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
+
+      const r = await fetch("/api/tts", {
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(body)
       });
+
       if (!r.ok) {
-        const msg = await r.text().catch(()=> r.statusText);
-        alert('TTS-fel: ' + msg);
+        const msg = await r.text().catch(()=> "");
+        alert("TTS-fel: " + msg);
         return;
       }
+
       const blob = await r.blob();
-      currentAudio?.pause?.();
-      currentAudio = new Audio(URL.createObjectURL(blob));
-      currentAudio.play();
+      const url = URL.createObjectURL(blob);
+      try { if (audio) audio.pause(); } catch {}
+      audio = new Audio(url);
+      audio.onended = () => { el.listenBtn?.removeAttribute("disabled"); };
+      await audio.play().catch(() => {
+        // iOS/Chrome autoplay-skydd – be om klick igen
+        el.listenBtn?.removeAttribute("disabled");
+      });
     } catch (e) {
       console.error(e);
-      alert('Ett fel uppstod vid uppläsningen.');
-    } finally {
-      setBusy(false);
+      el.listenBtn?.removeAttribute("disabled");
     }
   }
 
-  function stopAudio() {
-    try { currentAudio?.pause?.(); } catch {}
+  // Stop
+  function onStop() {
+    try { if (audio) audio.pause(); } catch {}
+    el.listenBtn?.removeAttribute("disabled");
   }
 
-  // Bindningar – robust (även om nåt kastar)
-  try {
-    btnGen?.addEventListener('click', doGenerate);
-    btnPlay?.addEventListener('click', doTTS);
-    btnStop?.addEventListener('click', stopAudio);
-  } catch (e) {
-    console.error('Bind error', e);
-  }
-
-  // start
-  apiHealth();
+  // Bind
+  el.genBtn?.addEventListener("click", onGenerate);
+  el.listenBtn?.addEventListener("click", onListen);
+  el.stopBtn?.addEventListener("click", onStop);
 })();
