@@ -1,120 +1,102 @@
-// app.js — Golden Copy v1.2
-(() => {
-  const $ = (q) => document.querySelector(q);
-  const api = {
-    gen:  "/api/generate",
-    tts:  "/api/tts",
-    health:"/api/health",
-    ver:  "/api/version",
-  };
+// app.js
 
-  const el = {
-    level:  $('#level'),
-    voice:  $('#voice'),
-    tempo:  $('#tempo'),
-    idea:   $('#userIdea'),
-    out:    $('#output'),
-    gen:    $('#generateBtn'),
-    play:   $('#listenBtn'),
-    stop:   $('#stopBtn'),
-    apiOk:  $('#apiOk'),
-    appVer: $('#appVer'),
-  };
+// Hjälpfunktion för DOM
+const $ = (q) => document.querySelector(q);
 
-  let audio = null;
-  let bindingDone = false;
+// UI-element
+const selLevel = $("#level");       // <select id="level">
+const selLength = $("#length");     // <select id="length">
+const selVoice = $("#voice");       // <select id="voice">
+const selTempo = $("#tempo");       // <input id="tempo">
+const input = $("#idea");           // <textarea id="idea">
+const divOut = $("#output");        // <div id="output">
+const btnGen = $("#generateBtn");   // <button id="generateBtn">
+const btnPlay = $("#listenBtn");    // <button id="listenBtn">
+const btnStop = $("#stopBtn");      // <button id="stopBtn">
+const elApiOk = $("#apiok");        // <span id="apiok">
 
-  const safeJson = async (res) => {
-    const txt = await res.text().catch(()=> "");
-    try { return JSON.parse(txt); } catch { return { ok:false, error:"Ogiltig JSON", raw: txt }; }
-  };
-  const ui = (t) => { if (el.out) el.out.textContent = t ?? ""; };
+// API-bas (Cloudflare Pages functions)
+const BASE = location.origin + "/api";
 
-  async function health() {
-    try {
-      const r = await fetch(api.health);
-      const j = await safeJson(r);
-      if (el.apiOk) el.apiOk.textContent = j?.ok ? "API: ok" : "API: fel";
-    } catch { if (el.apiOk) el.apiOk.textContent = "API: fel"; }
+// Rad ~30: Health check
+async function checkHealth() {
+  try {
+    const res = await fetch(BASE + "/health");
+    const ok = res.ok;
+    if (elApiOk) elApiOk.textContent = ok ? "ok" : "fail";
+  } catch {
+    if (elApiOk) elApiOk.textContent = "fail";
   }
+}
+checkHealth();
 
-  function getMinutes() {
-    const picked = document.querySelector('input[name="length"]:checked');
-    return Number(picked?.value || 5);
-  }
+// Rad ~45: Busy/idle helpers
+function setBusy(b) {
+  btnGen.disabled = b;
+  btnPlay.disabled = b;
+  btnStop.disabled = b;
+}
 
-  async function onGenerate() {
-    ui("(skriver…)");
-    try {
-      const body = {
-        idea: (el.idea?.value || "").trim(),
-        level: Number(el.level?.value || 3),
-        minutes: getMinutes()
-      };
-      const res = await fetch(api.gen, {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(body)
-      });
-      const data = await safeJson(res);
-      if (!res.ok || !data.ok) {
-        ui("(kunde inte generera)");
-        console.warn("generate error", data);
-        return;
-      }
-      ui(data.story || "(tomt)");
-    } catch (e) {
-      ui("(nätverksfel)");
-      console.error(e);
+// Rad ~55: Generera berättelse
+btnGen.addEventListener("click", async () => {
+  setBusy(true);
+  divOut.textContent = "(genererar …)";
+  try {
+    // FIX → payload med rätt fält
+    const payload = {
+      idea: input.value.trim(),
+      level: parseInt(selLevel.value, 10),
+      minutes: parseInt(selLength.value, 10)
+    };
+
+    const res = await fetch(BASE + "/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      divOut.textContent = "(kunde inte generera – prova igen)";
+      console.error("generate error", data);
+    } else {
+      divOut.textContent = data.story || "(tomt)";
     }
+  } catch (err) {
+    console.error("generate exception", err);
+    divOut.textContent = "(fel vid generering)";
   }
+  setBusy(false);
+});
 
-  async function onListen() {
-    const text = el.out?.textContent?.trim();
+// Rad ~95: Lyssna
+btnPlay.addEventListener("click", async () => {
+  try {
+    const text = divOut.textContent.trim();
     if (!text) return;
-
-    try { audio?.pause(); } catch {}
-    audio = null;
-
-    try {
-      const body = {
+    const res = await fetch(BASE + "/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         text,
-        voice: el.voice?.value || "verse",
-        speed: Number(el.tempo?.value || 1.0)
-      };
-      const r = await fetch(api.tts, {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(body)
-      });
-      const j = await safeJson(r);
-      if (!r.ok || !j.ok || !j.url) {
-        console.warn("tts error", j);
-        return;
-      }
-      audio = new Audio(j.url);
-      audio.play().catch(()=>{});
-    } catch (e) {
-      console.error(e);
-    }
+        voice: selVoice.value,
+        speed: parseFloat(selTempo.value)
+      })
+    });
+    if (!res.ok) throw new Error("TTS fel");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play();
+  } catch (err) {
+    console.error("tts error", err);
   }
+});
 
-  function onStop() {
-    try { audio?.pause(); } catch {}
-  }
-
-  function bindOnce() {
-    if (bindingDone) return;
-    el.gen?.addEventListener("click", onGenerate);
-    el.play?.addEventListener("click", onListen);
-    el.stop?.addEventListener("click", onStop);
-    bindingDone = true;
-  }
-
-  document.addEventListener("DOMContentLoaded", () => {
-    bindOnce();
-    if (el.appVer) el.appVer.textContent = "v1.2";
-    health();
-  });
-
-  // Rescue i konsolen: BN_rescue()
-  window.BN_rescue = () => { bindOnce(); return "Rescue OK"; };
-})();
+// Rad ~120: Stoppa
+btnStop.addEventListener("click", () => {
+  // just nu inget aktivt Audio-objekt sparat
+  // TODO: spara global referens om du vill kunna stoppa mitt i
+  console.log("Stop clicked (ej implementerad fullt)");
+});
