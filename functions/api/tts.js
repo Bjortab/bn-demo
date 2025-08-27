@@ -1,88 +1,57 @@
 // functions/api/tts.js
-import { corsHeaders } from './_utils.js';
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Cache-Control": "no-store"
+};
 
-/**
- * BN TTS (Cloudflare Pages Functions)
- * Input (POST JSON):
- *   { text: string, voice?: 'alloy'|'verse'|'coral', speed?: number }
- * Output:
- *   audio/mpeg (MP3) – binär ström redo att spela i <audio> i frontend
- */
-export async function onRequest(context) {
-  const { request, env } = context;
+export async function onRequestOptions() {
+  return new Response(null, { headers: CORS });
+}
 
-  // CORS preflight
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
-  }
+export async function onRequestPost({ env, request }) {
+  const bad = (status, msg) => new Response(msg, { status, headers: CORS });
 
   try {
-    if (request.method !== 'POST') {
-      return new Response(JSON.stringify({ ok: false, error: 'Use POST' }), {
-        status: 405,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(request) }
-      });
-    }
+    if (!env.OPENAI_API_KEY) return bad(500, "OPENAI_API_KEY saknas.");
 
-    const { text, voice = 'alloy', speed = 1.0 } =
-      await request.json().catch(() => ({}));
+    const { text, voice = "alloy", speed = 1.0 } = await request.json().catch(() => ({}));
+    if (!text || !text.trim()) return bad(400, "Ingen text.");
 
-    if (!text || !String(text).trim()) {
-      return new Response(JSON.stringify({ ok: false, error: 'Missing text' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(request) }
-      });
-    }
+    // OpenAI TTS – ange språk för bättre svenskt uttal
+    const payload = {
+      model: "gpt-4o-mini-tts",
+      voice,
+      input: text,
+      format: "mp3",
+      language: "sv-SE",
+      speed: Math.max(0.75, Math.min(1.25, Number(speed) || 1.0))
+    };
 
-    if (!env.OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: 'OPENAI_API_KEY missing (Cloudflare env)' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(request) }
-      });
-    }
-
-    // Tillåtna röster (lägg gärna till fler här när vi vill)
-    const allowedVoices = new Set(['alloy', 'verse', 'coral']);
-    const chosenVoice = allowedVoices.has(String(voice)) ? String(voice) : 'alloy';
-
-    // OpenAI TTS (MP3)
-    const res = await fetch('https://api.openai.com/v1/audio/speech', {
-      method: 'POST',
+    const res = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini-tts',   // stabil och snabb; byt vid behov
-        voice: chosenVoice,
-        input: String(text),
-        format: 'mp3',
-        speed: Number.isFinite(+speed) ? Math.max(0.5, Math.min(2.0, +speed)) : 1.0
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
-      const errTxt = await res.text().catch(() => res.statusText);
-      return new Response(JSON.stringify({ ok: false, error: errTxt }), {
-        status: res.status,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders(request) }
-      });
+      const msg = await res.text().catch(() => "");
+      return bad(res.status, "TTS error: " + msg);
     }
 
-    // Returnera binärt MP3 till klienten
-    const audioBuf = await res.arrayBuffer();
-    return new Response(audioBuf, {
-      status: 200,
+    const buf = await res.arrayBuffer();
+    return new Response(buf, {
       headers: {
-        'Content-Type': 'audio/mpeg',
-        'Cache-Control': 'no-store',
-        ...corsHeaders(request)
+        ...CORS,
+        "Content-Type": "audio/mpeg",
+        "Content-Length": String(buf.byteLength)
       }
     });
-  } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders(request) }
-    });
+  } catch (e) {
+    return bad(500, "TTS crash: " + String(e?.message || e));
   }
 }
