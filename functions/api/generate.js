@@ -1,58 +1,115 @@
-import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
+import { jsonResponse, corsHeaders, badRequest, serverError, readJson, openAIHeaders } from "./_utils.js";
 
-function buildPrompt({ idea = "", level = 1, minutes = 5 }) {
-  const targetTokens = Math.max(180, Math.min(3200, Math.round(minutes * 260)));
-  const style =
-    level >= 5 ? "explicit, rå, direkt (nivå 5) svenska, flyt" :
-    level >= 4 ? "sensuell, tydlig (nivå 4) svenska, flyt" :
-                 "romantisk, mjuk (nivå 1–3) svenska, flyt";
+function tokensTarget(minutes = 5) {
+  const m = Math.max(5, Math.min(15, Number(minutes)||5));
+  const chars = 1500 + (m - 5) * 950; // skalning utan loop-känsla
+  return Math.round(chars / 4); // ~tokens
+}
 
-  const system = `Du skriver en kort erotisk novell på svenska. Stil: ${style}.
-Undvik upprepningar, klichéer och direktöversatta engelska uttryck. Behåll naturlig dialog.`;
-  const user = (idea && idea.trim()) ? `Utgå från idén: """${idea.trim()}"""` : "Skriv en fristående scen.";
-  return { system, user, targetTokens };
+function levelBrief(level){
+  const L = Number(level)||3;
+  if (L >= 5) {
+    return `
+NIVÅ 5 – explicit:
+- Tillåtet: direkt erotiskt språk, tydliga handlingar och kroppsliga beskrivningar.
+- Viktigt: naturlig svensk frasering, inga staplade könsord, väv in uttrycken i meningen.
+- Målet är upphetsning och närvaro, inte grov chock.
+- Inga minderåriga, inget tvång, inga olagligheter. Alltid samtycke.`;
+  }
+  if (L >= 4) {
+    return `
+NIVÅ 4 – het men icke-vulgär:
+- Använd anatomiskt korrekta ord och uttryck (t.ex. "lem", "vagina", "trängde in", "våt", "upphetsad", "kunde inte hålla tillbaka", "när han kom").
+- Undvik grova slang/könsord; håll stilen sensuell men tydlig.
+- Fokusera på rytm, andning, beröring, känslolägen och tydlig, het handling utan vulgaritet.`;
+  }
+  return `
+NIVÅ 3 – sensuell:
+- Mjuk, romantisk, antydande. Undvik explicit språk.
+- Fokusera på stämning, dofter, hud, blickar, långsam stegring.`;
+}
+
+function systemRules(level){
+  return `
+Du skriver erotiska berättelser på svenska.
+- Undvik svengelska och direktöversatta fraser.
+- Variera verb/synonymer för att undvika upprepning.
+- Bygg tydlig dramaturgi: inledande närhet → stegring → klimax → efterklang.
+- Använd korta och medellånga meningar blandat. Variera rytm.
+- Markera tal-pauser diskret med taggar [p:kort] och [p:lång] där en mänsklig uppläsare naturligt skulle dra ut på rösten.
+${levelBrief(level)}
+- Avsluta naturligt (ingen "sammanfattning i slutet").`;
 }
 
 export async function onRequest({ request, env }) {
   if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
-  if (request.method !== "POST") return badRequest("Use POST", request);
-  if (!env.OPENAI_API_KEY) return serverError("OPENAI_API_KEY saknas", request);
+  if (request.method !== "POST")   return badRequest(request, "Use POST");
 
   try {
-    const { idea = "", level = 1, minutes = 5 } = await request.json().catch(() => ({}));
-    const { system, user, targetTokens } = buildPrompt({ idea, level, minutes });
+    const body = await readJson(request) || {};
+    const idea    = String(body.idea || "").slice(0, 1500);
+    const level   = Number(body.level || 3);
+    const minutes = Number(body.minutes || 5);
+
+    const headers = openAIHeaders(env);
+    if (!headers) return serverError(request, "OPENAI_API_KEY saknas");
+
+    const system = systemRules(level);
+    const user = [
+      `Mål-längd: ${minutes} minuter (utan att upprepa innehåll).`,
+      idea ? `Utgå från idén: """${idea}"""` : `Skriv en fristående scen.`,
+      `Skriv sammanhängande prosa med stycken. Ingen punktlista.`,
+      `Lägg diskreta pausmarkörer [p:kort] / [p:lång] där uppläsningen mår bra av andning/pauser.`,
+      `Skriv endast berättelsen (ingen meta-text).`
+    ].join("\n");
 
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: [{ role: "system", content: system }, { role: "user", content: user }],
-        max_output_tokens: targetTokens,
-      }),
+        input: [
+          { role: "system", content: system },
+          { role: "user",   content: user }
+        ],
+        max_output_tokens: tokensTarget(minutes),
+        temperature: level >= 5 ? 0.95 : (level >=4 ? 0.9 : 0.85),
+        presence_penalty: 0.7,
+        frequency_penalty: 0.7
+      })
     });
 
+    const txt = await res.text().catch(()=> "");
     if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      return jsonResponse({ ok: false, error: "LLM error", detail: t, status: res.status }, res.status, corsHeaders(request));
+      let detail = txt;
+      try { detail = JSON.parse(txt); } catch {}
+      return jsonResponse({ ok:false, error:"LLM error", detail, status:res.status }, res.status, corsHeaders(request));
     }
 
-    const data = await res.json();
+    let data;
+    try { data = JSON.parse(txt); }
+    catch { return serverError(request, "Ogiltig JSON från LLM"); }
+
+    // Plocka text robust (Responses API)
     let story = "";
-    if (data?.output?.length > 0) {
-      const first = data.output[0];
-      if (first?.content?.length > 0) {
-        const leaf = first.content[0];
-        story = typeof leaf === "string" ? leaf : (leaf.text || "");
+    try {
+      if (typeof data.output_text === "string" && data.output_text.trim()) {
+        story = data.output_text.trim();
+      } else if (Array.isArray(data.output)) {
+        const parts = [];
+        for (const block of data.output) {
+          for (const c of (block.content || [])) {
+            if ((c.type === "output_text" || c.type === "text") && typeof c.text === "string") parts.push(c.text);
+          }
+        }
+        story = parts.join("\n").trim();
       }
-    }
-    if (!story) return jsonResponse({ ok: false, error: "Empty story from model" }, 502, corsHeaders(request));
+    } catch {}
+    if (!story) return jsonResponse({ ok:false, error:"EMPTY_STORY" }, 200, corsHeaders(request));
 
-    return jsonResponse({ ok: true, story }, 200, corsHeaders(request));
+    // Skicka tillbaka som är – appen visar ren text; TTS parser använder pausmarkörer.
+    return jsonResponse({ ok:true, story }, 200, corsHeaders(request));
   } catch (e) {
-    return serverError(e?.message || "Unhandled", request);
+    return serverError(request, e);
   }
 }
