@@ -1,57 +1,38 @@
-// functions/api/tts.js
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Cache-Control": "no-store"
-};
+import { json, corsHeaders, serverError, badRequest } from './_utils.js';
 
-export async function onRequestOptions() {
-  return new Response(null, { headers: CORS });
-}
-
-export async function onRequestPost({ env, request }) {
-  const bad = (status, msg) => new Response(msg, { status, headers: CORS });
-
+export default async function onRequest({ request, env }) {
   try {
-    if (!env.OPENAI_API_KEY) return bad(500, "OPENAI_API_KEY saknas.");
+    if (request.method !== 'POST') return badRequest('POST only');
+    const { text = '', voice = 'verse', speed = 1.0 } = await request.json().catch(() => ({}));
+    if (!text.trim()) return json({ ok: false, error: 'Ingen text' }, 400, corsHeaders(request));
+    if (!env.OPENAI_API_KEY) return json({ ok: false, error: 'OPENAI_API_KEY saknas' }, 500);
 
-    const { text, voice = "alloy", speed = 1.0 } = await request.json().catch(() => ({}));
-    if (!text || !text.trim()) return bad(400, "Ingen text.");
-
-    // OpenAI TTS – ange språk för bättre svenskt uttal
-    const payload = {
-      model: "gpt-4o-mini-tts",
-      voice,
-      input: text,
-      format: "mp3",
-      language: "sv-SE",
-      speed: Math.max(0.75, Math.min(1.25, Number(speed) || 1.0))
-    };
-
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
       headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        'authorization': `Bearer ${env.OPENAI_API_KEY}`,
+        'content-type': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: 'gpt-4o-mini-tts',
+        voice, // verse = kvinna, coral = man, alloy = neutral
+        input: text.slice(0, 120000),
+        speed: Math.max(0.8, Math.min(1.25, Number(speed) || 1.0)),
+        format: 'wav'
+      })
     });
 
     if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      return bad(res.status, "TTS error: " + msg);
+      const msg = await res.text().catch(() => '');
+      return json({ ok: false, error: msg || 'TTS error' }, res.status, corsHeaders(request));
     }
 
-    const buf = await res.arrayBuffer();
-    return new Response(buf, {
-      headers: {
-        ...CORS,
-        "Content-Type": "audio/mpeg",
-        "Content-Length": String(buf.byteLength)
-      }
-    });
+    // Returnera som blob-URL via Cloudflare R2? För demo: base64 data URL.
+    const arr = await res.arrayBuffer();
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(arr)));
+    const url = `data:audio/wav;base64,${b64}`;
+    return json({ ok: true, url }, 200, corsHeaders(request));
   } catch (e) {
-    return bad(500, "TTS crash: " + String(e?.message || e));
+    return serverError(e);
   }
 }
