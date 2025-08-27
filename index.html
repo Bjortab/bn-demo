@@ -1,57 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="topbar">
     <h1>Blush Narratives</h1>
-    <div class="status">
-      <small id="apiOk">API: …</small>
-      <small id="appVer">v1.2</small>
-    </div>
+    <small id="apiOk">API: ok?</small>
   </header>
 
   <main class="wrap">
     <section class="panel">
       <div class="row">
-        <label for="level">Nivå</label>
+        <label>Nivå</label>
         <select id="level">
-          <option value="3" selected>3 (sensuell)</option>
+          <option value="1">1</option>
+          <option value="3">3</option>
           <option value="5">5 (explicit)</option>
         </select>
-      </div>
 
-      <div class="row">
         <label>Längd</label>
-        <div id="length" class="chips">
-          <label class="chip"><input type="radio" name="length" value="5" checked /> 5 min</label>
-          <label class="chip"><input type="radio" name="length" value="10" /> 10 min</label>
-          <label class="chip"><input type="radio" name="length" value="15" /> 15 min</label>
-        </div>
-      </div>
+        <select id="length">
+          <option value="5">5 min</option>
+          <option value="10">10 min</option>
+          <option value="15">15 min</option>
+        </select>
 
-      <div class="row">
-        <label for="voice">Röst</label>
+        <label>Röst</label>
         <select id="voice">
+          <option value="alloy">Alloy (neutral)</option>
           <option value="verse">Verse (kvinna)</option>
           <option value="coral">Coral (man)</option>
-          <option value="alloy">Alloy (neutral)</option>
         </select>
-      </div>
 
-      <div class="row">
-        <label for="tempo">Tempo</label>
-        <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0" />
+        <label>Tempo</label>
+        <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0"/>
       </div>
     </section>
 
     <section class="panel">
       <label for="userIdea">Din idé</label>
-      <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring…"></textarea>
+      <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring..."></textarea>
 
       <div class="actions">
         <button id="generateBtn" class="primary">Generera</button>
@@ -59,6 +51,8 @@
         <button id="stopBtn" class="ghost">Stop</button>
       </div>
 
+      <article id="story" class="story" aria-live="polite"></article>
+      <audio id="audio" preload="none"></audio>
       <pre id="output" class="output">(tomt)</pre>
     </section>
   </main>
@@ -67,6 +61,6 @@
     <small>BN front v1.2 (Cloudflare)</small>
   </footer>
 
-  <script defer src="app.js"></script>
+  <script defer src="/app.js"></script>
 </body>
 </html>
