@@ -1,67 +1,69 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="top">
     <h1>Blush Narratives</h1>
-    <small id="apiStatus">API: …</small>
+    <span id="apiOk" class="badge">API: ok?</span>
   </header>
 
-  <main class="card">
-    <section class="row">
-      <label>Nivå</label>
-      <select id="level">
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3" selected>3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-      </select>
+  <main class="wrap">
+    <section class="controls">
+      <div class="row">
+        <label>Nivå</label>
+        <div class="chips">
+          <label class="chip"><input type="radio" name="level" value="3" checked> 3</label>
+          <label class="chip"><input type="radio" name="level" value="5"> 5</label>
+        </div>
+      </div>
 
-      <label>Längd</label>
-      <select id="length">
-        <option value="1">1 min</option>
-        <option value="3" selected>3 min</option>
-        <option value="5">5 min</option>
-      </select>
+      <div class="row">
+        <label>Längd</label>
+        <div class="chips">
+          <label class="chip"><input type="radio" name="minutes" value="5" checked> 5 min</label>
+          <label class="chip"><input type="radio" name="minutes" value="10"> 10 min</label>
+          <label class="chip"><input type="radio" name="minutes" value="15"> 15 min</label>
+        </div>
+      </div>
 
-      <label>Röst</label>
-      <select id="voice">
-        <option value="alloy" selected>Alloy</option>
-        <option value="coral">Coral</option>
-        <option value="verse">Verse</option>
-      </select>
+      <div class="row">
+        <label>Röst</label>
+        <select id="voice">
+          <option value="verse">Verse (kvinna)</option>
+          <option value="coral">Coral (man)</option>
+          <option value="alloy">Alloy (neutral)</option>
+        </select>
+      </div>
 
-      <label style="margin-left:12px;">Tempo</label>
-      <input id="tempo" type="range" min="0.5" max="2" step="0.05" value="1.0" />
-    </section>
-
-    <section class="row">
-      <textarea id="idea" placeholder="Skriv din idé…"></textarea>
-    </section>
-
-    <section class="row">
-      <div class="actions">
-        <button id="generateBtn" class="primary">Generera</button>
-        <button id="listenBtn" class="secondary">Lyssna</button>
-        <button id="stopBtn">Stop</button>
+      <div class="row">
+        <label for="tempo">Tempo</label>
+        <input id="tempo" type="range" min="0.85" max="1.25" step="0.05" value="1.0" />
+        <span class="hint">1.0×</span>
       </div>
     </section>
 
-    <article id="story" class="story">
-      <pre id="output"></pre>
-    </article>
+    <section class="storybox">
+      <textarea id="idea" placeholder="Skriv din idé…"></textarea>
+
+      <div class="actions">
+        <button id="generateBtn" class="primary">Generera</button>
+        <button id="listenBtn" class="secondary" disabled>Lyssna</button>
+        <button id="stopBtn" class="ghost">Stop</button>
+      </div>
+
+      <article id="output" class="output"></article>
+    </section>
+
+    <footer class="foot">
+      <small>BN front v1.1 (CF server)</small>
+    </footer>
   </main>
 
-  <footer class="foot">
-    <small>BN front v1.1 (CF server)</small>
-  </footer>
-
-  <script defer src="app.js?v=force11"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
