@@ -1,113 +1,186 @@
-// app.js — Golden Copy
+// app.js – Golden Copy v1.3
 const $ = (q) => document.querySelector(q);
 
+// UI
 const elLevel   = $("#level");
 const elLength  = $("#length");
 const elVoice   = $("#voice");
 const elTempo   = $("#tempo");
 const elIdea    = $("#userIdea");
+const elOut     = $("#output");
 const btnGen    = $("#generateBtn");
 const btnPlay   = $("#listenBtn");
 const btnStop   = $("#stopBtn");
-const outStory  = $("#story");
-const outPre    = $("#output");
-const audioEl   = $("#audio");
-const apiOkEl   = $("#apiStatus");
+const elAudio   = $("#audio");
 
+// API-bas (Cloudflare Pages)
 const BASE = location.origin + "/api";
 
-let lastStory = "";
-let playing = false;
-
+// Helfunktioner
 function setBusy(b) {
   btnGen.disabled  = b;
-  btnPlay.disabled = b || !lastStory;
-  btnStop.disabled = !playing;
+  btnPlay.disabled = b;
+  btnStop.disabled = b;
 }
 
-function show(msg) {
-  outPre.textContent = msg;
+function print(msg) {
+  elOut.textContent = msg;
+}
+
+function seconds(s) {
+  return new Promise((res) => setTimeout(res, s * 1000));
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(`${BASE}/health`);
-    apiOkEl.textContent = res.ok ? "API: ok" : "API: fail";
+    const res = await fetch(BASE + "/health");
+    const isOk = res.ok;
+    const el = document.getElementById("apiok");
+    if (el) el.textContent = isOk ? "ok" : "fail";
   } catch {
-    apiOkEl.textContent = "API: fail";
+    const el = document.getElementById("apiok");
+    if (el) el.textContent = "fail";
   }
 }
-checkHealth();
 
-btnGen.addEventListener("click", async () => {
-  setBusy(true);
-  show("(genererar ...)");
-  outStory.textContent = "";
+function readForm() {
+  const minutes = Number(document.querySelector('input[name="length"]:checked')?.value || "5");
+  return {
+    idea: (elIdea.value || "").trim(),
+    level: Number(elLevel.value || "3"),
+    minutes,
+    voice: (elVoice.value || "alloy").trim(),
+    tempo: Number(elTempo.value || "1"),
+  };
+}
 
-  const level   = Number(elLevel.value || 3);
-  const minutes = Number(elLength.value || 5);
-  const voice   = elVoice.value || "alloy";
-  const idea    = (elIdea.value || "").trim();
+// Robust JSON-läsare som även fångar textfel
+async function safeJson(res) {
+  const raw = await res.text();
+  try { return { ok: true, value: JSON.parse(raw), raw }; }
+  catch { return { ok: false, raw }; }
+}
 
-  try {
-    const res = await fetch(`${BASE}/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea, level, minutes, voice }),
-    });
-    const data = await res.json().catch(() => ({}));
+function fetchWithTimeout(url, opts = {}, ms = 60000) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort("timeout"), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal })
+    .finally(() => clearTimeout(id));
+}
 
-    if (!res.ok || !data?.ok) {
-      const detail = data?.detail || "";
-      show("(fel vid generering)");
-      console.error("generate error:", detail || data);
-      lastStory = "";
-    } else {
-      lastStory = data.story || "";
-      outStory.textContent = lastStory;
-      show(""); // rensa
-      btnPlay.disabled = !lastStory;
-    }
-  } catch (e) {
-    show("(fel vid generering)");
-    console.error(e);
-    lastStory = "";
-  } finally {
-    setBusy(false);
+// ===== GENERERA =====
+btnGen?.addEventListener("click", async () => {
+  const form = readForm();
+  if (!form.idea) {
+    print("(skriv en idé…)");
+    return;
   }
-});
 
-btnPlay.addEventListener("click", async () => {
-  if (!lastStory) return;
   setBusy(true);
+  print("(genererar …)");
+
   try {
-    const speed = Number(elTempo.value || 1.0);
-    const voice = elVoice.value || "alloy";
-    const res = await fetch(`${BASE}/tts`, {
+    const res = await fetchWithTimeout(BASE + "/generate", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: lastStory, voice, speed }),
-    });
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(form),
+    }, 90000);
+
     if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      console.error("TTS error", t);
+      const body = await res.text().catch(() => "");
+      console.error("[generate] http error", res.status, body);
+      print("(kunde inte generera – prova igen)");
       return;
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    audioEl.src = url;
-    await audioEl.play();
-    playing = true;
-    btnStop.disabled = false;
-  } catch (e) {
-    console.error(e);
+
+    const parsed = await safeJson(res);
+    if (!parsed.ok) {
+      console.error("[generate] invalid JSON:", parsed.raw);
+      print("(fel vid generering)");
+      return;
+    }
+
+    const data = parsed.value;
+    if (!data?.ok || !data?.text) {
+      console.error("[generate] bad payload:", data);
+      print("(fel vid generering)");
+      return;
+    }
+
+    // Skriv ut berättelsen
+    elOut.textContent = data.text;
+
+  } catch (err) {
+    console.error("[generate] exception", err);
+    if (String(err).includes("timeout")) {
+      print("(timeout mot server – prova igen)");
+    } else {
+      print("(fel vid generering)");
+    }
   } finally {
     setBusy(false);
   }
 });
 
-btnStop.addEventListener("click", () => {
-  try { audioEl.pause(); } catch {}
-  playing = false;
-  btnStop.disabled = true;
+// ===== TTS =====
+let currentTts = null;
+
+btnPlay?.addEventListener("click", async () => {
+  const text = elOut.textContent?.trim();
+  if (!text) {
+    print("(ingen text att läsa)");
+    return;
+  }
+
+  setBusy(true);
+  print("Hämtar röst …");
+
+  try {
+    // avbryt ev pågående
+    if (currentTts) { currentTts.abort(); currentTts = null; }
+
+    const ctrl = new AbortController();
+    currentTts = ctrl;
+
+    const res = await fetchWithTimeout(BASE + "/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text,
+        voice: elVoice.value || "alloy",
+        speed: Number(elTempo.value || "1"),
+      }),
+      signal: ctrl.signal,
+    }, 90000);
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      console.error("[tts] http error", res.status, msg);
+      print("(kunde inte spela upp)");
+      return;
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    elAudio.src = url;
+    await elAudio.play().catch((e)=> {
+      console.error("[tts] play err", e);
+      print("(kunde inte starta uppspelning)");
+    });
+
+    print("Klar.");
+
+  } catch (err) {
+    console.error("[tts] exception", err);
+    print("(fel vid uppspelning)");
+  } finally {
+    setBusy(false);
+  }
 });
+
+btnStop?.addEventListener("click", () => {
+  try { elAudio.pause(); } catch {}
+});
+
+// Init
+checkHealth();
