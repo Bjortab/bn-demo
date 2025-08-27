@@ -1,26 +1,27 @@
-// functions/api/_utils.js
-export const corsHeaders = {
-  "content-type": "application/json",
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
-  "access-control-allow-headers": "Content-Type, Authorization"
-};
-
-export function badRequest(msg = "Bad Request") {
-  return new Response(JSON.stringify({ ok: false, error: msg }), {
-    status: 400, headers: corsHeaders
-  });
-}
-
-export function serverError(msg = "Server error") {
-  return new Response(JSON.stringify({ ok: false, error: msg }), {
-    status: 500, headers: corsHeaders
-  });
-}
-
-export function corsHeadersText() {
+export function corsHeaders(request) {
+  const origin = request?.headers?.get("Origin") || "*";
   return {
-    "content-type": "text/plain; charset=utf-8",
-    "access-control-allow-origin": "*"
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
   };
+}
+
+export function jsonResponse(data, status = 200, extra = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...extra,
+    },
+  });
+}
+
+export function badRequest(msg = "Bad Request", request) {
+  return jsonResponse({ ok: false, error: msg }, 400, corsHeaders(request));
+}
+export function serverError(msg = "Server error", request) {
+  return jsonResponse({ ok: false, error: msg }, 500, corsHeaders(request));
 }
