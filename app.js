@@ -1,127 +1,136 @@
-// app.js — BN front v1.1 stabil
-(() => {
-  const $ = (s) => document.querySelector(s);
+/* BN front v1.1 – 5/10/15 min & robust UI */
 
-  const el = {
-    apiOk: $("#apiOk"),
-    idea:  $("#idea"),
-    level: () => Number(document.querySelector('input[name="level"]:checked')?.value || 3),
-    minutes: () => Number(document.querySelector('input[name="minutes"]:checked')?.value || 3),
-    tempo: $("#tempo"),
-    voiceSel: $("#voice"),
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-    out: $("#output"),
-    genBtn: $("#generateBtn"),
-    listenBtn: $("#listenBtn"),
-    stopBtn: $("#stopBtn"),
+const el = {
+  apiOk: $('#apiOk'),
+  idea: $('#idea'),
+  voice: $('#voice'),
+  tempo: $('#tempo'),
+  out: $('#output'),
+  gen: $('#generateBtn'),
+  play: $('#listenBtn'),
+  stop: $('#stopBtn'),
+};
+
+let currentStory = '';
+let currentAudio = null;
+let speaking = false;
+
+function getLevel() {
+  const r = $$('input[name="level"]:checked')[0];
+  return r ? Number(r.value) : 3;
+}
+function getMinutes() {
+  const r = $$('input[name="minutes"]:checked')[0];
+  return r ? Number(r.value) : 5;
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const j = await r.json();
+    el.apiOk.textContent = j.ok ? 'API: ok' : 'API: fel';
+    el.apiOk.style.background = j.ok ? '#1f2a21' : '#3b1b1b';
+  } catch {
+    el.apiOk.textContent = 'API: fel';
+    el.apiOk.style.background = '#3b1b1b';
+  }
+}
+
+function lockUI(locked) {
+  el.gen.disabled = locked;
+  el.play.disabled = locked || !currentStory;
+  $$('input[name="level"]').forEach(x => x.disabled = locked);
+  $$('input[name="minutes"]').forEach(x => x.disabled = locked);
+  el.voice.disabled = locked;
+  el.tempo.disabled = locked;
+  el.idea.disabled = locked;
+}
+
+async function generate() {
+  lockUI(true);
+  el.out.textContent = '(skapar berättelse …)';
+  currentStory = '';
+
+  const body = {
+    idea: (el.idea.value || '').trim(),
+    level: getLevel(),
+    minutes: getMinutes()
   };
 
-  // Init
-  (async () => {
-    try {
-      const r = await fetch("/api/health");
-      const h = await r.json().catch(()=>({}));
-      if (h.ok) el.apiOk && (el.apiOk.textContent = "API: ok");
-    } catch {}
-  })();
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Okänt fel');
 
-  // UI helpers
-  const setBusy = (busy) => {
-    el.genBtn?.toggleAttribute("disabled", busy);
-    el.listenBtn?.toggleAttribute("disabled", busy);
-    el.stopBtn?.toggleAttribute("disabled", false);
+    currentStory = data.story || '';
+    el.out.textContent = currentStory || '(tomt)';
+    el.play.disabled = !currentStory;
+  } catch (e) {
+    el.out.innerHTML = `<span class="error">Fel: ${e.message}</span>`;
+  } finally {
+    lockUI(false);
+  }
+}
+
+async function ttsPlay() {
+  if (!currentStory || speaking) return;
+  speaking = true;
+  el.play.disabled = true;
+  el.play.textContent = 'Spelar upp…';
+
+  const body = {
+    text: currentStory,
+    voice: el.voice.value,
+    speed: Number(el.tempo.value)
   };
-  const show = (html) => { el.out.innerHTML = html; };
-  const showText = (t) => { el.out.textContent = t; };
-  const esc = (s) => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
-  let audio;
-
-  // Generate only (no autoplay)
-  async function onGenerate() {
-    try {
-      setBusy(true);
-      showText("Genererar …");
-
-      const payload = {
-        idea: (el.idea.value || "").trim(),
-        level: el.level(),
-        minutes: el.minutes(),
-        voice: el.voiceSel?.value || "alloy"
-      };
-
-      const res = await fetch("/api/generate", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(()=> ({}));
-
-      if (!data || data.ok === false || !data.story) {
-        console.warn("Gen-fel:", data);
-        show(`<div class="error">${esc(data?.error || "(tomt)")}</div>`);
-        setBusy(false);
-        return;
-      }
-
-      show(`<pre class="story">${esc(data.story)}</pre>`);
-      // Efter lyckad gen: aktivera Lyssna, men autospelar inte (kräver klick)
-      el.listenBtn?.removeAttribute("disabled");
-    } catch (e) {
-      console.error(e);
-      show(`<div class="error">Nätverksfel</div>`);
-    } finally {
-      setBusy(false);
-    }
+  try {
+    const r = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('TTS error');
+    const j = await r.json();
+    const audioUrl = j.url;
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    currentAudio = new Audio(audioUrl);
+    currentAudio.onended = () => { speaking = false; el.play.textContent = 'Lyssna'; el.play.disabled = false; };
+    await currentAudio.play();
+  } catch (e) {
+    el.out.insertAdjacentHTML('beforeend', `\n\n<span class="error">TTS fel: ${e.message}</span>`);
+    speaking = false;
+    el.play.textContent = 'Lyssna';
+    el.play.disabled = false;
   }
+}
 
-  // Play TTS
-  async function onListen() {
-    try {
-      const txt = el.out.textContent?.trim();
-      if (!txt) return;
+function ttsStop() {
+  if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
+  speaking = false;
+  el.play.textContent = 'Lyssna';
+  el.play.disabled = !currentStory;
+}
 
-      el.listenBtn?.setAttribute("disabled","disabled"); // förhindra dubbelklick
+function safeBind(node, type, fn) {
+  if (!node) return;
+  node.removeEventListener(type, fn);
+  node.addEventListener(type, fn, { passive: true });
+}
 
-      const body = {
-        text: txt,
-        voice: el.voiceSel?.value || "alloy",
-        speed: Number(el.tempo?.value || 1.0)
-      };
+function init() {
+  safeBind(el.gen, 'click', generate);
+  safeBind(el.play, 'click', ttsPlay);
+  safeBind(el.stop, 'click', ttsStop);
+  safeBind(el.tempo, 'input', () => $('.hint').textContent = `${Number(el.tempo.value).toFixed(2)}×`);
 
-      const r = await fetch("/api/tts", {
-        method:"POST", headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(body)
-      });
-
-      if (!r.ok) {
-        const msg = await r.text().catch(()=> "");
-        alert("TTS-fel: " + msg);
-        return;
-      }
-
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      try { if (audio) audio.pause(); } catch {}
-      audio = new Audio(url);
-      audio.onended = () => { el.listenBtn?.removeAttribute("disabled"); };
-      await audio.play().catch(() => {
-        // iOS/Chrome autoplay-skydd – be om klick igen
-        el.listenBtn?.removeAttribute("disabled");
-      });
-    } catch (e) {
-      console.error(e);
-      el.listenBtn?.removeAttribute("disabled");
-    }
-  }
-
-  // Stop
-  function onStop() {
-    try { if (audio) audio.pause(); } catch {}
-    el.listenBtn?.removeAttribute("disabled");
-  }
-
-  // Bind
-  el.genBtn?.addEventListener("click", onGenerate);
-  el.listenBtn?.addEventListener("click", onListen);
-  el.stopBtn?.addEventListener("click", onStop);
-})();
+  checkHealth();
+}
+document.addEventListener('DOMContentLoaded', init);
