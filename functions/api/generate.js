@@ -1,12 +1,18 @@
-// functions/api/generate.js — GC (streaming) v1.0
-
+// functions/api/generate.js — GC v1.2
 import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
 
-/**
- * POST /api/generate
- * Body: { idea: string, level: number, minutes: number }
- * Query: ?stream=1  -> strömmar som text/event-stream (SSE)
- */
+/*
+  Body (JSON):
+  {
+    "idea": "text",
+    "level": 1|3|5,
+    "minutes": 5|10|15
+  }
+
+  Svar (JSON):
+  { ok: true, text: "berättelse..." }
+*/
+
 export async function onRequest(context) {
   const { request, env } = context;
 
@@ -17,99 +23,75 @@ export async function onRequest(context) {
   if (request.method !== "POST") {
     return badRequest("Use POST", request);
   }
-  if (!env?.OPENAI_API_KEY) {
-    return serverError("OPENAI_API_KEY saknas i Cloudflare env", request);
+  if (!env.OPENAI_API_KEY) {
+    return serverError("OPENAI_API_KEY missing (Cloudflare env)", request);
   }
 
-  let idea = "", level = 3, minutes = 5;
   try {
-    const body = await request.json();
-    idea    = (body?.idea ?? "").toString().trim();
-    level   = Math.max(1, Math.min(5, Number(body?.level ?? 3)));
-    minutes = [5,10,15].includes(Number(body?.minutes)) ? Number(body?.minutes) : 5;
-  } catch (e) {
-    // Ogiltig JSON från klient
-    return badRequest("Body måste vara JSON", request);
-  }
+    const { idea = "", level = 3, minutes = 5 } = await request.json().catch(() => ({}));
 
-  // Token-budget (väldigt översiktligt, hellre för smått än för stort i demo)
-  const targetTokens = Math.round(minutes * 200); // ca 200 ord/min
+    // mycket enkel validering
+    const lvl = [1,3,5].includes(Number(level)) ? Number(level) : 3;
+    const mins = [5,10,15].includes(Number(minutes)) ? Number(minutes) : 5;
 
-  // Systemprompt (håll den kort – längre prompt = långsammare och dyrare)
-  const SYS = [
-    "Du skriver sensuella berättelser på svenska.",
-    `Nivå: ${level} av 5 (5 = explicit).`,
-    "Skriv flytande, naturlig svenska. Undvik direkt översatt engelska.",
-    "Variera fraser; undvik upprepningar. Ha tydlig dramaturgisk stegring.",
-    "Avsluta med avrundning, inte tvärstopp."
-  ].join(" ");
+    // ca tokens utifrån minuter (ca 250 wpm ≈ 750 tecken/min grovt mätt)
+    const maxTokens = Math.min(2200, Math.round(mins * 250 * 0.9));
 
-  const wantsStream = new URL(request.url).searchParams.get("stream") === "1";
+    // systemprompt – håll neutral här; nivåerna/lexikon löser du i front-end/lexicon.json
+    const sys = [
+      "Du skriver korta erotiska berättelser på svenska.",
+      "Tydligt, sammanhängande och flytande, inga upprepningar eller listor.",
+      "Anpassa tonen efter nivå (nivå 1 sensuell, 3 hetare, 5 explicit).",
+      "Var konsekvent i perspektiv och tempus.",
+      "Undvik stolpighet och engelsk direktöversättning.",
+    ].join(" ");
 
-  try {
-    // Baspayload till OpenAI Responses API
-    const payload = {
-      model: "gpt-4o-mini",
-      input: [
-        { role: "system", content: SYS },
-        { role: "user",   content: idea || "Skriv en kort, sensuell berättelse." }
-      ],
-      max_output_tokens: targetTokens,
-      temperature: 0.9,
-      stream: !!wantsStream
-    };
+    const user = idea && idea.trim().length > 0
+      ? `Användaridé: ${idea}`
+      : "Skapa en fristående scen, svensk miljö, naturlig dialog, sensuell stegring.";
 
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
+    // OpenAI Responses API
+    const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "authorization": `Bearer ${env.OPENAI_API_KEY}`,
         "content-type": "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: [
+          { role: "system",  content: sys },
+          { role: "user",    content: user },
+          { role: "user",    content: `Nivå: ${lvl}, Längd: ${mins} min.` }
+        ],
+        max_output_tokens: maxTokens,
+        temperature: 0.9
+      })
     });
 
-    if (!upstream.ok) {
-      const detail = await upstream.text().catch(() => "");
-      return jsonResponse(
-        { ok: false, error: "LLM error", detail, status: upstream.status },
-        upstream.status,
-        request
-      );
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      return jsonResponse({ ok: false, error: "LLM error", detail: errText, status: res.status }, res.status, request);
     }
 
-    if (wantsStream) {
-      // PASS-THROUGH STREAM (SSE)
-      // Vi strömmar vidare OpenAI:s SSE som-är (snabbast och enklast).
-      return new Response(upstream.body, {
-        headers: corsHeaders(request, {
-          "content-type": "text/event-stream; charset=utf-8",
-          "cache-control": "no-store"
-        })
-      });
-    }
+    const data = await res.json().catch(() => ({}));
 
-    // Fallback: icke-stream (vanlig JSON)
-    const data = await upstream.json();
-
-    // För Responses-API i icke-stream: plocka första textutgången robust
-    let story = "";
-    try {
-      if (Array.isArray(data?.output) && data.output.length) {
-        const piece = data.output[0];
-        if (Array.isArray(piece?.content) && piece.content.length) {
-          story = piece.content.map(x => x?.text ?? "").join("");
-        } else if (piece?.text) {
-          story = piece.text;
-        }
-      } else if (Array.isArray(data?.content)) {
-        story = data.content.map(x => x?.text ?? "").join("");
+    // Responses API: plocka första textfältet
+    let text = "";
+    if (data?.output?.length) {
+      const first = data.output[0];
+      if (first?.content?.length) {
+        text = first.content[0]?.text || "";
       }
-    } catch { /* håll tyst, story bli "" om fel */ }
+    }
+    if (!text) text = data?.output_text || ""; // fallback om modellen returnerar output_text
 
-    return jsonResponse({ ok: true, story }, 200, request);
+    if (!text) {
+      return jsonResponse({ ok: false, error: "empty response" }, 502, request);
+    }
 
+    return jsonResponse({ ok: true, text }, 200, request);
   } catch (err) {
-    const msg = typeof err === "string" ? err : (err?.message || "error");
-    return serverError(msg, request);
+    return serverError(err, request);
   }
 }
