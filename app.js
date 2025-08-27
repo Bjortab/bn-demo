@@ -1,111 +1,81 @@
-// app.js
-const $ = (q) => document.querySelector(q);
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const api = {
+    base: location.origin,
+    gen:  "/api/generate",
+    tts:  "/api/tts",
+    health:"/api/health",
+    ver:  "/api/version",
+  };
 
-// UI
-const elLevel  = $("#level");
-const elLen    = $("#length");
-const elVoice  = $("#voice");
-const elTempo  = $("#tempo");
-const elIdea   = $("#idea");
-const elOut    = $("#output");
-const btnGen   = $("#generateBtn");
-const btnPlay  = $("#listenBtn");
-const btnStop  = $("#stopBtn");
-const elApiOk  = $("#apiOk");
+  let audio, currentStory = "", wired = false;
 
-// API bas (Cloudflare Pages)
-const BASE = location.origin + "/api";
-
-async function checkHealth() {
-  try {
-    const res = await fetch(BASE + "/health");
-    const ok  = res.ok;
-    if (elApiOk) elApiOk.textContent = ok ? "ok" : "fail";
-  } catch { if (elApiOk) elApiOk.textContent = "fail"; }
-}
-checkHealth();
-
-function setBusy(b) {
-  btnGen.disabled = b;
-  btnPlay.disabled = b;
-  btnStop.disabled = b;
-}
-
-async function safeJson(res) {
-  const text = await res.text();
-  try { return JSON.parse(text); } catch {
-    return { ok: false, error: "Ogiltig JSON", raw: text };
+  function wireOnce() {
+    if (wired) return; wired = true;
+    $("#generateBtn")?.addEventListener("click", onGenerate);
+    $("#listenBtn")?.addEventListener("click", onListen);
+    $("#stopBtn")?.addEventListener("click", onStop);
   }
-}
 
-btnGen?.addEventListener("click", async () => {
-  setBusy(true);
-  elOut.textContent = "(genererar …)";
-  try {
-    const payload = {
-      level: Number(elLevel?.value || 3),
-      minutes: Number(elLen?.value || 5),
-      idea: (elIdea?.value || "").trim()
+  function ui(msg) { const out = $("#output"); if (out) out.textContent = msg ?? ""; }
+  function val(id, fallback) { const el = $("#" + id); return el?.value ?? fallback; }
+  function num(id, fallback) { const v = Number(val(id, fallback)); return isNaN(v) ? fallback : v; }
+
+  async function onGenerate() {
+    wireOnce();
+    ui("Genererar …");
+    currentStory = "";
+
+    const body = {
+      idea: ($("#useridea")?.value || "").trim(),
+      level: Number(document.querySelector('input[name="level"]:checked')?.value || 1),
+      minutes: Number(document.querySelector('input[name="length"]:checked')?.value || 5),
     };
-    const res = await fetch(BASE + "/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      elOut.textContent = `Fel (generate): ${text || res.statusText}`;
-      return;
+    try {
+      const r = await fetch(api.gen, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || ("Gen fail: " + r.status));
+      currentStory = j.story || "";
+      ui(currentStory || "(tomt)");
+      // Autoplay direkt när vi faktiskt har text
+      if (currentStory) await onListen();
+    } catch (e) {
+      ui("Fel: " + (e.message || e));
+      console.error(e);
     }
-
-    const data = await safeJson(res);
-    if (!data.ok) {
-      elOut.textContent = `Fel (generate json): ${data.error || "okänt"}`;
-      return;
-    }
-
-    elOut.textContent = data.story || "(tomt)";
-  } catch (e) {
-    elOut.textContent = `Undantag: ${e?.message || e}`;
-  } finally {
-    setBusy(false);
   }
-});
 
-let audioEl;
-btnPlay?.addEventListener("click", async () => {
-  const text = elOut.textContent.trim();
-  if (!text) return;
+  async function onListen() {
+    wireOnce();
+    if (!currentStory) return ui("Ingen berättelse ännu.");
+    ui("Hämtar röst …");
 
-  setBusy(true);
-  try {
-    const res = await fetch(BASE + "/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: (elVoice?.value || "alloy"),
-        speed: Number(elTempo?.value || 1.0)
-      })
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      alert(`TTS fel: ${t || res.statusText}`);
-      return;
+    const voice = val("voice", "verse");
+    const speed = num("tempo", 1.0);
+
+    try {
+      const r = await fetch(api.tts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: currentStory, voice, speed }) });
+      if (!r.ok) throw new Error("TTS: " + (await r.text().catch(()=>r.status)));
+      const blob = await r.blob();
+      audio?.pause();
+      audio = new Audio(URL.createObjectURL(blob));
+      audio.onended = () => URL.revokeObjectURL(audio.src);
+      await audio.play();
+      ui("Spelar upp …");
+    } catch (e) {
+      ui("TTS-fel: " + (e.message || e));
+      console.error(e);
     }
-    const blob = await res.blob();
-    if (audioEl) { audioEl.pause(); audioEl = null; }
-    audioEl = new Audio(URL.createObjectURL(blob));
-    audioEl.play().catch(()=>{});
-  } catch (e) {
-    alert(`TTS undantag: ${e?.message || e}`);
-  } finally {
-    setBusy(false);
   }
-});
 
-btnStop?.addEventListener("click", () => {
-  try { window.speechSynthesis?.cancel(); } catch {}
-  try { audioEl?.pause(); } catch {}
-});
+  function onStop() { try { audio?.pause(); } catch {} ui(""); }
+
+  // Start
+  document.addEventListener("DOMContentLoaded", () => {
+    wireOnce();
+    $("#appVer") && ($("#appVer").textContent = "BN front v" + (window.APP_VER || "?") + " (CF server)");
+    // Snabb hälsokoll i UI:
+    fetch(api.health).then(r=>r.json()).then(j => { const el=$("#apiOk"); if (el) el.textContent = j?.ok ? "API: ok" : "API: fel"; }).catch(()=>{ const el=$("#apiOk"); if (el) el.textContent="API: fel"; });
+  });
+})();
