@@ -1,68 +1,73 @@
-import { jsonResponse, corsHeaders, badRequest, serverError, readJson, openAIHeaders } from "./_utils.js";
-
-// Enkel TTS-stylizer – transformerar berättelsen till en TTS-vänlig variant
-function stylizeForTTS(input) {
-  if (!input || typeof input !== "string") return "";
-
-  let t = input;
-
-  // 1) Byt ut våra diskreta markörer mot paus-tecken som TTS faktiskt reagerar på
-  t = t.replace(/\[p:kort\]/g, " …");
-  t = t.replace(/\[p:lång\]/g, " … …");
-
-  // 2) Sätt lite fler mjuka pauser efter styckeslut
-  t = t.replace(/\n{2,}/g, " …\n");
-
-  // 3) Om meningar är långa utan komma, lägg in mjuk paus här och var
-  t = t.replace(/([^\.\?\!\n]{80,200})([ \t]+)([A-ZÅÄÖ])/g, "$1, … $3");
-
-  // 4) Rensa överdrivna blankrader
-  t = t.replace(/\n{3,}/g, "\n\n");
-
-  return t.trim();
-}
+// functions/api/tts.js
+import { corsHeaders, json, badRequest, serverError } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
-  if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
-  if (request.method !== "POST")   return badRequest(request, "Use POST");
+  if (request.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders(request) });
+  }
+  if (request.method !== "POST") return badRequest("Use POST");
 
   try {
-    const payload = await readJson(request) || {};
-    const rawText = String(payload.text || "");
-    const voice   = String(payload.voice || "verse");
-    const speed   = Math.max(0.85, Math.min(1.2, Number(payload.speed || 1.0)));
+    if (!env?.OPENAI_API_KEY) return badRequest("OPENAI_API_KEY saknas");
 
-    if (!rawText) return badRequest(request, "Ingen text");
+    const body = await request.json().catch(() => ({}));
+    let text = (body?.text || "").toString().trim();
+    const voice = body?.voice || "alloy";
+    const speed = Number(body?.speed || 1.0);
 
-    const headers = openAIHeaders(env);
-    if (!headers) return serverError(request, "OPENAI_API_KEY saknas");
+    if (!text) return badRequest("Ingen text för TTS");
 
-    // För TTS skickar vi den stylade varianten
-    const ttsText = stylizeForTTS(rawText);
-
-    const res = await fetch("https://api.openai.com/v1/audio/speech", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        input: ttsText,
-        voice,
-        speed,
-        format: "wav",
-        language: "sv-SE"
-      })
-    });
-
-    if (!res.ok) {
-      const msg = await res.text().catch(()=> "");
-      return jsonResponse({ ok:false, error: msg || "TTS error" }, res.status, corsHeaders(request));
+    // Dela upp i bitar (ca 800 tecken = lagom för TTS)
+    const chunks = [];
+    while (text.length > 0) {
+      chunks.push(text.slice(0, 800));
+      text = text.slice(800);
     }
 
-    const arr = await res.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(arr)));
-    const url = `data:audio/wav;base64,${b64}`;
-    return jsonResponse({ ok:true, url }, 200, corsHeaders(request));
-  } catch (e) {
-    return serverError(request, e);
+    const audioBuffers = [];
+
+    for (const chunk of chunks) {
+      const res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini-tts",
+          voice,
+          input: chunk,
+          speed,
+          format: "mp3",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => "");
+        return json({ ok: false, error: "TTS fel", detail: err }, res.status);
+      }
+
+      const buf = await res.arrayBuffer();
+      audioBuffers.push(buf);
+    }
+
+    // Slå ihop alla chunks till en Blob
+    const totalLength = audioBuffers.reduce((a, b) => a + b.byteLength, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const buf of audioBuffers) {
+      merged.set(new Uint8Array(buf), offset);
+      offset += buf.byteLength;
+    }
+
+    return new Response(merged, {
+      status: 200,
+      headers: {
+        "Content-Type": "audio/mpeg",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  } catch (err) {
+    return serverError(err);
   }
 }
