@@ -7,80 +7,66 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header>
+  <header class="topbar">
     <h1>Blush Narratives</h1>
-    <nav>
-      <button id="homeBtn">Hem</button>
-      <button id="favBtn">Favoriter</button>
-      <button id="bnBtn">BlushConnect</button>
-      <button id="rescueBtn">Rescue</button>
-    </nav>
+    <div class="status">
+      <small id="apiOk">API: …</small>
+      <small id="appVer">v1.2</small>
+    </div>
   </header>
 
-  <main>
-    <!-- Statusfält (API OK / fail) -->
-    <div id="status"></div>
+  <main class="wrap">
+    <section class="panel">
+      <div class="row">
+        <label for="level">Nivå</label>
+        <select id="level">
+          <option value="3" selected>3 (sensuell)</option>
+          <option value="5">5 (explicit)</option>
+        </select>
+      </div>
 
-    <!-- Nivå -->
-    <section>
-      <label for="level">Nivå</label>
-      <select id="level">
-        <option value="1">1</option>
-        <option value="3">3</option>
-        <option value="5">5</option>
-      </select>
-    </section>
+      <div class="row">
+        <label>Längd</label>
+        <div id="length" class="chips">
+          <label class="chip"><input type="radio" name="length" value="5" checked /> 5 min</label>
+          <label class="chip"><input type="radio" name="length" value="10" /> 10 min</label>
+          <label class="chip"><input type="radio" name="length" value="15" /> 15 min</label>
+        </div>
+      </div>
 
-    <!-- Längd -->
-    <section>
-      <label>Längd</label>
-      <div id="length">
-        <label><input type="radio" name="length" value="5" checked /> 5 min</label>
-        <label><input type="radio" name="length" value="10" /> 10 min</label>
-        <label><input type="radio" name="length" value="15" /> 15 min</label>
+      <div class="row">
+        <label for="voice">Röst</label>
+        <select id="voice">
+          <option value="verse">Verse (kvinna)</option>
+          <option value="coral">Coral (man)</option>
+          <option value="alloy">Alloy (neutral)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="tempo">Tempo</label>
+        <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0" />
       </div>
     </section>
 
-    <!-- Röst -->
-    <section>
-      <label for="voice">Röst</label>
-      <select id="voice">
-        <option value="alloy">Alloy</option>
-        <option value="verse">Verse</option>
-        <option value="coral">Coral</option>
-      </select>
-    </section>
-
-    <!-- Tempo -->
-    <section>
-      <label for="tempo">Tempo</label>
-      <input id="tempo" type="range" min="0.8" max="1.2" step="0.05" value="1.0" />
-    </section>
-
-    <!-- Idé -->
-    <section>
+    <section class="panel">
       <label for="userIdea">Din idé</label>
-      <textarea id="userIdea" placeholder="Skriv din idé här..."></textarea>
-    </section>
+      <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring…"></textarea>
 
-    <!-- Knappar -->
-    <section class="actions">
-      <button id="generateBtn">Generera</button>
-      <button id="listenBtn">Lyssna</button>
-      <button id="stopBtn">Stop</button>
-    </section>
+      <div class="actions">
+        <button id="generateBtn" class="primary">Generera</button>
+        <button id="listenBtn" class="secondary">Lyssna</button>
+        <button id="stopBtn" class="ghost">Stop</button>
+      </div>
 
-    <!-- Utdata -->
-    <section>
-      <pre id="output">(tomt)</pre>
+      <pre id="output" class="output">(tomt)</pre>
     </section>
   </main>
 
-  <footer>
-    <small>BN front v1.2 (CF server)</small>
+  <footer class="foot">
+    <small>BN front v1.2 (Cloudflare)</small>
   </footer>
 
-  <!-- Scripts alltid sist -->
   <script defer src="app.js"></script>
 </body>
 </html>
