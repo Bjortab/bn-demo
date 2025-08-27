@@ -1,7 +1,7 @@
-// app.js – Golden Copy v1.3a  (timeout per längd, ingen 10s-stop)
+// app.js – Golden Copy v1.3b (ingen auto-timeout; Stop avbryter)
 const $ = (q) => document.querySelector(q);
 
-// UI
+// UI element
 const elLevel  = $('#level');
 const elLen    = $('#length');
 const elVoice  = $('#voice');
@@ -13,14 +13,14 @@ const btnPlay  = $('#listenBtn');
 const btnStop  = $('#stopBtn');
 const elApiOk  = $('#apiok');
 
-// API-bas (Cloudflare Pages)
 const BASE = location.origin + '/api';
 
 let audio = null;
 let isBusy = false;
-let keepPing;
+let keepPing = null;
+let currentAbort = null;
 
-// —— Hjälp —— //
+// helpers
 function setBusy(on) {
   isBusy = !!on;
   btnGen.disabled = on;
@@ -32,56 +32,43 @@ function setBusy(on) {
 async function checkHealth() {
   try {
     const res = await fetch(BASE + '/health');
-    const ok  = res.ok && (await res.json()).ok;
+    const data = await res.json().catch(()=>({}));
+    const ok = res.ok && data.ok;
     if (elApiOk) elApiOk.textContent = ok ? 'ok' : 'fail';
   } catch {
     if (elApiOk) elApiOk.textContent = 'fail';
   }
 }
 
-// håll backend “varm” medan fliken är öppen
 function startKeepAlive() {
   stopKeepAlive();
-  keepPing = setInterval(() => {
-    fetch(BASE + '/health').catch(()=>{});
-  }, 60000);
+  keepPing = setInterval(() => { fetch(BASE + '/health').catch(()=>{}); }, 60000);
 }
 function stopKeepAlive() {
-  if (keepPing) clearInterval(keepPing), keepPing = null;
+  if (keepPing) { clearInterval(keepPing); keepPing = null; }
 }
 
-function getParams() {
-  const mins = elLen.value; // "5" | "10" | "15"
+function params() {
   return {
     idea: (elIdea.value || '').trim(),
     level: Number(elLevel.value || 3),
-    minutes: Number(mins || 5),
+    minutes: Number(elLen.value || 5),
     voice: elVoice.value || 'alloy',
-    tempo: Number(elTempo.value || 1.0),
+    tempo: Number(elTempo.value || 1.0)
   };
 }
 
-function setText(t) {
-  elOut.textContent = t || '';
-}
+function setText(t) { elOut.textContent = t || ''; }
 
-function appendText(t) {
-  elOut.textContent += t;
-}
-
-// —— Generera —— //
+// —— Generate —— //
 btnGen?.addEventListener('click', async () => {
   if (isBusy) return;
-  const { idea, level, minutes, voice, tempo } = getParams();
+  const { idea, level, minutes, voice, tempo } = params();
   if (!idea) { setText('(skriv en idé först)'); return; }
 
-  // dynamisk timeout per längd (upplevd tid / API-roundtrip)
-  const timeouts = { 5: 25000, 10: 45000, 15: 60000 };
-  const ms = timeouts[minutes] || 30000;
-
-  // AbortController med per-längd-timeout
-  const ac = new AbortController();
-  const tId = setTimeout(() => ac.abort(new Error('timeout')), ms);
+  // avbryt ev. tidigare
+  if (currentAbort) { try { currentAbort.abort(); } catch {} }
+  currentAbort = new AbortController();
 
   setBusy(true);
   setText('(genererar …)');
@@ -91,35 +78,29 @@ btnGen?.addEventListener('click', async () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ idea, level, minutes, voice, tempo }),
-      signal: ac.signal
+      signal: currentAbort.signal
     });
 
     if (!res.ok) {
       let detail = '';
-      try { detail = (await res.json()).error || ''; } catch {}
-      setText(`(fel vid generering – ${res.status}${detail ? `: ${detail}`:''})`);
+      try { const j = await res.json(); detail = j && j.error ? j.error : ''; } catch {}
+      setText(`(fel vid generering – ${res.status}${detail ? `: ${detail}` : ''})`);
       return;
     }
 
-    // rätta svaret: { ok:true, story: "..." }
-    const data = await res.json().catch(() => ({}));
-    const story = (data && data.story) ? String(data.story) : '';
-
-    if (!story) {
-      setText('(kunde inte generera – tomt svar)');
-      return;
-    }
+    const data = await res.json().catch(()=> ({}));
+    const story = data && data.story ? String(data.story) : '';
+    if (!story) { setText('(kunde inte generera – tomt svar)'); return; }
 
     setText(story);
   } catch (err) {
-    if (err && err.name === 'AbortError') {
-      setText('(avbröts: timeout – öka längd-timeout eller försök igen)');
+    if (err?.name === 'AbortError') {
+      setText('(avbrutet)');
     } else {
-      setText('(fel vid generering)');
       console.error('generate error', err);
+      setText('(fel vid generering)');
     }
   } finally {
-    clearTimeout(tId);
     setBusy(false);
   }
 });
@@ -137,12 +118,14 @@ btnPlay?.addEventListener('click', async () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text, voice: elVoice.value || 'alloy', speed: Number(elTempo.value || 1.0) })
     });
+
     if (!res.ok) {
       let detail = '';
-      try { detail = (await res.json()).error || ''; } catch {}
-      setText(`(TTS fel – ${res.status}${detail ? `: ${detail}`:''})`);
+      try { const j = await res.json(); detail = j && j.error ? j.error : ''; } catch {}
+      setText(`(TTS fel – ${res.status}${detail ? `: ${detail}` : ''})`);
       return;
     }
+
     const buf = await res.arrayBuffer();
     audio?.pause();
     audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })));
@@ -154,11 +137,13 @@ btnPlay?.addEventListener('click', async () => {
   }
 });
 
+// —— Stop —— //
 btnStop?.addEventListener('click', () => {
   try { audio?.pause(); } catch {}
+  try { currentAbort?.abort(); } catch {}
 });
 
-// Init
+// init
 checkHealth();
 startKeepAlive();
 window.addEventListener('beforeunload', stopKeepAlive);
