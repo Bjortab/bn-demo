@@ -1,102 +1,113 @@
-// app.js
-
-// Hjälpfunktion för DOM
+// app.js — Golden Copy
 const $ = (q) => document.querySelector(q);
 
-// UI-element
-const selLevel = $("#level");       // <select id="level">
-const selLength = $("#length");     // <select id="length">
-const selVoice = $("#voice");       // <select id="voice">
-const selTempo = $("#tempo");       // <input id="tempo">
-const input = $("#idea");           // <textarea id="idea">
-const divOut = $("#output");        // <div id="output">
-const btnGen = $("#generateBtn");   // <button id="generateBtn">
-const btnPlay = $("#listenBtn");    // <button id="listenBtn">
-const btnStop = $("#stopBtn");      // <button id="stopBtn">
-const elApiOk = $("#apiok");        // <span id="apiok">
+const elLevel   = $("#level");
+const elLength  = $("#length");
+const elVoice   = $("#voice");
+const elTempo   = $("#tempo");
+const elIdea    = $("#userIdea");
+const btnGen    = $("#generateBtn");
+const btnPlay   = $("#listenBtn");
+const btnStop   = $("#stopBtn");
+const outStory  = $("#story");
+const outPre    = $("#output");
+const audioEl   = $("#audio");
+const apiOkEl   = $("#apiStatus");
 
-// API-bas (Cloudflare Pages functions)
 const BASE = location.origin + "/api";
 
-// Rad ~30: Health check
+let lastStory = "";
+let playing = false;
+
+function setBusy(b) {
+  btnGen.disabled  = b;
+  btnPlay.disabled = b || !lastStory;
+  btnStop.disabled = !playing;
+}
+
+function show(msg) {
+  outPre.textContent = msg;
+}
+
 async function checkHealth() {
   try {
-    const res = await fetch(BASE + "/health");
-    const ok = res.ok;
-    if (elApiOk) elApiOk.textContent = ok ? "ok" : "fail";
+    const res = await fetch(`${BASE}/health`);
+    apiOkEl.textContent = res.ok ? "API: ok" : "API: fail";
   } catch {
-    if (elApiOk) elApiOk.textContent = "fail";
+    apiOkEl.textContent = "API: fail";
   }
 }
 checkHealth();
 
-// Rad ~45: Busy/idle helpers
-function setBusy(b) {
-  btnGen.disabled = b;
-  btnPlay.disabled = b;
-  btnStop.disabled = b;
-}
-
-// Rad ~55: Generera berättelse
 btnGen.addEventListener("click", async () => {
   setBusy(true);
-  divOut.textContent = "(genererar …)";
-  try {
-    // FIX → payload med rätt fält
-    const payload = {
-      idea: input.value.trim(),
-      level: parseInt(selLevel.value, 10),
-      minutes: parseInt(selLength.value, 10)
-    };
+  show("(genererar ...)");
+  outStory.textContent = "";
 
-    const res = await fetch(BASE + "/generate", {
+  const level   = Number(elLevel.value || 3);
+  const minutes = Number(elLength.value || 5);
+  const voice   = elVoice.value || "alloy";
+  const idea    = (elIdea.value || "").trim();
+
+  try {
+    const res = await fetch(`${BASE}/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ idea, level, minutes, voice }),
     });
-
     const data = await res.json().catch(() => ({}));
 
-    if (!res.ok || !data.ok) {
-      divOut.textContent = "(kunde inte generera – prova igen)";
-      console.error("generate error", data);
+    if (!res.ok || !data?.ok) {
+      const detail = data?.detail || "";
+      show("(fel vid generering)");
+      console.error("generate error:", detail || data);
+      lastStory = "";
     } else {
-      divOut.textContent = data.story || "(tomt)";
+      lastStory = data.story || "";
+      outStory.textContent = lastStory;
+      show(""); // rensa
+      btnPlay.disabled = !lastStory;
     }
-  } catch (err) {
-    console.error("generate exception", err);
-    divOut.textContent = "(fel vid generering)";
+  } catch (e) {
+    show("(fel vid generering)");
+    console.error(e);
+    lastStory = "";
+  } finally {
+    setBusy(false);
   }
-  setBusy(false);
 });
 
-// Rad ~95: Lyssna
 btnPlay.addEventListener("click", async () => {
+  if (!lastStory) return;
+  setBusy(true);
   try {
-    const text = divOut.textContent.trim();
-    if (!text) return;
-    const res = await fetch(BASE + "/tts", {
+    const speed = Number(elTempo.value || 1.0);
+    const voice = elVoice.value || "alloy";
+    const res = await fetch(`${BASE}/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: selVoice.value,
-        speed: parseFloat(selTempo.value)
-      })
+      body: JSON.stringify({ text: lastStory, voice, speed }),
     });
-    if (!res.ok) throw new Error("TTS fel");
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      console.error("TTS error", t);
+      return;
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play();
-  } catch (err) {
-    console.error("tts error", err);
+    audioEl.src = url;
+    await audioEl.play();
+    playing = true;
+    btnStop.disabled = false;
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setBusy(false);
   }
 });
 
-// Rad ~120: Stoppa
 btnStop.addEventListener("click", () => {
-  // just nu inget aktivt Audio-objekt sparat
-  // TODO: spara global referens om du vill kunna stoppa mitt i
-  console.log("Stop clicked (ej implementerad fullt)");
+  try { audioEl.pause(); } catch {}
+  playing = false;
+  btnStop.disabled = true;
 });
