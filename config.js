@@ -1,7 +1,7 @@
-/* App-inställningar (håll denna liten & stabil) */
-window.BLUSH = {
-  SHOW_LEVELS: [1,3,5],
-  DEFAULT_LEVEL: 1,
-  NUM_CARDS: 8,
-  DEMO_FALLBACK: true
+// config.js (Golden Copy)
+
+window.BN_CONFIG = {
+  apiBase: location.origin + "/api",   // Alla API-anrop går hit
+  version: "v1.2",                     // Frontend version – visas nere i foten
+  debug: true                          // Slå på/av konsolloggar
 };
