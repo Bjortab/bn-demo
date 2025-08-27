@@ -1,5 +1,5 @@
 // functions/api/version.js
-import { json, corsHeaders } from "./_utils.js";
+import { jsonResponse, corsHeaders } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
   if (request.method === "OPTIONS") {
