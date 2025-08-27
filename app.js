@@ -1,81 +1,187 @@
+// app.js — Golden copy v1.2 (knapplogik + robust bindning)
+
 (() => {
-  const $ = (s) => document.querySelector(s);
-  const api = {
-    base: location.origin,
-    gen:  "/api/generate",
-    tts:  "/api/tts",
-    health:"/api/health",
-    ver:  "/api/version",
+  const $ = (q) => document.querySelector(q);
+
+  // UI-element (säkra selektorer)
+  const elLevel   = $('#level');
+  const elLength  = $('#length');
+  const elVoice   = $('#voice');
+  const elTempo   = $('#tempo');
+  const elIdea    = $('#userIdea');
+  const btnGen    = $('#generateBtn');
+  const btnPlay   = $('#listenBtn');
+  const btnStop   = $('#stopBtn');
+  const elOut     = $('#output');
+
+  // API-basar
+  const BASE = location.origin + '/api';
+
+  // Tillstånd
+  let currentAudio = null;
+  let busy = false;
+
+  // ===== Hjälpare
+
+  const setBusy = (v) => {
+    busy = v;
+    [btnGen, btnPlay, btnStop].forEach(b => { if (b) b.disabled = v; });
   };
 
-  let audio, currentStory = "", wired = false;
+  const json = async (res) => {
+    try { return await res.json(); }
+    catch { return { ok:false, error:'Ogiltig JSON', raw: await res.text().catch(()=>null) }; }
+  };
 
-  function wireOnce() {
-    if (wired) return; wired = true;
-    $("#generateBtn")?.addEventListener("click", onGenerate);
-    $("#listenBtn")?.addEventListener("click", onListen);
-    $("#stopBtn")?.addEventListener("click", onStop);
-  }
+  const toast = (msg) => {
+    console.log('[BN]', msg);
+    // här kan vi ersätta med snackbar om du vill
+    // alert(msg) är för invasiv – vi undviker det i produktion
+  };
 
-  function ui(msg) { const out = $("#output"); if (out) out.textContent = msg ?? ""; }
-  function val(id, fallback) { const el = $("#" + id); return el?.value ?? fallback; }
-  function num(id, fallback) { const v = Number(val(id, fallback)); return isNaN(v) ? fallback : v; }
+  const checkHealth = async () => {
+    try {
+      const res = await fetch(BASE + '/health', { headers: { 'accept':'application/json' }});
+      const data = await json(res);
+      const ok = res.ok && data && (data.ok === true);
+      if (ok) {
+        const tag = document.createElement('small');
+        tag.textContent = 'API: ok';
+        tag.style.opacity = '0.7';
+        document.body.insertBefore(tag, document.body.firstChild);
+      } else {
+        toast('API ej redo – fallback används');
+      }
+      return ok;
+    } catch (e) {
+      toast('API-koll misslyckades – fallback används');
+      return false;
+    }
+  };
 
-  async function onGenerate() {
-    wireOnce();
-    ui("Genererar …");
-    currentStory = "";
+  const getInputs = () => {
+    const level  = Number(elLevel?.value || 1);
+    const minutes = Number((document.querySelector('input[name="length"]:checked')?.value) || elLength?.value || 1);
+    const voice  = elVoice?.value || 'Alloy';
+    const tempo  = Number(elTempo?.value || 1.0);
+    const idea   = (elIdea?.value || '').trim();
+    return { level, minutes, voice, tempo, idea };
+  };
 
-    const body = {
-      idea: ($("#useridea")?.value || "").trim(),
-      level: Number(document.querySelector('input[name="level"]:checked')?.value || 1),
-      minutes: Number(document.querySelector('input[name="length"]:checked')?.value || 5),
-    };
+  const renderStory = (txt) => {
+    if (!elOut) return;
+    elOut.textContent = txt || '(tomt)';
+  };
+
+  // ===== Knappar
+
+  const onGenerate = async () => {
+    if (busy) return;
+    setBusy(true);
+    renderStory('(skriver…)');
+
+    const okHealth = await checkHealth();
+    const { level, minutes, idea } = getInputs();
 
     try {
-      const r = await fetch(api.gen, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || ("Gen fail: " + r.status));
-      currentStory = j.story || "";
-      ui(currentStory || "(tomt)");
-      // Autoplay direkt när vi faktiskt har text
-      if (currentStory) await onListen();
+      const res = await fetch(BASE + '/generate', {
+        method: 'POST',
+        headers: { 'content-type':'application/json' },
+        body: JSON.stringify({ level, minutes, idea })
+      });
+      const data = await json(res);
+      if (!res.ok || !data.ok) {
+        renderStory('(kunde inte generera – prova igen)');
+        toast(data.error || `Fel ${res.status}`);
+        return;
+      }
+      // Kontrakt: { ok:true, story:"..." }
+      renderStory(data.story || '(tomt)');
     } catch (e) {
-      ui("Fel: " + (e.message || e));
-      console.error(e);
+      renderStory('(fel vid generering)');
+      toast(e.message || 'Nätverksfel');
+    } finally {
+      setBusy(false);
     }
-  }
+  };
 
-  async function onListen() {
-    wireOnce();
-    if (!currentStory) return ui("Ingen berättelse ännu.");
-    ui("Hämtar röst …");
+  const onPlay = async () => {
+    if (busy) return;
+    const text = (elOut?.textContent || '').trim();
+    if (!text) { toast('Ingen text att läsa'); return; }
 
-    const voice = val("voice", "verse");
-    const speed = num("tempo", 1.0);
+    // Avbryt tidigare ljud
+    try { currentAudio?.pause(); } catch {}
+    currentAudio = null;
+
+    setBusy(true);
+    const { voice, tempo } = getInputs();
 
     try {
-      const r = await fetch(api.tts, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: currentStory, voice, speed }) });
-      if (!r.ok) throw new Error("TTS: " + (await r.text().catch(()=>r.status)));
-      const blob = await r.blob();
-      audio?.pause();
-      audio = new Audio(URL.createObjectURL(blob));
-      audio.onended = () => URL.revokeObjectURL(audio.src);
-      await audio.play();
-      ui("Spelar upp …");
+      const res = await fetch(BASE + '/tts', {
+        method: 'POST',
+        headers: { 'content-type':'application/json' },
+        body: JSON.stringify({ text, voice, speed: tempo })
+      });
+      const data = await json(res);
+      if (!res.ok || !data.ok || !data.url) {
+        toast(data.error || `TTS fel ${res.status}`);
+        return;
+      }
+      const au = new Audio(data.url);
+      currentAudio = au;
+      au.onended = () => { /* klar */ };
+      await au.play();
     } catch (e) {
-      ui("TTS-fel: " + (e.message || e));
-      console.error(e);
+      toast(e.message || 'Audio-fel');
+    } finally {
+      setBusy(false);
     }
-  }
+  };
 
-  function onStop() { try { audio?.pause(); } catch {} ui(""); }
+  const onStop = () => {
+    try { currentAudio?.pause(); } catch {}
+    currentAudio = null;
+  };
 
-  // Start
-  document.addEventListener("DOMContentLoaded", () => {
-    wireOnce();
-    $("#appVer") && ($("#appVer").textContent = "BN front v" + (window.APP_VER || "?") + " (CF server)");
-    // Snabb hälsokoll i UI:
-    fetch(api.health).then(r=>r.json()).then(j => { const el=$("#apiOk"); if (el) el.textContent = j?.ok ? "API: ok" : "API: fel"; }).catch(()=>{ const el=$("#apiOk"); if (el) el.textContent="API: fel"; });
+  // ===== Idempotent bindning
+
+  // vi markerar knappar vi kopplat till för att tåla re-bind
+  const ensureClick = (el, fn) => {
+    if (!el || typeof fn !== 'function') return;
+    const mark = '__bn_bound__';
+    if (el[mark]) return;
+    el.addEventListener('click', fn);
+    el[mark] = true;
+  };
+
+  const bindUI = () => {
+    ensureClick(btnGen, onGenerate);
+    ensureClick(btnPlay, onPlay);
+    ensureClick(btnStop, onStop);
+  };
+
+  // Robust init: körs vid DOMContentLoaded + om sidan blir synlig igen.
+  const init = () => {
+    bindUI();
+    // minimal smoke: varna om element saknas
+    const missing = [
+      ['#generateBtn', btnGen],
+      ['#listenBtn', btnPlay],
+      ['#stopBtn', btnStop],
+      ['#output', elOut],
+    ].filter(([_, el]) => !el).map(([sel]) => sel);
+    if (missing.length) {
+      console.warn('BN UI saknar:', missing.join(', '));
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) bindUI();
   });
+
+  // Rescue-krok i konsolen om du behöver re-binda manuellt:
+  //   window.BN_rescue()
+  window.BN_rescue = () => { bindUI(); return 'Rescue ok (knappar bundna)'; };
 })();
