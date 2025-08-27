@@ -1,179 +1,181 @@
-// app.js — GC v1.3 (SSE streaming)
+// app.js — Golden Copy v1.3 (CF Pages)
 
+// ====== helpers ======
 const $ = (q) => document.querySelector(q);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// UI-refs
+// ====== UI refs ======
 const elLevel   = $("#level");
 const elLength  = $("#length");
 const elVoice   = $("#voice");
 const elTempo   = $("#tempo");
 const elIdea    = $("#userIdea");
+
 const btnGen    = $("#generateBtn");
 const btnPlay   = $("#listenBtn");
 const btnStop   = $("#stopBtn");
-const elOut     = $("#output");
-const elOk      = $("#apiok");
 
-let audioEl = null;
-let busy = false;
+const elOutput  = $("#output");
+const elAudio   = $("#audio");
 
+// ====== config ======
+const BASE = location.origin + "/api";
+const GEN_TIMEOUT_MS = 120_000;   // <— 120 sek
+const RETRY_STATUS = new Set([408, 429, 502, 503, 504]);
+
+let isBusy = false;
+let ttsObj = null;
+
+// ====== status helpers ======
 function setBusy(b) {
-  busy = b;
-  btnGen.disabled   = b;
-  btnPlay.disabled  = b;
-  btnStop.disabled  = b;
+  isBusy = b;
+  btnGen.disabled  = b;
+  btnPlay.disabled = b;
+  btnStop.disabled = false;
 }
 
+function status(text) {
+  elOutput.textContent = text;
+}
+
+function append(text) {
+  elOutput.textContent += text;
+}
+
+// ====== health check (visar "API: ok?"-indikator) ======
 async function checkHealth() {
   try {
-    const res = await fetch("/api/health");
-    const ok  = res.ok;
-    if (elOk) elOk.textContent = ok ? "ok" : "fail";
+    const res = await fetch(BASE + "/health");
+    const ok = res.ok;
+    const a = document.querySelector("#apiok");
+    if (a) a.textContent = ok ? "ok" : "fail";
   } catch {
-    if (elOk) elOk.textContent = "fail";
+    const a = document.querySelector("#apiok");
+    if (a) a.textContent = "fail";
   }
 }
 checkHealth();
 
-// Läs val i UI
-function readParams() {
-  return {
-    level: Number(elLevel?.value ?? 3),
-    minutes: Number(document.querySelector('input[name="len"]:checked')?.value ?? 5),
-    voice: elVoice?.value || "alloy",
-    tempo: Number(elTempo?.value ?? 1.0)
-  };
-}
-
-// Hjälp: robust SSE-tolkning (OpenAI Responses stream)
-function parseSSEChunk(raw, onDelta) {
-  // Delas upp på event (tomrad mellan)
-  const parts = raw.split("\n\n");
-  for (const p of parts) {
-    const lines = p.split("\n").filter(Boolean);
-    for (const line of lines) {
-      if (!line.startsWith("data:")) continue;
-      const payload = line.slice(5).trim();
-      if (payload === "[DONE]") continue;
-      try {
-        const obj = JSON.parse(payload);
-        // Vanliga typer i Responses-SSE: response.output_text.delta / message.delta etc.
-        const t = obj?.type || "";
-        if (t.endsWith(".delta")) {
-          const delta = obj?.delta ?? obj?.text ?? "";
-          if (delta) onDelta(delta);
-        } else if (t === "response.completed") {
-          // Ignorera – servern stänger ändå strömmen
-        } else if (typeof obj?.text === "string") {
-          onDelta(obj.text);
-        }
-      } catch {
-        // hoppa över felaktig rad
-      }
-    }
-  }
-}
-
-async function generate() {
-  if (busy) return;
+// ====== generate ======
+async function doGenerate() {
+  if (isBusy) return;
   setBusy(true);
-  elOut.textContent = "(genererar...)";
+  status("(genererar …)");
 
-  const { level, minutes } = readParams();
-  const idea = (elIdea?.value || "").trim();
+  const idea   = (elIdea.value || "").trim();
+  const level  = Number(elLevel.value || 3);
+  const mins   = Number(elLength.value || 5);
 
-  // 1) Försök STREAM först
-  try {
-    const res = await fetch("/api/generate?stream=1", {
+  // timeouter via AbortController
+  const controller = new AbortController();
+  const to = setTimeout(() => controller.abort("timeout"), GEN_TIMEOUT_MS);
+
+  const payload = { idea, level, minutes: mins };
+
+  async function oneTry() {
+    const res = await fetch(BASE + "/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ idea, level, minutes })
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
-    if (res.ok && res.headers.get("content-type")?.includes("text/event-stream")) {
-      elOut.textContent = "";
-      const reader  = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+    // parse säkert
+    const raw = await res.text();
+    let data = {};
+    try { data = JSON.parse(raw); } catch { /* noop */ }
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        parseSSEChunk(buffer, (delta) => {
-          elOut.textContent += delta;
-        });
-        // Håll inte på att växa buffer ohämmat: spara bara sista “ofullständiga” eventet
-        const lastGap = buffer.lastIndexOf("\n\n");
-        if (lastGap > 0) buffer = buffer.slice(lastGap + 2);
+    return { res, data, raw };
+  }
+
+  try {
+    let attempt = 0;
+    let last = null;
+
+    while (attempt < 2) {
+      attempt++;
+      const { res, data, raw } = await oneTry();
+      last = { res, data, raw };
+
+      if (res.ok && data?.ok && data?.text) {
+        status("");
+        elOutput.textContent = data.text;
+        setBusy(false);
+        clearTimeout(to);
+        return;
       }
 
-      if (!elOut.textContent.trim()) {
-        elOut.textContent = "(tomt)";
+      // Retry på “tillfälliga” statusar en gång
+      if (RETRY_STATUS.has(res.status) && attempt === 1) {
+        append("\n(upplever belastning – försöker igen …)");
+        await sleep(1200);
+        continue;
       }
+
+      // annat fel → visa orsak
+      const detail = data?.error || `HTTP ${res.status}`;
+      status(`(fel vid generering: ${detail})`);
       setBusy(false);
+      clearTimeout(to);
       return;
     }
 
-    // Om inte SSE – fall tillbaka till non-stream
-    const txt = await res.text();
-    try {
-      const data = JSON.parse(txt);
-      if (data?.ok && data?.story) {
-        elOut.textContent = data.story;
-      } else {
-        elOut.textContent = "(kunde inte generera)";
-      }
-    } catch {
-      elOut.textContent = "(fel vid generering)";
-    }
-  } catch (e) {
-    // 2) Fallback helt (non-stream direkt)
-    try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idea, level, minutes })
-      });
-      const data = await res.json().catch(() => ({}));
-      elOut.textContent = data?.story || "(fel vid generering)";
-    } catch {
-      elOut.textContent = "(fel vid generering)";
-    }
+    // fallthrough
+    status("(kunde inte generera)");
+  } catch (err) {
+    const what = err?.name === "AbortError" ? "timeout" : (err?.message || err);
+    status(`(fel: ${what})`);
   } finally {
+    clearTimeout(to);
     setBusy(false);
   }
 }
 
-// TTS – oförändrat (anropa /api/tts med elOut.textContent)
-async function speak() {
-  if (busy) return;
-  const text = elOut.textContent.trim();
-  if (!text) return;
+// ====== TTS (Play/Stop) ======
+async function doTTS() {
+  if (isBusy) return;
+  const text = (elOutput.textContent || "").trim();
+  if (!text) { status("(inget att läsa upp)"); return; }
 
   setBusy(true);
+  status("Hämtar röst …");
+
   try {
-    const { voice, tempo } = readParams();
-    const res = await fetch("/api/tts", {
+    const res = await fetch(BASE + "/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, voice, speed: tempo })
+      body: JSON.stringify({
+        text,
+        voice: (elVoice.value || "alloy"),
+        speed: Number(elTempo.value || 1.0)
+      })
     });
-    if (!res.ok) throw new Error("TTS error");
+
+    if (!res.ok) {
+      const msg = await res.text().catch(()=>"");
+      status(`(TTS fel: ${msg || res.status})`);
+      return;
+    }
+
     const blob = await res.blob();
-    (audioEl ||= document.querySelector("#audio")).src = URL.createObjectURL(blob);
-    await audioEl.play().catch(() => {});
-  } catch {
-    // tyst fel i demo
+    const url = URL.createObjectURL(blob);
+    elAudio.src = url;
+    await elAudio.play();
+    status("Klar.");
+  } catch (e) {
+    status(`(TTS undantag: ${e?.message || e})`);
   } finally {
     setBusy(false);
   }
 }
 
-function stopAudio() {
-  try { audioEl?.pause(); } catch {}
+function stopAll() {
+  try { elAudio.pause(); } catch{}
+  try { elAudio.currentTime = 0; } catch{}
+  status("(stopp)");
 }
 
-btnGen?.addEventListener("click", generate);
-btnPlay?.addEventListener("click", speak);
-btnStop?.addEventListener("click", stopAudio);
+// ====== events ======
+btnGen?.addEventListener("click", doGenerate);
+btnPlay?.addEventListener("click", doTTS);
+btnStop?.addEventListener("click", stopAll);
