@@ -1,95 +1,58 @@
-// functions/api/generate.js
-import { corsHeaders, badRequest, serverError } from './_utils.js';
+import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
 
-const SYS_POWER = `
-Du skriver kort erotiska berättelser på svenska.
-Anpassa intensitet efter nivå (nivå 1: mjukt, nivå 3: sensuellt, nivå 5: explicit).
-Håll naturligt flyt; korrekt svenska; undvik onaturliga ordagranna översättningar.
-Maximera sammanhang; undvik upprepning.
-`;
+function buildPrompt({ idea = "", level = 1, minutes = 5 }) {
+  const targetTokens = Math.max(180, Math.min(3200, Math.round(minutes * 260)));
+  const style =
+    level >= 5 ? "explicit, rå, direkt (nivå 5) svenska, flyt" :
+    level >= 4 ? "sensuell, tydlig (nivå 4) svenska, flyt" :
+                 "romantisk, mjuk (nivå 1–3) svenska, flyt";
 
-export async function onRequestPost(context) {
+  const system = `Du skriver en kort erotisk novell på svenska. Stil: ${style}.
+Undvik upprepningar, klichéer och direktöversatta engelska uttryck. Behåll naturlig dialog.`;
+  const user = (idea && idea.trim()) ? `Utgå från idén: """${idea.trim()}"""` : "Skriv en fristående scen.";
+  return { system, user, targetTokens };
+}
+
+export async function onRequest({ request, env }) {
+  if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
+  if (request.method !== "POST") return badRequest("Use POST", request);
+  if (!env.OPENAI_API_KEY) return serverError("OPENAI_API_KEY saknas", request);
+
   try {
-    const { env, request } = context;
-    if (!env.OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: "API key saknas (Cloudflare env)" }), {
-        status: 500, headers: corsHeaders
-      });
-    }
-
-    let body;
-    try {
-      body = await request.json();
-    } catch {
-      return badRequest("POST body saknas eller inte JSON");
-    }
-
-    const idea = (body.idea || "").toString().slice(0, 800);
-    const level = Number(body.level ?? 3);
-    const minutes = Number(body.minutes ?? 3);
-
-    const tokensTarget = Math.max(180, Math.round(minutes * 220)); // ~220 ord/min
-
-    const prompt = `
-Idé: ${idea || "(ingen idé)"}.
-Nivå: ${level}. Längd: ca ${minutes} min. Skriv en sammanhängande berättelse i jag- eller tredjeperson på flytande svenska.
-`;
+    const { idea = "", level = 1, minutes = 5 } = await request.json().catch(() => ({}));
+    const { system, user, targetTokens } = buildPrompt({ idea, level, minutes });
 
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: [
-          { role: "system", content: SYS_POWER },
-          { role: "user", content: prompt }
-        ],
-        max_output_tokens: tokensTarget
-      })
+        input: [{ role: "system", content: system }, { role: "user", content: user }],
+        max_output_tokens: targetTokens,
+      }),
     });
 
-    // Läs alltid text först – OpenAI kan svara med text även vid fel
-    const raw = await res.text().catch(() => "");
     if (!res.ok) {
-      // försök tolka fel som JSON
-      let err = raw;
-      try { err = JSON.parse(raw); } catch {}
-      return new Response(JSON.stringify({ ok: false, error: err || res.statusText }), {
-        status: res.status || 500, headers: corsHeaders
-      });
+      const t = await res.text().catch(() => "");
+      return jsonResponse({ ok: false, error: "LLM error", detail: t, status: res.status }, res.status, corsHeaders(request));
     }
 
-    // Försök tolka OK-svar som JSON
-    let data;
-    try { data = JSON.parse(raw); } catch {
-      return serverError("Tjänsten returnerade ogiltig JSON");
-    }
-
-    // Nya schema: data.output[0].content[0].text
+    const data = await res.json();
     let story = "";
-    try {
-      const first = data.output?.[0];
-      story = first?.content?.[0]?.text || "";
-    } catch {/* leave empty */}
-
-    if (!story) {
-      return serverError("Tomt innehåll från modellen");
+    if (data?.output?.length > 0) {
+      const first = data.output[0];
+      if (first?.content?.length > 0) {
+        const leaf = first.content[0];
+        story = typeof leaf === "string" ? leaf : (leaf.text || "");
+      }
     }
+    if (!story) return jsonResponse({ ok: false, error: "Empty story from model" }, 502, corsHeaders(request));
 
-    return new Response(JSON.stringify({ ok: true, story }), {
-      status: 200, headers: corsHeaders
-    });
+    return jsonResponse({ ok: true, story }, 200, corsHeaders(request));
   } catch (e) {
-    return serverError(e?.message || "Okänt fel");
+    return serverError(e?.message || "Unhandled", request);
   }
-}
-
-// Stöd även GET för snabb hälsokoll (valfritt)
-export async function onRequestGet(context) {
-  return new Response(JSON.stringify({ ok: true, v: "1.1.0", ts: Date.now() }), {
-    headers: corsHeaders
-  });
 }
