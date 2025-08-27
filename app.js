@@ -1,96 +1,111 @@
-// ======== UI refs ========
-const elLevel = document.getElementById("level");
-const elLen1 = document.getElementById("len1");
-const elLen3 = document.getElementById("len3");
-const elLen5 = document.getElementById("len5");
-const elTempo = document.getElementById("tempo");
-const elVoice = document.getElementById("voice");
-const elIdea = document.getElementById("userIdea");
-const elGen = document.getElementById("generateBtn");
-const elPlay = document.getElementById("listenBtn");
-const elStop = document.getElementById("stopBtn");
-const elOut = document.getElementById("output");
-const elApiBadge = document.getElementById("apiStatus"); // valfritt
+// app.js – BN frontend v1.1 (robust init)
+(() => {
+  const $ = (s) => document.querySelector(s);
 
-let currentAudio = null;
-let lastStory = "";
+  // UI refs
+  const elLevel  = $('#level');
+  const elLen    = $('#length');
+  const elVoice  = $('#voice');
+  const elTempo  = $('#tempo');
+  const elIdea   = $('#idea');
+  const btnGen   = $('#generateBtn');
+  const btnPlay  = $('#listenBtn');
+  const btnStop  = $('#stopBtn');
+  const out      = $('#output');
+  const apiBadge = $('#apiStatus');
 
-// Hjälp: hämta vald längd i minuter
-function getMinutes() {
-  if (elLen5?.checked) return 5;
-  if (elLen3?.checked) return 3;
-  return 1;
-}
-
-// Skriv statusrad
-function status(msg) {
-  if (!elOut) return;
-  const p = document.createElement("p");
-  p.className = "status";
-  p.textContent = msg;
-  elOut.prepend(p);
-}
-
-// ======== Generate ========
-elGen?.addEventListener("click", async () => {
-  try {
-    const minutes = getMinutes();
-    const level = Number(elLevel?.value || 3);
-    const idea = elIdea?.value?.trim() ?? "";
-
-    status("Genererar text …");
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea, level, minutes })
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!data?.ok) {
-      status("Fel vid generering.");
-      return;
-    }
-    lastStory = data.story || "";
-    // visa text
-    const pre = document.createElement("pre");
-    pre.textContent = lastStory;
-    elOut.innerHTML = "";
-    elOut.appendChild(pre);
-    status("Klar.");
-  } catch (e) {
-    status("Något gick fel.");
+  // helper
+  function setBusy(on) {
+    [btnGen, btnPlay, btnStop].forEach(b => b && (b.disabled = !!on));
   }
-});
 
-// ======== TTS ========
-elPlay?.addEventListener("click", async () => {
-  try {
-    const text = lastStory || (elIdea?.value?.trim() ?? "");
-    if (!text) return status("Ingen text att läsa.");
-
-    const voice = (elVoice?.value ?? "alloy");
-    const speed = Number(elTempo?.value || 1);
-
-    status("Hämtar röst …");
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, voice, speed })
-    });
-    if (!res.ok) {
-      status("TTS fel.");
-      return;
+  async function apiHealth() {
+    try {
+      const r = await fetch('/api/health', { cache:'no-store' });
+      const j = await r.json();
+      apiBadge.textContent = j.ok ? 'API: ok' : 'API: fel';
+      return !!j.ok;
+    } catch {
+      apiBadge.textContent = 'API: fel';
+      return false;
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    if (currentAudio) { currentAudio.pause(); URL.revokeObjectURL(currentAudio.src); }
-    currentAudio = new Audio(url);
-    currentAudio.play().catch(() => {});
-  } catch (e) {
-    status("Kunde inte spela upp.");
   }
-});
 
-elStop?.addEventListener("click", () => {
-  if (currentAudio) currentAudio.pause();
-});
+  async function doGenerate() {
+    setBusy(true);
+    out.textContent = 'Genererar…';
+    try {
+      const payload = {
+        idea: elIdea.value || '',
+        level: Number(elLevel.value || 3),
+        minutes: Number(elLen.value || 3)
+      };
+      const r = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json().catch(()=> ({}));
+      if (!r.ok || !j.ok) {
+        alert('Kunde inte generera: ' + (j.error || r.statusText));
+        out.textContent = '';
+        return;
+      }
+      out.textContent = j.story || '(tomt)';
+    } catch (e) {
+      console.error(e);
+      alert('Ett fel uppstod vid generering.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  let currentAudio = null;
+  async function doTTS() {
+    const text = out.textContent.trim();
+    if (!text) { alert('Ingen text att läsa'); return; }
+    setBusy(true);
+    try {
+      const payload = {
+        text,
+        voice: elVoice.value || 'alloy',
+        speed: Number(elTempo.value || 1.0)
+      };
+      const r = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const msg = await r.text().catch(()=> r.statusText);
+        alert('TTS-fel: ' + msg);
+        return;
+      }
+      const blob = await r.blob();
+      currentAudio?.pause?.();
+      currentAudio = new Audio(URL.createObjectURL(blob));
+      currentAudio.play();
+    } catch (e) {
+      console.error(e);
+      alert('Ett fel uppstod vid uppläsningen.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function stopAudio() {
+    try { currentAudio?.pause?.(); } catch {}
+  }
+
+  // Bindningar – robust (även om nåt kastar)
+  try {
+    btnGen?.addEventListener('click', doGenerate);
+    btnPlay?.addEventListener('click', doTTS);
+    btnStop?.addEventListener('click', stopAudio);
+  } catch (e) {
+    console.error('Bind error', e);
+  }
+
+  // start
+  apiHealth();
+})();
