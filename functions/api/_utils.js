@@ -1,42 +1,26 @@
-// Cloudflare utils: JSON-svar, fel, CORS
-export function json(data, init = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status: typeof init === "number" ? init : (init?.status ?? 200),
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      ...extraHeaders
-    }
+// functions/api/_utils.js
+export const corsHeaders = {
+  "content-type": "application/json",
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-headers": "Content-Type, Authorization"
+};
+
+export function badRequest(msg = "Bad Request") {
+  return new Response(JSON.stringify({ ok: false, error: msg }), {
+    status: 400, headers: corsHeaders
   });
 }
 
-export function text(body, init = 200, extraHeaders = {}) {
-  return new Response(body, {
-    status: typeof init === "number" ? init : (init?.status ?? 200),
-    headers: {
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "no-store",
-      ...extraHeaders
-    }
+export function serverError(msg = "Server error") {
+  return new Response(JSON.stringify({ ok: false, error: msg }), {
+    status: 500, headers: corsHeaders
   });
 }
 
-export function corsHeaders(req) {
-  const origin = req.headers.get("Origin") ?? "*";
+export function corsHeadersText() {
   return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization,Content-Type"
+    "content-type": "text/plain; charset=utf-8",
+    "access-control-allow-origin": "*"
   };
-}
-
-export function ok() { return json({ ok: true, ts: Date.now() }); }
-
-export function badRequest(message = "Bad Request") {
-  return json({ ok: false, error: message }, 400);
-}
-
-export function serverError(err) {
-  const msg = typeof err?.message === "string" ? err.message : String(err);
-  return json({ ok: false, error: msg }, 500);
 }
