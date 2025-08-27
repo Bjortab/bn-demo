@@ -1,4 +1,4 @@
-import { jsonResponse, corsHeaders, preflight } from "./_utils.js";
+import { json, corsHeaders } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
   if (request.method === "OPTIONS") return preflight(request);
