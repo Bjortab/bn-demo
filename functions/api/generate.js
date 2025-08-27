@@ -1,106 +1,119 @@
 // functions/api/generate.js
-import { corsHeaders, serverError } from './_utils.js';
+//
+// BN – Generate story (Cloudflare Pages Functions)
+// Returnerar { ok: true, story: "..." } eller { ok:false, error:"..." }
 
-const SYS_POWER = `
-Du skriver korta erotiska berättelser på svenska.
-Anpassa intensitet efter nivå (nivå 1 mild, nivå 3 mellan, nivå 5 explicit).
-Svara med naturlig flyt; korrekt svenska; undvik upprepningar; väv in kontext från användarens idé.
-Nivå 4 = explicit, nivå 5 = mycket explicit (men utan olagligt innehåll).
-Avsluta med en kort “landning” och undvik att bryta stilen.
-`;
+import { json, corsHeaders, badRequest, serverError } from "../_utils.js";
 
-function budgetTokens(minutes) {
-  // ca 120/360/600 token – ger ~30s/90s/150s tal (TTS ~3–4 tok/s)
-  if (minutes <= 1) return 120;
-  if (minutes <= 3) return 360;
-  return 600;
-}
+/** Liten hjälpfunktion för att plocka ut text oavsett exakt svarformat */
+function extractTextFromResponsesAPI(data) {
+  // Nyare Responses API: data.output[0].content[0].text (type: "output_text")
+  try {
+    if (data && Array.isArray(data.output)) {
+      for (const item of data.output) {
+        if (item && Array.isArray(item.content)) {
+          for (const c of item.content) {
+            if (typeof c?.text === "string" && c.text.trim()) return c.text;
+            if (typeof c?.output_text === "string" && c.output_text.trim()) return c.output_text;
+          }
+        }
+      }
+    }
+  } catch (_) { /* ignore */ }
 
-function levelInstruction(level = 3) {
-  const l = Number(level) || 3;
-  switch (l) {
-    case 1: return "Håll tonen varm och subtil (romantisk, mjuk sensualitet).";
-    case 2: return "Låg till måttlig erotik, antydningar, mjukt språk.";
-    case 3: return "Mellan – tydligt erotiskt men inte rått.";
-    case 4: return "Explicit – direkta ord, tydliga beskrivningar, samtycke och trygghet.";
-    case 5: return "Mycket explicit – raka könsord och detaljer, varierat språk, fortfarande samtycke.";
-    default: return "Mellan – tydligt erotiskt men inte rått.";
-  }
+  // Äldre/alternativa fält (säkerhetsnät)
+  if (typeof data?.output_text === "string" && data.output_text.trim()) return data.output_text;
+  if (Array.isArray(data?.output_text) && typeof data.output_text[0] === "string")
+    return data.output_text[0];
+
+  // Sista fallback — ibland har vissa wrappers "choices[0].message.content"
+  if (data?.choices?.[0]?.message?.content) return data.choices[0].message.content;
+
+  return "";
 }
 
 export async function onRequest(context) {
   const { request, env } = context;
 
-  // CORS / preflight
-  if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
-  }
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ ok:false, error:'Use POST' }), {
-      status: 405, headers: { 'Content-Type':'application/json', ...corsHeaders(request) }
-    });
-  }
-
   try {
-    const body = await request.json().catch(() => ({}));
-    const idea   = (body.idea ?? "").toString().trim();
-    const level  = Number(body.level ?? 3);
-    const minutes= Number(body.minutes ?? 3);
-
-    if (!env.OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ ok:false, error:'OPENAI_API_KEY missing (Cloudflare env)' }), {
-        status: 500, headers: { 'Content-Type':'application/json', ...corsHeaders(request) }
-      });
+    if (request.method !== "POST") {
+      return badRequest("Use POST");
     }
 
-    // Bygg prompt som väver in NIVÅ + IDÉ + längd
-    const sys = SYS_POWER;
-    const user = `
-Nivå: ${level} — ${levelInstruction(level)}
-Mål-längd: ${minutes} min tal (inte för kort).
-Idé att använda: ${idea || "(om ingen idé: skapa en komplett, sammanhängande scen med två vuxna, på svenska)"}
-Skriv i ett stycke-flöde (du får gärna variera tempot med korta pauser/meningar).
-`.trim();
+    // Inkommande body
+    const body = await request.json().catch(() => ({}));
+    const idea   = (body.idea ?? "").toString();
+    const level  = Number(body.level ?? 1);
+    const minutes = Number(body.minutes ?? 3);
 
-    const tokens = budgetTokens(minutes);
+    // Miljö-nyckel från Cloudflare (Workers/Pages → Settings → Variables)
+    // Namn: OPENAI_API_KEY
+    const OPENAI = env?.OPENAI_API_KEY || env?.OPENAI_API_KEY?.toString();
+    if (!OPENAI) {
+      return json(
+        { ok: false, error: "OPENAI_API_KEY saknas i Cloudflare env" },
+        { status: 500, headers: corsHeaders(request) }
+      );
+    }
 
-    const res = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
+    // Enkel längd → tokens (grovt): ~250 ord/min → ~1800 tecken/min → ~250–300 tokens/min
+    const maxTokens = Math.max(200, Math.round(minutes * 280));
+
+    // Basprompt – nivåer styr ton
+    const toneByLevel = {
+      1: "snällt, romantiskt, oskyldigt; undvik explicita ord",
+      2: "romantiskt, lite mer sensuellt; fortfarande mjukt",
+      3: "sensuellt och närvarande; mer kropp och känsla",
+      4: "tydligt erotisk ton; använd vuxna uttryck med stil",
+      5: "mycket explicit vuxen erotik på svenska; använd direkta könsord och handlingar i naturligt språk, men undvik olagligt, ickesamtycke och minderåriga"
+    };
+    const system = `Du skriver korta erotiska berättelser på svenska. Håll ett naturligt flyt.
+Nivå: ${toneByLevel[Math.min(5, Math.max(1, level))]}.
+Undvik övertramp (minderåriga, tvång, icke-samtycke, droger).`;
+
+    const user = idea && idea.trim()
+      ? `Idé från användaren: ${idea.trim()}`
+      : `Skapa en fristående scen utan extern idé.`;
+
+    // OpenAI Responses API
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json'
+        "Authorization": `Bearer ${OPENAI}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        // välj ett stabilt, prisvärt modellnamn
+        model: "gpt-4o-mini",
         input: [
-          { role: 'system', content: sys },
-          { role: 'user',   content: user }
+          { role: "system", content: system },
+          { role: "user", content: user }
         ],
-        // token-budget styr längden; låt modellen fylla den
-        max_output_tokens: tokens,
-        temperature: 0.9,   // lite mer variation
-        top_p: 0.95
+        max_output_tokens: maxTokens
       })
     });
 
     if (!res.ok) {
-      const errtxt = await res.text().catch(()=>'');
-      return new Response(JSON.stringify({ ok:false, error: errtxt || res.statusText }), {
-        status: res.status, headers: { 'Content-Type':'application/json', ...corsHeaders(request) }
-      });
+      const errTxt = await res.text().catch(() => "");
+      return json(
+        { ok: false, error: "LLM error", detail: errTxt, status: res.status },
+        { status: 502, headers: corsHeaders(request) }
+      );
     }
 
-    const data = await res.json().catch(()=> ({}));
-    // Responses API: text ligger i data.output_text
-    const story = (data.output_text || "").trim();
+    const data = await res.json();
+    const story = extractTextFromResponsesAPI(data);
 
-    return new Response(JSON.stringify({ ok:true, story }), {
-      status: 200, headers: { 'Content-Type':'application/json', ...corsHeaders(request) }
-    });
-
+    return json(
+      { ok: true, story },
+      { status: 200, headers: corsHeaders(request) }
+    );
   } catch (err) {
-    return new Response(JSON.stringify(serverError(err)), {
-      status: 500, headers: { 'Content-Type':'application/json', ...corsHeaders(request) }
-    });
+    return serverError(err);
   }
 }
+
+export const config = {
+  // Hjälper Pages Functions att inte cacha svaren
+  cacheTtl: 0
+};
