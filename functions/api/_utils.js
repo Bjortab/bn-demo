@@ -1,54 +1,31 @@
 // functions/api/_utils.js
-// Golden Copy v1.2 – stabila utils för BN
+// Golden Copy v1.2 – gemensamma helpers för alla API-routes
 
-// Skapar JSON-respons med CORS
-export function json(data, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      ...extraHeaders,
-    },
-  });
-}
-
-// Standard CORS headers
 export function corsHeaders(request) {
+  const origin = request.headers.get("Origin") || "*";
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization",
+    "access-control-expose-headers": "Content-Type",
+    "vary": "Origin",
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
   };
 }
 
-// Felhantering
-export function badRequest(msg = "Bad Request") {
-  return json({ ok: false, error: msg }, 400);
+export function json(payload, status = 200, extra = {}) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...extra, "content-type": "application/json; charset=utf-8" },
+  });
 }
 
-export function serverError(err) {
-  let detail = "";
-  try {
-    detail = err?.stack || err?.message || String(err);
-  } catch (_) {
-    detail = "Unknown error";
-  }
-  return json({ ok: false, error: "Server Error", detail }, 500);
+export function badRequest(msg = "Bad Request", request) {
+  return json({ ok: false, error: msg }, 400, corsHeaders(request));
 }
 
-// Hjälp för textutdrag
-export function safeText(obj, fallback = "") {
-  try {
-    if (!obj) return fallback;
-    if (typeof obj === "string") return obj;
-    if (Array.isArray(obj)) {
-      return obj.map(x => safeText(x, "")).join(" ");
-    }
-    if (obj.text) return obj.text;
-    if (obj.content) return safeText(obj.content, fallback);
-    return JSON.stringify(obj);
-  } catch (_) {
-    return fallback;
-  }
+export function serverError(err, request) {
+  const detail = typeof err === "string" ? err : err?.message || "Server Error";
+  return json({ ok: false, error: "server_error", detail }, 500, corsHeaders(request));
 }
