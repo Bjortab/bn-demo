@@ -35,7 +35,7 @@ export async function onRequest(context) {
     const mins = [5,10,15].includes(Number(minutes)) ? Number(minutes) : 5;
 
     // ca tokens utifrån minuter (ca 250 wpm ≈ 750 tecken/min grovt mätt)
-    const maxTokens = Math.min(2200, Math.round(mins * 250 * 0.9));
+    const maxTokens = Math.min(1600, Math.round(mins * 250 * 0.9));
 
     // systemprompt – håll neutral här; nivåerna/lexikon löser du i front-end/lexicon.json
     const sys = [
