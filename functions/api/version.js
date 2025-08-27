@@ -1,12 +1,13 @@
-import { jsonResponse, corsHeaders } from "./_utils.js";
+import { jsonResponse, corsHeaders, preflight } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
+  if (request.method === "OPTIONS") return preflight(request);
   const info = {
     ok: true,
     ts: Date.now(),
-    commit: env?.CF_PAGES_COMMIT_SHA || null,
-    branch: env?.CF_PAGES_BRANCH || null,
     project: env?.CF_PAGES_PROJECT_NAME || null,
+    branch:  env?.CF_PAGES_BRANCH || null,
+    commit:  env?.CF_PAGES_COMMIT_SHA || null
   };
   return jsonResponse(info, 200, corsHeaders(request));
 }
