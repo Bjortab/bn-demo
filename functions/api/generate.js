@@ -1,119 +1,96 @@
 // functions/api/generate.js
-//
-// BN – Generate story (Cloudflare Pages Functions)
-// Returnerar { ok: true, story: "..." } eller { ok:false, error:"..." }
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store"
+};
 
-import { json, corsHeaders, badRequest, serverError } from "../_utils.js";
-
-/** Liten hjälpfunktion för att plocka ut text oavsett exakt svarformat */
-function extractTextFromResponsesAPI(data) {
-  // Nyare Responses API: data.output[0].content[0].text (type: "output_text")
-  try {
-    if (data && Array.isArray(data.output)) {
-      for (const item of data.output) {
-        if (item && Array.isArray(item.content)) {
-          for (const c of item.content) {
-            if (typeof c?.text === "string" && c.text.trim()) return c.text;
-            if (typeof c?.output_text === "string" && c.output_text.trim()) return c.output_text;
-          }
-        }
-      }
-    }
-  } catch (_) { /* ignore */ }
-
-  // Äldre/alternativa fält (säkerhetsnät)
-  if (typeof data?.output_text === "string" && data.output_text.trim()) return data.output_text;
-  if (Array.isArray(data?.output_text) && typeof data.output_text[0] === "string")
-    return data.output_text[0];
-
-  // Sista fallback — ibland har vissa wrappers "choices[0].message.content"
-  if (data?.choices?.[0]?.message?.content) return data.choices[0].message.content;
-
-  return "";
+export async function onRequestOptions() {
+  return new Response(null, { headers: CORS });
 }
 
-export async function onRequest(context) {
-  const { request, env } = context;
-
+export async function onRequestPost({ env, request }) {
   try {
-    if (request.method !== "POST") {
-      return badRequest("Use POST");
-    }
+    const bad = (status, msg) =>
+      new Response(JSON.stringify({ ok: false, error: msg }), { status, headers: CORS });
 
-    // Inkommande body
+    if (!env.OPENAI_API_KEY) return bad(500, "OPENAI_API_KEY saknas i Cloudflare (Pages → Settings → Variables).");
+
     const body = await request.json().catch(() => ({}));
     const idea   = (body.idea ?? "").toString();
-    const level  = Number(body.level ?? 1);
+    const level  = Number(body.level ?? 3);
     const minutes = Number(body.minutes ?? 3);
 
-    // Miljö-nyckel från Cloudflare (Workers/Pages → Settings → Variables)
-    // Namn: OPENAI_API_KEY
-    const OPENAI = env?.OPENAI_API_KEY || env?.OPENAI_API_KEY?.toString();
-    if (!OPENAI) {
-      return json(
-        { ok: false, error: "OPENAI_API_KEY saknas i Cloudflare env" },
-        { status: 500, headers: corsHeaders(request) }
-      );
-    }
+    if (![1,3,5].includes(level)) return bad(400, "Ogiltig nivå.");
+    if (![1,3,5].includes(minutes)) return bad(400, "Ogiltig längd (1/3/5).");
 
-    // Enkel längd → tokens (grovt): ~250 ord/min → ~1800 tecken/min → ~250–300 tokens/min
-    const maxTokens = Math.max(200, Math.round(minutes * 280));
+    // ca 220–260 wpm → 700–900 tokens per 5 min. Vi begränsar per demo.
+    const maxTokens = Math.max(120, Math.min(900, Math.round(180 * minutes)));
 
-    // Basprompt – nivåer styr ton
-    const toneByLevel = {
-      1: "snällt, romantiskt, oskyldigt; undvik explicita ord",
-      2: "romantiskt, lite mer sensuellt; fortfarande mjukt",
-      3: "sensuellt och närvarande; mer kropp och känsla",
-      4: "tydligt erotisk ton; använd vuxna uttryck med stil",
-      5: "mycket explicit vuxen erotik på svenska; använd direkta könsord och handlingar i naturligt språk, men undvik olagligt, ickesamtycke och minderåriga"
+    const system = [
+      `Du skriver korta erotiska berättelser på svenska.`,
+      `Nivå ${level}: 1=romantisk, 3=sensuell, 5=explicit.`,
+      `Säker stil: samtycke, trygg ton, inga olagligheter eller övergrepp.`,
+      `Variera uttryck, håll en röd tråd, undvik upprepningar.`
+    ].join(" ");
+
+    const payload = {
+      model: "gpt-4o-mini",
+      input: [
+        { role: "system", content: system },
+        { role: "user",   content: idea || "Skriv en kort berättelse." }
+      ],
+      max_output_tokens: maxTokens
     };
-    const system = `Du skriver korta erotiska berättelser på svenska. Håll ett naturligt flyt.
-Nivå: ${toneByLevel[Math.min(5, Math.max(1, level))]}.
-Undvik övertramp (minderåriga, tvång, icke-samtycke, droger).`;
 
-    const user = idea && idea.trim()
-      ? `Idé från användaren: ${idea.trim()}`
-      : `Skapa en fristående scen utan extern idé.`;
-
-    // OpenAI Responses API
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI}`,
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        // välj ett stabilt, prisvärt modellnamn
-        model: "gpt-4o-mini",
-        input: [
-          { role: "system", content: system },
-          { role: "user", content: user }
-        ],
-        max_output_tokens: maxTokens
-      })
+      body: JSON.stringify(payload)
     });
 
+    let data;
+    try { data = await res.json(); }
+    catch { return bad(res.status || 502, "Kunde inte tolka serversvar."); }
+
     if (!res.ok) {
-      const errTxt = await res.text().catch(() => "");
-      return json(
-        { ok: false, error: "LLM error", detail: errTxt, status: res.status },
-        { status: 502, headers: corsHeaders(request) }
-      );
+      // Skicka tillbaka fel från OpenAI så vi ser vad som händer
+      return bad(res.status, (data && (data.error?.message || data.message)) || "OpenAI-fel.");
     }
 
-    const data = await res.json();
-    const story = extractTextFromResponsesAPI(data);
+    // -------- Robust extraktion --------
+    let story = "";
+    if (typeof data.output_text === "string" && data.output_text.trim()) {
+      story = data.output_text.trim();
+    } else if (Array.isArray(data.output) && data.output.length) {
+      // För nya Responses-schemat
+      const txtParts = [];
+      for (const block of data.output) {
+        if (Array.isArray(block.content)) {
+          for (const c of block.content) {
+            if ((c.type === "output_text" || c.type === "text") && c.text) {
+              txtParts.push(c.text);
+            }
+          }
+        }
+      }
+      story = txtParts.join("\n").trim();
+    }
 
-    return json(
-      { ok: true, story },
-      { status: 200, headers: corsHeaders(request) }
-    );
-  } catch (err) {
-    return serverError(err);
+    if (!story) {
+      // Något gick fel – returnera rådata för felsökning i devtools
+      return new Response(JSON.stringify({ ok: false, error: "EMPTY_STORY", raw: data }), { status: 200, headers: CORS });
+    }
+
+    return new Response(JSON.stringify({ ok: true, story }), { headers: CORS });
+  } catch (e) {
+    return new Response(JSON.stringify({ ok: false, error: String(e?.message || e) }), {
+      status: 500, headers: CORS
+    });
   }
 }
-
-export const config = {
-  // Hjälper Pages Functions att inte cacha svaren
-  cacheTtl: 0
-};
