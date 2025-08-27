@@ -1,6 +1,6 @@
 // functions/api/_utils.js — GC v1.1
 
-// CORS headers för alla API-routes
+// CORS-headrar för alla API-routes
 export function corsHeaders(request, extra = {}) {
   const origin = request.headers.get("Origin") || "*";
   return {
@@ -22,11 +22,12 @@ export function jsonResponse(payload, status = 200, request, extra = {}) {
   });
 }
 
-// Hjälpfunktioner för fel
+// Felsvar (400)
 export function badRequest(msg = "Bad request", request) {
   return jsonResponse({ ok: false, error: msg }, 400, request);
 }
 
+// Felsvar (500)
 export function serverError(err = "Server error", request) {
   const detail = typeof err === "string" ? err : (err?.message || "error");
   return jsonResponse({ ok: false, error: detail }, 500, request);
