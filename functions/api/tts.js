@@ -1,51 +1,33 @@
-// functions/api/tts.js
-import { corsHeaders, serverError, badRequest } from './_utils.js';
+import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
 
-export async function onRequestPost(context) {
+export async function onRequest({ request, env }) {
+  if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders(request) });
+  if (request.method !== "POST") return badRequest("Use POST", request);
+  if (!env.OPENAI_API_KEY) return serverError("OPENAI_API_KEY saknas", request);
+
   try {
-    const { env, request } = context;
-    if (!env.OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ ok: false, error: "API key saknas (Cloudflare env)" }), {
-        status: 500, headers: corsHeaders
-      });
-    }
+    const { text = "", voice = "verse", speed = 1.0 } = await request.json().catch(() => ({}));
+    if (!text) return badRequest("Saknar 'text'", request);
 
-    let payload;
-    try { payload = await request.json(); } catch {
-      return badRequest("POST body saknas eller inte JSON");
-    }
-
-    const text = (payload.text || "").toString().slice(0, 12000);
-    const voice = (payload.voice || "alloy").toString();
-    const speed = Math.max(0.6, Math.min(1.6, Number(payload.speed || 1.0)));
-
-    // OpenAI TTS (audio/speech)
     const res = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
+      headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "gpt-4o-mini-tts",
-        voice, input: text, format: "mp3",
-        speed
-      })
+        input: text,
+        voice,
+        speed: Math.max(0.5, Math.min(2.0, Number(speed) || 1.0)),
+        format: "mp3",
+      }),
     });
 
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      return new Response(JSON.stringify({ ok: false, error: txt || res.statusText }), {
-        status: res.status || 500, headers: corsHeaders
-      });
+      const msg = await res.text().catch(() => "TTS error");
+      return jsonResponse({ ok: false, error: msg }, res.status, corsHeaders(request));
     }
 
-    // streama mp3 tillbaka
-    return new Response(res.body, {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "audio/mpeg" }
-    });
+    return new Response(res.body, { status: 200, headers: { "content-type": "audio/mpeg", ...corsHeaders(request) } });
   } catch (e) {
-    return serverError(e?.message || "TTS-fel");
+    return serverError(e?.message || "TTS exception", request);
   }
 }
