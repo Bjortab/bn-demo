@@ -1,186 +1,164 @@
-// app.js – Golden Copy v1.3
+// app.js – Golden Copy v1.3a  (timeout per längd, ingen 10s-stop)
 const $ = (q) => document.querySelector(q);
 
 // UI
-const elLevel   = $("#level");
-const elLength  = $("#length");
-const elVoice   = $("#voice");
-const elTempo   = $("#tempo");
-const elIdea    = $("#userIdea");
-const elOut     = $("#output");
-const btnGen    = $("#generateBtn");
-const btnPlay   = $("#listenBtn");
-const btnStop   = $("#stopBtn");
-const elAudio   = $("#audio");
+const elLevel  = $('#level');
+const elLen    = $('#length');
+const elVoice  = $('#voice');
+const elTempo  = $('#tempo');
+const elIdea   = $('#userIdea');
+const elOut    = $('#output');
+const btnGen   = $('#generateBtn');
+const btnPlay  = $('#listenBtn');
+const btnStop  = $('#stopBtn');
+const elApiOk  = $('#apiok');
 
 // API-bas (Cloudflare Pages)
-const BASE = location.origin + "/api";
+const BASE = location.origin + '/api';
 
-// Helfunktioner
-function setBusy(b) {
-  btnGen.disabled  = b;
-  btnPlay.disabled = b;
-  btnStop.disabled = b;
-}
+let audio = null;
+let isBusy = false;
+let keepPing;
 
-function print(msg) {
-  elOut.textContent = msg;
-}
-
-function seconds(s) {
-  return new Promise((res) => setTimeout(res, s * 1000));
+// —— Hjälp —— //
+function setBusy(on) {
+  isBusy = !!on;
+  btnGen.disabled = on;
+  btnPlay.disabled = on;
+  btnStop.disabled = on;
+  document.body.classList.toggle('busy', on);
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(BASE + "/health");
-    const isOk = res.ok;
-    const el = document.getElementById("apiok");
-    if (el) el.textContent = isOk ? "ok" : "fail";
+    const res = await fetch(BASE + '/health');
+    const ok  = res.ok && (await res.json()).ok;
+    if (elApiOk) elApiOk.textContent = ok ? 'ok' : 'fail';
   } catch {
-    const el = document.getElementById("apiok");
-    if (el) el.textContent = "fail";
+    if (elApiOk) elApiOk.textContent = 'fail';
   }
 }
 
-function readForm() {
-  const minutes = Number(document.querySelector('input[name="length"]:checked')?.value || "5");
+// håll backend “varm” medan fliken är öppen
+function startKeepAlive() {
+  stopKeepAlive();
+  keepPing = setInterval(() => {
+    fetch(BASE + '/health').catch(()=>{});
+  }, 60000);
+}
+function stopKeepAlive() {
+  if (keepPing) clearInterval(keepPing), keepPing = null;
+}
+
+function getParams() {
+  const mins = elLen.value; // "5" | "10" | "15"
   return {
-    idea: (elIdea.value || "").trim(),
-    level: Number(elLevel.value || "3"),
-    minutes,
-    voice: (elVoice.value || "alloy").trim(),
-    tempo: Number(elTempo.value || "1"),
+    idea: (elIdea.value || '').trim(),
+    level: Number(elLevel.value || 3),
+    minutes: Number(mins || 5),
+    voice: elVoice.value || 'alloy',
+    tempo: Number(elTempo.value || 1.0),
   };
 }
 
-// Robust JSON-läsare som även fångar textfel
-async function safeJson(res) {
-  const raw = await res.text();
-  try { return { ok: true, value: JSON.parse(raw), raw }; }
-  catch { return { ok: false, raw }; }
+function setText(t) {
+  elOut.textContent = t || '';
 }
 
-function fetchWithTimeout(url, opts = {}, ms = 60000) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort("timeout"), ms);
-  return fetch(url, { ...opts, signal: ctrl.signal })
-    .finally(() => clearTimeout(id));
+function appendText(t) {
+  elOut.textContent += t;
 }
 
-// ===== GENERERA =====
-btnGen?.addEventListener("click", async () => {
-  const form = readForm();
-  if (!form.idea) {
-    print("(skriv en idé…)");
-    return;
-  }
+// —— Generera —— //
+btnGen?.addEventListener('click', async () => {
+  if (isBusy) return;
+  const { idea, level, minutes, voice, tempo } = getParams();
+  if (!idea) { setText('(skriv en idé först)'); return; }
+
+  // dynamisk timeout per längd (upplevd tid / API-roundtrip)
+  const timeouts = { 5: 25000, 10: 45000, 15: 60000 };
+  const ms = timeouts[minutes] || 30000;
+
+  // AbortController med per-längd-timeout
+  const ac = new AbortController();
+  const tId = setTimeout(() => ac.abort(new Error('timeout')), ms);
 
   setBusy(true);
-  print("(genererar …)");
+  setText('(genererar …)');
 
   try {
-    const res = await fetchWithTimeout(BASE + "/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(form),
-    }, 90000);
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error("[generate] http error", res.status, body);
-      print("(kunde inte generera – prova igen)");
-      return;
-    }
-
-    const parsed = await safeJson(res);
-    if (!parsed.ok) {
-      console.error("[generate] invalid JSON:", parsed.raw);
-      print("(fel vid generering)");
-      return;
-    }
-
-    const data = parsed.value;
-    if (!data?.ok || !data?.text) {
-      console.error("[generate] bad payload:", data);
-      print("(fel vid generering)");
-      return;
-    }
-
-    // Skriv ut berättelsen
-    elOut.textContent = data.text;
-
-  } catch (err) {
-    console.error("[generate] exception", err);
-    if (String(err).includes("timeout")) {
-      print("(timeout mot server – prova igen)");
-    } else {
-      print("(fel vid generering)");
-    }
-  } finally {
-    setBusy(false);
-  }
-});
-
-// ===== TTS =====
-let currentTts = null;
-
-btnPlay?.addEventListener("click", async () => {
-  const text = elOut.textContent?.trim();
-  if (!text) {
-    print("(ingen text att läsa)");
-    return;
-  }
-
-  setBusy(true);
-  print("Hämtar röst …");
-
-  try {
-    // avbryt ev pågående
-    if (currentTts) { currentTts.abort(); currentTts = null; }
-
-    const ctrl = new AbortController();
-    currentTts = ctrl;
-
-    const res = await fetchWithTimeout(BASE + "/tts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: elVoice.value || "alloy",
-        speed: Number(elTempo.value || "1"),
-      }),
-      signal: ctrl.signal,
-    }, 90000);
-
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      console.error("[tts] http error", res.status, msg);
-      print("(kunde inte spela upp)");
-      return;
-    }
-
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    elAudio.src = url;
-    await elAudio.play().catch((e)=> {
-      console.error("[tts] play err", e);
-      print("(kunde inte starta uppspelning)");
+    const res = await fetch(BASE + '/generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idea, level, minutes, voice, tempo }),
+      signal: ac.signal
     });
 
-    print("Klar.");
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).error || ''; } catch {}
+      setText(`(fel vid generering – ${res.status}${detail ? `: ${detail}`:''})`);
+      return;
+    }
 
+    // rätta svaret: { ok:true, story: "..." }
+    const data = await res.json().catch(() => ({}));
+    const story = (data && data.story) ? String(data.story) : '';
+
+    if (!story) {
+      setText('(kunde inte generera – tomt svar)');
+      return;
+    }
+
+    setText(story);
   } catch (err) {
-    console.error("[tts] exception", err);
-    print("(fel vid uppspelning)");
+    if (err && err.name === 'AbortError') {
+      setText('(avbröts: timeout – öka längd-timeout eller försök igen)');
+    } else {
+      setText('(fel vid generering)');
+      console.error('generate error', err);
+    }
+  } finally {
+    clearTimeout(tId);
+    setBusy(false);
+  }
+});
+
+// —— TTS —— //
+btnPlay?.addEventListener('click', async () => {
+  if (isBusy) return;
+  const text = elOut.textContent.trim();
+  if (!text) return;
+
+  setBusy(true);
+  try {
+    const res = await fetch(BASE + '/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, voice: elVoice.value || 'alloy', speed: Number(elTempo.value || 1.0) })
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.json()).error || ''; } catch {}
+      setText(`(TTS fel – ${res.status}${detail ? `: ${detail}`:''})`);
+      return;
+    }
+    const buf = await res.arrayBuffer();
+    audio?.pause();
+    audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })));
+    await audio.play().catch(()=>{});
+  } catch (e) {
+    console.error('TTS error', e);
   } finally {
     setBusy(false);
   }
 });
 
-btnStop?.addEventListener("click", () => {
-  try { elAudio.pause(); } catch {}
+btnStop?.addEventListener('click', () => {
+  try { audio?.pause(); } catch {}
 });
 
 // Init
 checkHealth();
+startKeepAlive();
+window.addEventListener('beforeunload', stopKeepAlive);
