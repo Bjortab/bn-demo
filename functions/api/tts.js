@@ -1,6 +1,6 @@
 // functions/api/tts.js
 // GC v1.1 – TTS via Audio Speech API med CORS
-import { json, corsHeaders, badRequest, serverError } from "./_utils.js";
+import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
   if (request.method === "OPTIONS") {
