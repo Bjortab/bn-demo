@@ -1,220 +1,291 @@
-// app.js — Golden Copy v1.3.2 (CF Pages, robust JSON/content-type guards)
+// app.js — BN front GC v1.3.3 (matchar generate.js GC v2.3.1)
+// - Robust JSON-hantering (tål HTML-felsidor)
+// - Tydliga statusrader i UI
+// - TTS: server först (/api/tts), fallback till webbläsarens röst
+// - Inga ändringar krävs i index.html/styles.css (förutsätter samma element-ID:n)
 
 const $ = (q) => document.querySelector(q);
 
-// UI
-const elLevel     = $('#level');
-const elLength    = $('#length');
-const elVoice     = $('#voice');
-const elTempo     = $('#tempo');
-const elIdea      = $('#userIdea');
-const btnGen      = $('#generateBtn');
-const btnListen   = $('#listenBtn');
-const btnStop     = $('#stopBtn');
-const out         = $('#output');
-const player      = $('#audio');
+// UI-element (förutsätter samma ID som tidigare)
+const $level  = $("#level");           // <select> 1..5
+const $length = $("#length");          // kan vara <select> eller radio-grupp
+const $voice  = $("#voice");           // t.ex. verse (kvinnlig), coral (man), alloy (neutral)
+const $tempo  = $("#tempo");           // 0.8–1.25 rekommenderat
+const $idea   = $("#userIdea");        // fri text
 
-// API base (Pages Functions)
-const BASE = location.origin + '/api';
+const $output = $("#output");          // <pre> eller <div> där texten visas
+const $btnGen = $("#generateBtn");
+const $btnPlay= $("#listenBtn");
+const $btnStop= $("#stopBtn");
+const $audio  = $("#audio");           // <audio>
 
-let busyTTS = false;
+const BASE = location.origin + "/api";
+
 let busyGen = false;
+let busyTts = false;
 
-function setBusy(kind, v) {
-  if (kind === 'gen') busyGen = v;
-  if (kind === 'tts') busyTTS = v;
-  btnGen.disabled    = busyGen || busyTTS;
-  btnListen.disabled = busyGen || busyTTS;
-  btnStop.disabled   = busyGen && !busyTTS ? false : busyTTS;
+function now() {
+  return new Date().toLocaleTimeString();
 }
-
-function setStatus(text) {
-  out.textContent = text;
+function setStatus(msg) {
+  // skriver status överst och behåller ev. text
+  const txt = $output.textContent?.trim() || "";
+  const line = `[${now()}] ${msg}`;
+  $output.textContent = txt ? `${txt}\n${line}` : line;
 }
-
-function appendStatus(line) {
-  const now = new Date().toLocaleTimeString();
-  out.textContent = `${out.textContent}\n[${now}] ${line}`.trim();
+function setText(text) {
+  $output.textContent = text;
+}
+function clearAudio() {
+  try { $audio.pause(); } catch {}
+  try { URL.revokeObjectURL($audio.src); } catch {}
+  $audio.src = "";
+}
+function setBusy(gen=false, tts=false) {
+  busyGen = !!gen;
+  busyTts = !!tts;
+  $btnGen.disabled  = busyGen || busyTts;
+  $btnPlay.disabled = busyGen || busyTts;
+  $btnStop.disabled = !busyTts && !$audio.src;
 }
 
 async function checkHealth() {
   try {
-    const res = await fetch(`${BASE}/health`);
-    const ok  = res.ok;
-    const json = ok ? await res.json().catch(() => ({})) : {};
-    console.log('[BN] /health', ok, json);
-    appendStatus(ok ? 'API: ok' : 'API: fel');
-  } catch (e) {
-    console.log('[BN] /health error', e);
-    appendStatus('API: fel');
+    const r = await fetch(`${BASE}/health`);
+    const ok = (await r.json()).ok;
+    setStatus(ok ? "API: ok" : "API: fel");
+  } catch {
+    setStatus("API: fel");
   }
 }
-
 checkHealth();
 
-// helpers
-function getLevel()  { return Number(elLevel?.value || 3); }
-function getMinutes(){ return Number(elLength?.value || 5); }
-
-function buildPrompt(idea, level, minutes) {
-  const guide =
-    'Skriv en sammanhängande berättelse (svenska) i jag-form eller nära tredjeperson. ' +
-    'Håll en naturlig röst och undvik upprepningar. Integrera idén organiskt.';
-
-  const targetlen = Math.max(600, Math.round(minutes * 1600)); // ~1600 tecken/minut (kan justeras)
-
-  return [
-    `Mål-längd: cirka ${targetlen} tecken.`,
-    `Nivå: ${level} (1 snäll … 5 explicit).`,
-    `Idé: ${idea || 'ingen idé — bygg en mjuk start, stegring, avtoning.'}`,
-    guide
-  ].join('\n');
+function getLevel() {
+  return Number($level?.value || 3);
+}
+function getMinutes() {
+  // Stöd både <select id="length"> och en radio-grupp name="length"
+  const radioChecked = document.querySelector('input[name="length"]:checked');
+  const val = radioChecked ? radioChecked.value : ($length?.value || 5);
+  const n = Number(val || 5);
+  return Math.max(1, Math.min(30, n));
+}
+function getVoice() {
+  return ($voice?.value || "verse"); // default kvinnlig
+}
+function getTempo() {
+  const t = Number($tempo?.value || 1.0);
+  return Math.max(0.8, Math.min(1.25, t));
 }
 
-function withTimeout(ms) {
-  const c = new AbortController();
-  const t = setTimeout(() => c.abort(new Error('timeout')), ms);
-  return { signal: c.signal, cancel: () => clearTimeout(t) };
+function spinner(start=true) {
+  let dots = 0, id;
+  if (!start) return () => {};
+  id = setInterval(() => {
+    dots = (dots + 1) % 4;
+    const base = ($output.textContent || "").split("\n")[0] || "Genererar";
+    const lines = $output.textContent.split("\n");
+    lines[lines.length - 1] = `${base}${".".repeat(dots)}`;
+    $output.textContent = lines.join("\n");
+  }, 600);
+  return () => clearInterval(id);
 }
 
+// ——— GENERATE ———
 async function generate() {
-  const idea    = (elIdea?.value || '').trim();
-  const level   = getLevel();
+  if (busyGen || busyTts) return;
+  const idea = ($idea?.value || "").trim();
+  const level = getLevel();
   const minutes = getMinutes();
 
-  setBusy('gen', true);
-  setStatus('(genererar …)');
+  if (!idea) {
+    setStatus("Ange en idé först.");
+    return;
+  }
 
-  // Request
-  const body = JSON.stringify({ idea, level, minutes });
-  console.log('[BN] POST /generate body', body);
+  clearAudio();
+  setText("");
+  setStatus("Genererar …");
+  setBusy(true, false);
+  const stopSpin = spinner(true);
 
-  const { signal, cancel } = withTimeout(90000); // 90s
+  // Skicka request
   let res, raw, ct;
-
   try {
     res = await fetch(`${BASE}/generate`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body,
-      signal
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea, level, minutes })
     });
   } catch (e) {
-    cancel();
-    console.log('[BN] fetch /generate error', e);
-    setBusy('gen', false);
-    appendStatus('(fel vid generering — nätverk/timeout)');
+    stopSpin();
+    setBusy(false, false);
+    setStatus("Nätverksfel vid generering.");
+    console.error("[BN] fetch /generate error", e);
     return;
   }
 
   try {
-    ct  = res.headers.get('content-type') || '';
-    raw = await res.text(); // alltid text först, sen ev JSON-parse
-    console.log('[BN] /generate status', res.status, 'ct', ct, 'raw(head)', raw.slice(0,180));
+    ct = res.headers.get("content-type") || "";
+    raw = await res.text();
 
     if (!res.ok) {
-      // Visa serverfeltext om den inte är JSON
-      if (!ct.includes('application/json')) {
-        setStatus(`(serverfel ${res.status})\n${raw.slice(0,800)}`);
-      } else {
-        let j;
-        try { j = JSON.parse(raw); } catch {}
-        setStatus(`(fel vid generering)\nstatus=${res.status}\n${j ? JSON.stringify(j) : raw}`);
+      // Serverfel
+      stopSpin();
+      setBusy(false, false);
+      if (!ct.includes("application/json")) {
+        setStatus(`Serverfel ${res.status}`);
+        console.error("[BN] /generate non-JSON error:", raw.slice(0, 800));
+        return;
       }
-      setBusy('gen', false);
+      let data = {};
+      try { data = JSON.parse(raw); } catch {}
+      setStatus(`Fel vid generering: ${data?.error || res.status}`);
+      console.error("[BN] /generate error JSON:", data);
       return;
     }
 
-    // OK → förvänta JSON
-    if (!ct.includes('application/json')) {
-      setStatus(`(oväntat svar — ej JSON)\nct=${ct}\n${raw.slice(0,800)}`);
-      setBusy('gen', false);
+    if (!ct.includes("application/json")) {
+      stopSpin();
+      setBusy(false, false);
+      setStatus("Oväntat svar (ej JSON) från servern.");
+      console.error("[BN] /generate raw non-JSON:", raw.slice(0, 800));
       return;
     }
 
     let data;
-    try {
-      data = JSON.parse(raw);
-    } catch (e) {
-      setStatus(`(ogiltig JSON från servern)\n${raw.slice(0,800)}`);
-      setBusy('gen', false);
+    try { data = JSON.parse(raw); } catch (e) {
+      stopSpin();
+      setBusy(false, false);
+      setStatus("Felaktig JSON från servern.");
+      console.error("[BN] /generate JSON parse error, raw:", raw.slice(0, 800));
       return;
     }
 
-    // Stabil JSON-access
-    let story = '';
-    if (data.story) story = data.story;
-    else if (data.output && Array.isArray(data.output) && data.output[0]?.content?.[0]?.text) {
-      story = data.output[0].content[0].text;
-    } else if (data.text) story = data.text;
+    if (!data.ok) {
+      stopSpin();
+      setBusy(false, false);
+      setStatus(`Fel vid generering: ${data?.error || "okänt"}`);
+      console.error("[BN] /generate data not ok:", data);
+      return;
+    }
 
+    const story = (data.text || "").trim();
     if (!story) {
-      setStatus('(kunde inte generera — tomt svar)');
-      setBusy('gen', false);
+      stopSpin();
+      setBusy(false, false);
+      setStatus("Tomt svar.");
       return;
     }
 
-    setStatus(story);
+    // Visa berättelsen
+    stopSpin();
+    setText(story);
+    setStatus("Hämtar röst …");
+    setBusy(false, true);
+
+    // Server-TTS
+    const vr = await fetch(`${BASE}/tts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: story,
+        voice: getVoice(),
+        tempo: getTempo()
+      })
+    });
+
+    if (vr.ok) {
+      const blob = await vr.blob();
+      const url = URL.createObjectURL(blob);
+      $audio.src = url;
+      try { await $audio.play(); } catch {}
+      setBusy(false, false);
+      setStatus("Spelar (server-TTS).");
+      return;
+    }
+
+    // Server-TTS misslyckades → fallback till browser-TTS
+    let info = {};
+    try { info = await vr.json(); } catch {}
+    console.warn("[BN] TTS server fail:", info);
+    setStatus("Röst: fallback (webbläsare).");
+    await speakWithBrowserTTS(story, getVoice(), getTempo());
+    setBusy(false, false);
+
   } catch (e) {
-    console.log('[BN] parse/handle error', e);
-    setStatus('(fel vid generering — hantering)');
-  } finally {
-    cancel();
-    setBusy('gen', false);
+    stopSpin();
+    setBusy(false, false);
+    setStatus("Fel i hantering av generering.");
+    console.error("[BN] generate handle error:", e);
   }
 }
 
-async function listen() {
-  const text  = out?.textContent?.trim() || '';
-  if (!text) { appendStatus('(ingen text att lyssna på)'); return; }
+// ——— LISTEN ———
+async function replay() {
+  if (busyGen || busyTts) return;
+  const text = ($output.textContent || "").trim();
+  if (!text) return;
 
-  setBusy('tts', true);
-  appendStatus('Hämtar röst …');
+  setBusy(false, true);
 
-  const { signal, cancel } = withTimeout(60000);
-  let res;
-  try {
-    res = await fetch(`${BASE}/tts`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, voice: elVoice?.value || 'alloy', speed: Number(elTempo?.value || 1.0) }),
-      signal
-    });
-  } catch (e) {
-    cancel();
-    setBusy('tts', false);
-    appendStatus('(röstfel — nätverk/timeout)');
+  // Försök spela om server-mp3 om vi har en
+  if ($audio.src) {
+    try { $audio.currentTime = 0; await $audio.play(); setStatus("Spelar (server-TTS)."); }
+    catch { /* fallthrough till browser-TTS */ }
+    setBusy(false, false);
     return;
   }
 
-  try {
-    if (!res.ok) {
-      const raw = await res.text().catch(()=>'');
-      console.log('[BN] /tts fail', res.status, raw.slice(0,180));
-      appendStatus(`(röstfel ${res.status})`);
-      return;
+  // Annars: browser-TTS
+  await speakWithBrowserTTS(text, getVoice(), getTempo());
+  setBusy(false, false);
+}
+
+function stopAll() {
+  try { speechSynthesis.cancel(); } catch {}
+  try { $audio.pause(); } catch {}
+  setStatus("Stopp.");
+  setBusy(false, false);
+}
+
+// ——— Browser-TTS fallback ———
+async function speakWithBrowserTTS(text, voiceKey, tempo) {
+  return new Promise((resolve) => {
+    if (typeof window.speechSynthesis === "undefined") {
+      setStatus("Webbläsaren har ingen inbyggd TTS.");
+      return resolve();
     }
-    const blob = await res.blob();
-    player.src = URL.createObjectURL(blob);
-    await player.play().catch(()=>{});
-    appendStatus('Spelar upp …');
-  } catch (e) {
-    console.log('[BN] tts handle error', e);
-    appendStatus('(röstfel — hantering)');
-  } finally {
-    cancel();
-    setBusy('tts', false);
-  }
+    const u = new SpeechSynthesisUtterance(String(text || ""));
+    u.lang = "sv-SE";
+
+    // röstval (heuristik)
+    const wantFemale = (voiceKey === "verse");
+    const wantMale   = (voiceKey === "coral");
+    const voices = speechSynthesis.getVoices();
+    let v = voices.find(v => v.lang?.toLowerCase().startsWith("sv") && (
+      wantFemale ? /female|kvin|Astrid|Alva|Svenska/i.test(v.name) :
+      wantMale   ? /male|man|Erik|Hugo|Svenska/i.test(v.name) : true
+    )) || voices.find(v => v.lang?.toLowerCase().startsWith("sv")) || voices[0];
+    if (v) u.voice = v;
+
+    // tempo/pitch
+    const rate = Math.max(0.9, Math.min(1.15, 0.9 + (Number(tempo||1)-1)*0.5));
+    u.rate  = rate;
+    u.pitch = wantFemale ? 1.05 : wantMale ? 0.95 : 1.0;
+
+    u.onend = () => { setStatus("Klar (webbläsare)."); resolve(); };
+    u.onerror = () => { setStatus("Fel i webbläsar-röst."); resolve(); };
+
+    try { speechSynthesis.cancel(); } catch {}
+    try { speechSynthesis.speak(u); } catch { resolve(); }
+  });
 }
 
-function stopAudio() {
-  try { player.pause(); player.currentTime = 0; } catch {}
-}
+// ——— Bind ———
+$btnGen?.addEventListener("click", generate);
+$btnPlay?.addEventListener("click", replay);
+$btnStop?.addEventListener("click", stopAll);
 
-// bind UI
-btnGen?.addEventListener('click', generate);
-btnListen?.addEventListener('click', listen);
-btnStop?.addEventListener('click', stopAudio);
-
-// starttext
-setStatus('(tomt)');
+// Startmeddelande
+setStatus("BN front laddad.");
