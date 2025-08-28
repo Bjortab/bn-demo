@@ -1,6 +1,3 @@
-// functions/api/generate.js
-// GC v2.1.1 — OpenAI (nivå 1–3) + Mistral (nivå 4–5), timeout & token-guard
-
 import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
