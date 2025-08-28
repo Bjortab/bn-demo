@@ -1,60 +1,65 @@
-import { jsonResponse, corsHeaders, badRequest, serverError } from "./_utils.js";
+// functions/api/generate.js  (GC v1.0)
+// Växlar OpenAI (nivå 1–3) ⇄ Mistral (nivå 4–5).
+// Kräver secrets i Cloudflare Pages: OPENAI_API_KEY, MISTRAL_API_KEY.
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
+import { jsonResponse, badRequest, serverError, corsHeaders } from "./_utils.js";
 
-const TOKENS_BY_MIN = { 5: 900, 10: 1300, 15: 1600 };
-const DEFAULT_MINUTES = 5;
+const OPENAI_URL   = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = "gpt-4o-mini";
 
-const MAX_INPUT_TOKENS = 350;
-const CHARS_PER_TOKEN = 4;
+const MISTRAL_URL   = "https://api.mistral.ai/v1/chat/completions";
+const MISTRAL_MODEL = "mistral-large-latest";
 
-const TIMEOUT_MS_PRIMARY = 12000;
-const TIMEOUT_MS_RETRY   = 8000;
+// max tokens per minut (lagom konservativt för att undvika timeouts)
+const TOKENS_PER_MIN = 260;
+// generell timeout (ms)
+const TIMEOUT_MS = 45_000;
 
-function clampText(s = "", maxTokens = MAX_INPUT_TOKENS) {
-  if (!s) return "";
-  const maxChars = Math.max(16, Math.floor(maxTokens * CHARS_PER_TOKEN));
-  s = String(s).trim().replace(/\s+/g, " ");
-  return s.length > maxChars ? s.slice(0, maxChars) + " …" : s;
+// ————————————————————————————————————————————————————————————
+
+function withTimeout(ms = TIMEOUT_MS) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
+  const cancel = () => clearTimeout(t);
+  return { signal: ac.signal, cancel };
 }
 
-function systemPrompt(level) {
-  const base =
-    "Du skriver på svensk prosa. Hög läsbarhet, naturligt flyt, inga listor. Undvik upprepningar. Röst som känns mänsklig. Alltid samtyckande vuxna. Absolut inget olagligt, minderåriga, tvång, våld, droger eller icke-samtycke.";
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function buildSystemPrompt(level) {
+  // Viktigt: håll innehållet lagligt och icke-explicit.
+  // (Gör texten varm/sensuell på högre nivåer utan grafiska detaljer.)
+  const common =
+    "Skriv en sammanhängande berättelse på svenska, i jag-form eller nära tredjeperson, med naturlig rytm och flyt. Undvik upprepningar och översättningsfel. Håll en mjuk, mänsklig berättarröst.";
 
   if (level >= 4) {
-    return (
-      base +
-      " Nivå 4–5: sensuell och intensiv men laglig. Använd svenska uttryck, undvik direktöversatta fraser. Tydlig dramaturgi (början, stegring, klimax, avrundning)."
-    );
+    return [
+      common,
+      "Ton: mer intensiv och passionerad, men undvik råa, grafiska och explicita sexuella detaljer.",
+      "Fokusera på stämning, känslor, antydningar, attraktion och relationell dynamik; undvik att beskriva könsdelar eller handlingar explicit.",
+    ].join(" ");
   }
-  return (
-    base +
-    " Nivå 1–3: romantiskt, mjukt och suggestivt. Fokus på stämning och beröring – inte råa detaljer. Språket ska vara vårdat och naturligt."
-  );
-}
-
-function buildUserPrompt({ idea, level, minutes }) {
-  const guide =
-    "Skriv en sammanhängande berättelse (svenska) i jag-form eller nära tredjeperson. Håll en naturlig röst och undvik upprepningar. Integrera idén organiskt.";
-  const targetLen = minutes || DEFAULT_MINUTES;
-
+  // nivå 1–3
   return [
-    `Mål-längd: cirka ${targetLen} min högläsning.`,
-    `Nivå: ${level} (1=snäll … 5=het).`,
-    `Idé: ${idea ? idea : "(ingen idé – bygg en själv med mjuk start, stegring, avrundning)"}`,
-    guide
+    common,
+    "Ton: romantisk, varm och diskret. Fokus på känslor, atmosfär, dialog och subtil spänning.",
   ].join(" ");
 }
 
-function withTimeout(ms) {
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
-  return { signal: ac.signal, cancel: () => clearTimeout(t) };
+function buildUserPrompt(idea = "", level = 3, minutes = 5) {
+  const mållängd = clamp(Math.round(minutes * TOKENS_PER_MIN), 300, 4000);
+  // Lätt strukturerad instruktion
+  return [
+    `Idé: ${idea || "ingen specifik idé"}.`,
+    `Nivå: ${level} (1=romantisk, 5=intensiv men icke-explicit).`,
+    `Måltokens (ungefärlig längd): ${mållängd}.`,
+    "Skapa en berättelse med tydlig början, stegring och avrundning. Undvik punktlistor, håll ett jämnt flyt.",
+  ].join("\n");
 }
 
-async function callOpenAI(env, { sys, user, max_tokens, timeoutMs }) {
+async function callOpenAI(env, sys, usr, max_tokens, timeoutMs) {
   if (!env.OPENAI_API_KEY) throw new Error("saknar OPENAI_API_KEY");
   const { signal, cancel } = withTimeout(timeoutMs);
 
@@ -63,38 +68,33 @@ async function callOpenAI(env, { sys, user, max_tokens, timeoutMs }) {
       method: "POST",
       signal,
       headers: {
-        authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        "authorization": `Bearer ${env.OPENAI_API_KEY}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [
+        model: OPENAI_MODEL,
+        temperature: 0.9,
+        messages: [
           { role: "system", content: sys },
-          { role: "user", content: user }
+          { role: "user", content: usr },
         ],
-        max_output_tokens: max_tokens
-      })
+        max_tokens: max_tokens,
+      }),
     });
+
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`OpenAI ${res.status}: ${txt || res.statusText}`);
+      const raw = await res.text().catch(() => "");
+      throw new Error(`OpenAI fel: status=${res.status}, raw=${raw.slice(0, 400)}`);
     }
     const data = await res.json();
-    let out = "";
-    if (Array.isArray(data.output) && data.output.length > 0) {
-      const first = data.output[0];
-      if (first && Array.isArray(first.content) && first.content.length > 0) {
-        out = first.content[0]?.text || "";
-      }
-    }
-    if (!out) throw new Error("tomt svar från OpenAI");
-    return out;
+    const content = data?.choices?.[0]?.message?.content ?? "";
+    return content.trim();
   } finally {
     cancel();
   }
 }
 
-async function callMistral(env, { sys, user, max_tokens, timeoutMs }) {
+async function callMistral(env, sys, usr, max_tokens, timeoutMs) {
   if (!env.MISTRAL_API_KEY) throw new Error("saknar MISTRAL_API_KEY");
   const { signal, cancel } = withTimeout(timeoutMs);
 
@@ -103,88 +103,81 @@ async function callMistral(env, { sys, user, max_tokens, timeoutMs }) {
       method: "POST",
       signal,
       headers: {
-        authorization: `Bearer ${env.MISTRAL_API_KEY}`,
+        "authorization": `Bearer ${env.MISTRAL_API_KEY}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "open-mixtral-8x7b",
+        model: MISTRAL_MODEL,
         temperature: 0.9,
-        max_tokens,
         messages: [
           { role: "system", content: sys },
-          { role: "user", content: user }
-        ]
-      })
+          { role: "user", content: usr },
+        ],
+        max_tokens: max_tokens,
+      }),
     });
+
     if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`Mistral ${res.status}: ${txt || res.statusText}`);
+      const raw = await res.text().catch(() => "");
+      throw new Error(`Mistral fel: status=${res.status}, raw=${raw.slice(0, 400)}`);
     }
     const data = await res.json();
-    const out = data?.choices?.[0]?.message?.content?.trim();
-    if (!out) throw new Error("tomt svar från Mistral");
-    return out;
+    const content = data?.choices?.[0]?.message?.content ?? "";
+    return content.trim();
   } finally {
     cancel();
   }
 }
 
-export async function onRequest(context) {
+// ————————————————————————————————————————————————————————————
+
+export async function onRequestPost(context) {
   const { request, env } = context;
 
+  // CORS preflight (om den kommer fel hit)
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(request) });
   }
   if (request.method !== "POST") {
-    return badRequest("Use POST", request); // ✅ skicka request
+    return badRequest("Use POST", request);
   }
 
   try {
-    const body = await request.json().catch(() => ({}));
-    let { idea = "", level = 3, minutes = DEFAULT_MINUTES } = body || {};
+    const { idea = "", level = 3, minutes = 5 } = await request.json().catch(() => ({}));
 
-    level = Number(level);
-    minutes = [5, 10, 15].includes(Number(minutes)) ? Number(minutes) : DEFAULT_MINUTES;
-    if (Number.isNaN(level) || level < 1 || level > 5) level = 3;
+    const lvl = clamp(Number(level) || 3, 1, 5);
+    const mins = clamp(Number(minutes) || 5, 1, 30);
 
-    const maxTokens = TOKENS_BY_MIN[minutes] || TOKENS_BY_MIN[DEFAULT_MINUTES];
-    const safeIdea = clampText(idea, MAX_INPUT_TOKENS);
+    const maxTokens = clamp(Math.round(mins * TOKENS_PER_MIN), 300, 4000);
 
-    const sys = systemPrompt(level);
-    const usr = buildUserPrompt({ idea: safeIdea, level, minutes });
+    const sys = buildSystemPrompt(lvl);
+    const usr = buildUserPrompt(idea, lvl, mins);
 
-    const useMistral = level >= 4;
-
-    try {
-      const text = useMistral
-        ? await callMistral(env, { sys, user: usr, max_tokens: maxTokens, timeoutMs: TIMEOUT_MS_PRIMARY })
-        : await callOpenAI(env, { sys, user: usr, max_tokens: maxTokens, timeoutMs: TIMEOUT_MS_PRIMARY });
-
-      return jsonResponse({ ok: true, text }, 200, corsHeaders(request));
-    } catch (e1) {
-      const retryUsr = buildUserPrompt({
-        idea: clampText(safeIdea, Math.floor(MAX_INPUT_TOKENS * 0.6)),
-        level,
-        minutes
-      });
-      const retryTokens = Math.max(600, Math.floor(maxTokens * 0.7));
-
-      try {
-        const text2 = useMistral
-          ? await callMistral(env, { sys, user: retryUsr, max_tokens: retryTokens, timeoutMs: TIMEOUT_MS_RETRY })
-          : await callOpenAI(env, { sys, user: retryUsr, max_tokens: retryTokens, timeoutMs: TIMEOUT_MS_RETRY });
-
-        return jsonResponse({ ok: true, text: text2, downgraded: true }, 200, corsHeaders(request));
-      } catch (e2) {
-        return jsonResponse(
-          { ok: false, error: "LLM timeout/err", detail: String(e2?.message || e2) },
-          504,
-          corsHeaders(request)
-        );
-      }
+    let story = "";
+    if (lvl >= 4) {
+      // nivå 4–5 → Mistral
+      story = await callMistral(env, sys, usr, maxTokens, TIMEOUT_MS);
+    } else {
+      // nivå 1–3 → OpenAI
+      story = await callOpenAI(env, sys, usr, maxTokens, TIMEOUT_MS);
     }
+
+    if (!story) {
+      return jsonResponse({ ok: false, error: "tomt svar" }, 200, request);
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        text: story,
+        meta: { provider: lvl >= 4 ? "mistral" : "openai", level: lvl, minutes: mins },
+      },
+      200,
+      request
+    );
   } catch (err) {
-    // ✅ skicka request, inte headers
-    return serverError(err, request);
+    // Strippa extremt långa fel
+    const msg = (err && err.message) ? String(err.message).slice(0, 800) : "server";
+    return serverError(msg, request);
   }
 }
