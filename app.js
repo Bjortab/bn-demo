@@ -1,181 +1,194 @@
 // app.js — Golden Copy v1.3 (CF Pages)
+// För UI i index.html med id:n:
+// level, length, voice, tempo, userIdea, output, generateBtn, listenBtn, stopBtn, audio
 
-// ====== helpers ======
 const $ = (q) => document.querySelector(q);
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ====== UI refs ======
-const elLevel   = $("#level");
-const elLength  = $("#length");
-const elVoice   = $("#voice");
-const elTempo   = $("#tempo");
-const elIdea    = $("#userIdea");
+// UI-noder
+const selLevel   = $("#level");
+const selLength  = $("#length");
+const selVoice   = $("#voice");
+const rngTempo   = $("#tempo");
+const txtIdea    = $("#userIdea");
+const out        = $("#output");
+const btnGen     = $("#generateBtn");
+const btnPlay    = $("#listenBtn");
+const btnStop    = $("#stopBtn");
+const audioEl    = $("#audio");
 
-const btnGen    = $("#generateBtn");
-const btnPlay   = $("#listenBtn");
-const btnStop   = $("#stopBtn");
+// API-bas (samma origin)
+const BASE = `${location.origin}/api`;
 
-const elOutput  = $("#output");
-const elAudio   = $("#audio");
+let busyGen = false;
+let busyTts = false;
 
-// ====== config ======
-const BASE = location.origin + "/api";
-const GEN_TIMEOUT_MS = 120_000;   // <— 120 sek
-const RETRY_STATUS = new Set([408, 429, 502, 503, 504]);
+// ———————————————————————————————————————
+// Hjälpfunktioner
 
-let isBusy = false;
-let ttsObj = null;
-
-// ====== status helpers ======
-function setBusy(b) {
-  isBusy = b;
-  btnGen.disabled  = b;
-  btnPlay.disabled = b;
+function setBusy(gen = false) {
+  busyGen = !!gen;
+  btnGen.disabled = busyGen;
+  btnPlay.disabled = busyGen || busyTts;
   btnStop.disabled = false;
 }
 
-function status(text) {
-  elOutput.textContent = text;
+function setAudioBusy(tts = false) {
+  busyTts = !!tts;
+  btnPlay.disabled = busyGen || busyTts;
+  btnStop.disabled = !busyTts && !busyGen;
 }
 
-function append(text) {
-  elOutput.textContent += text;
+function setStatus(text) {
+  out.textContent = text;
 }
 
-// ====== health check (visar "API: ok?"-indikator) ======
+function appendStatus(line) {
+  const now = new Date().toLocaleTimeString();
+  out.textContent += `\n[${now}] ${line}`;
+}
+
 async function checkHealth() {
   try {
-    const res = await fetch(BASE + "/health");
-    const ok = res.ok;
-    const a = document.querySelector("#apiok");
-    if (a) a.textContent = ok ? "ok" : "fail";
+    const res = await fetch(`${BASE}/health`);
+    const js = await res.json().catch(() => ({}));
+    const ok = !!js.ok;
+    appendStatus(ok ? "API: ok" : "API: fel");
   } catch {
-    const a = document.querySelector("#apiok");
-    if (a) a.textContent = "fail";
+    appendStatus("API: fel (health)");
   }
 }
 checkHealth();
 
-// ====== generate ======
-async function doGenerate() {
-  if (isBusy) return;
-  setBusy(true);
-  status("(genererar …)");
+// ———————————————————————————————————————
+// Generera berättelse
 
-  const idea   = (elIdea.value || "").trim();
-  const level  = Number(elLevel.value || 3);
-  const mins   = Number(elLength.value || 5);
+function minutesFromUI() {
+  // length innehåller 5|10|15 (minuter)
+  const val = Number(selLength.value || 5);
+  return Math.max(1, Math.min(30, val));
+}
 
-  // timeouter via AbortController
-  const controller = new AbortController();
-  const to = setTimeout(() => controller.abort("timeout"), GEN_TIMEOUT_MS);
+async function generate() {
+  if (busyGen) return;
+  const idea = (txtIdea.value || "").trim();
+  const level = Number(selLevel.value || 3);
+  const minutes = minutesFromUI();
 
-  const payload = { idea, level, minutes: mins };
-
-  async function oneTry() {
-    const res = await fetch(BASE + "/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-
-    // parse säkert
-    const raw = await res.text();
-    let data = {};
-    try { data = JSON.parse(raw); } catch { /* noop */ }
-
-    return { res, data, raw };
+  // enkel guard
+  if (!idea) {
+    setStatus("(ange en idé)");
+    return;
   }
 
+  setBusy(true);
+  setStatus("Genererar…");
+
+  // ”spinn”-indikator
+  let dots = 0;
+  const spin = setInterval(() => {
+    dots = (dots + 1) % 4;
+    const d = ".".repeat(dots);
+    out.textContent = `Genererar${d}`;
+  }, 600);
+
   try {
-    let attempt = 0;
-    let last = null;
+    const res = await fetch(`${BASE}/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idea, level, minutes })
+    });
 
-    while (attempt < 2) {
-      attempt++;
-      const { res, data, raw } = await oneTry();
-      last = { res, data, raw };
+    clearInterval(spin);
 
-      if (res.ok && data?.ok && data?.text) {
-        status("");
-        elOutput.textContent = data.text;
-        setBusy(false);
-        clearTimeout(to);
-        return;
-      }
-
-      // Retry på “tillfälliga” statusar en gång
-      if (RETRY_STATUS.has(res.status) && attempt === 1) {
-        append("\n(upplever belastning – försöker igen …)");
-        await sleep(1200);
-        continue;
-      }
-
-      // annat fel → visa orsak
-      const detail = data?.error || `HTTP ${res.status}`;
-      status(`(fel vid generering: ${detail})`);
-      setBusy(false);
-      clearTimeout(to);
-      return;
+    // Om backend mot förmodan råkar returnera HTML (fel), parsa inte som JSON direkt
+    const raw = await res.text();
+    let data = {};
+    try { data = JSON.parse(raw); } catch {
+      throw new Error(`HTTP ${res.status}; ej JSON`);
     }
 
-    // fallthrough
-    status("(kunde inte generera)");
+    if (!res.ok || !data.ok) {
+      const detail = data?.error ? `: ${data.error}` : "";
+      throw new Error(`Fel vid generering${detail}`);
+    }
+
+    const story = data.text || "";
+    if (!story) throw new Error("Tomt svar");
+
+    // fyll ut
+    out.textContent = story;
+
   } catch (err) {
-    const what = err?.name === "AbortError" ? "timeout" : (err?.message || err);
-    status(`(fel: ${what})`);
+    clearInterval(spin);
+    setStatus(`(fel vid generering)`);
+    console.error("generate error:", err);
+    appendStatus(String(err.message || err));
   } finally {
-    clearTimeout(to);
     setBusy(false);
   }
 }
 
-// ====== TTS (Play/Stop) ======
-async function doTTS() {
-  if (isBusy) return;
-  const text = (elOutput.textContent || "").trim();
-  if (!text) { status("(inget att läsa upp)"); return; }
+// ———————————————————————————————————————
+// TTS
 
-  setBusy(true);
-  status("Hämtar röst …");
+async function ttsPlay() {
+  if (busyTts) return;
+  const text = (out.textContent || "").trim();
+  if (!text) {
+    setStatus("(ingen text att läsa)");
+    return;
+  }
+  setAudioBusy(true);
+  appendStatus("Hämtar röst …");
+
+  const voice = selVoice.value || "alloy";
+  const tempo = Number(rngTempo.value || 1.0);
 
   try {
-    const res = await fetch(BASE + "/tts", {
+    const res = await fetch(`${BASE}/tts`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: (elVoice.value || "alloy"),
-        speed: Number(elTempo.value || 1.0)
-      })
+      body: JSON.stringify({ text, voice, rate: tempo })
     });
 
     if (!res.ok) {
-      const msg = await res.text().catch(()=>"");
-      status(`(TTS fel: ${msg || res.status})`);
-      return;
+      const raw = await res.text().catch(() => "");
+      throw new Error(`TTS fel ${res.status} – ${raw.slice(0, 160)}`);
     }
 
+    // TTS vägen är Audio/mp3-binary
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    elAudio.src = url;
-    await elAudio.play();
-    status("Klar.");
+    audioEl.src = url;
+    await audioEl.play().catch(() => { /* tyst */ });
+    appendStatus("Spelar upp…");
+    audioEl.onended = () => {
+      setAudioBusy(false);
+      appendStatus("Uppläsning klar.");
+      URL.revokeObjectURL(url);
+    };
   } catch (e) {
-    status(`(TTS undantag: ${e?.message || e})`);
-  } finally {
-    setBusy(false);
+    setAudioBusy(false);
+    appendStatus("TTS fel.");
+    console.error("tts error:", e);
   }
 }
 
-function stopAll() {
-  try { elAudio.pause(); } catch{}
-  try { elAudio.currentTime = 0; } catch{}
-  status("(stopp)");
+function ttsStop() {
+  try {
+    audioEl.pause();
+    audioEl.currentTime = 0;
+  } catch {}
+  setAudioBusy(false);
+  appendStatus("Stopp.");
 }
 
-// ====== events ======
-btnGen?.addEventListener("click", doGenerate);
-btnPlay?.addEventListener("click", doTTS);
-btnStop?.addEventListener("click", stopAll);
+// ———————————————————————————————————————
+// Bind knappar
+
+btnGen?.addEventListener("click", generate);
+btnPlay?.addEventListener("click", ttsPlay);
+btnStop?.addEventListener("click", ttsStop);
+
+// Init-status
+appendStatus(`BN front v1.3 (Cloudflare)`);
