@@ -1,6 +1,4 @@
-// functions/api/_utils.js — GC v1.1
-
-// CORS + standardheaders
+// functions/api/_utils.js  — GC v2.3
 export function corsHeaders(request, extra = {}) {
   const origin = request.headers.get("Origin") || "*";
   return {
@@ -10,25 +8,22 @@ export function corsHeaders(request, extra = {}) {
     "access-control-expose-headers": "content-type",
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
-    ...extra
+    ...extra,
   };
 }
 
-// Standardiserat JSON-svar
 export function jsonResponse(payload, status = 200, request, extra = {}) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: corsHeaders(request, extra)
+    headers: corsHeaders(request, extra),
   });
 }
 
-// 400
-export function badRequest(msg = "Bad request", request) {
+export function badRequest(msg = "bad request", request) {
   return jsonResponse({ ok: false, error: msg }, 400, request);
 }
 
-// 500
-export function serverError(err = "Server error", request) {
-  const detail = typeof err === "string" ? err : (err?.message || "error");
+export function serverError(err = "server error", request) {
+  const detail = (typeof err === "string") ? err : (err?.message || "error");
   return jsonResponse({ ok: false, error: detail }, 500, request);
 }
