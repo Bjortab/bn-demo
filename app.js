@@ -1,213 +1,186 @@
-// app.js — Golden Copy v1.3.2 (CF Pages)
-// För BN UI. Matchar index.html-id:n exakt.
-
+// app.js — GC v1.3.2 (Cloudflare)  — sekventiell TTS-uppspelning
 const $ = (q) => document.querySelector(q);
 
-// Bindningar till HTML-element (måste matcha index.html)
-const el = {
-  level:       $('#level'),
-  length:      $('#length'),
-  voice:       $('#voice'),
-  tempo:       $('#tempo'),
-  userIdea:    $('#userIdea'),
-  btnGenerate: $('#generateBtn'),
-  btnListen:   $('#listenBtn'),
-  btnStop:     $('#stopBtn'),
-  output:      $('#output'),
-  story:       $('#story'),
-  audio:       $('#audio'),
-  apiok:       $('#apiok') // valfritt, om du har en liten indikator
-};
+// UI
+const $level    = $("#level");
+const $length   = $("#length");
+const $voice    = $("#voice");
+const $tempo    = $("#tempo");
+const $idea     = $("#userIdea");
+const $out      = $("#output");
+const $story    = $("#story");
+const $btnGen   = $("#generateBtn");
+const $btnPlay  = $("#listenBtn");
+const $btnStop  = $("#stopBtn");
+const $audioElt = $("#audio");
 
-// Bas till Pages Functions
-const BASE = location.origin + '/api';
+// API bas (samma origin)
+const BASE = location.origin + "/api";
 
 let busyGen = false;
 let busyTts = false;
-let dotsTimer = null;
+let cancelled = false;
 
-// ────────── UI helpers ──────────
-function setBusyGenerating(b = false) {
-  busyGen = b;
-  el.btnGenerate.disabled = b || busyTts;
-  el.btnListen.disabled   = b || busyTts;
-  el.btnStop.disabled     = false;
+// ——— UI helpers ———
+function setBusy() {
+  $btnGen.disabled = busyGen || busyTts;
+  $btnPlay.disabled = busyGen || busyTts;
+  $btnStop.disabled = !busyGen && !busyTts;
 }
-function setBusyTts(b = false) {
-  busyTts = b;
-  el.btnGenerate.disabled = b || busyGen;
-  el.btnListen.disabled   = b || busyGen;
-  el.btnStop.disabled     = false;
+
+function setStatus(text = "") {
+  $out.textContent = text;
 }
-function setStatus(text) {
-  if (!el.output) return;
-  el.output.textContent = text;
-}
+
 function appendStatus(line) {
-  if (!el.output) return;
-  const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const existing = el.output.textContent || '';
-  el.output.textContent = `${existing}\n[${now}] ${line}`.trim();
-}
-function startDots(label="(genererar") {
-  stopDots();
-  let i = 0;
-  setStatus(`${label}…`);
-  dotsTimer = setInterval(() => {
-    i = (i + 1) % 6;
-    const dots = '.'.repeat(i);
-    setStatus(`${label}${dots.padEnd(5, ' ')}`);
-  }, 500);
-}
-function stopDots() {
-  if (dotsTimer) {
-    clearInterval(dotsTimer);
-    dotsTimer = null;
-  }
+  const now = new Date().toTimeString().slice(0, 8);
+  $out.textContent = `[${now}] ${line}\n` + $out.textContent;
 }
 
-function getForm() {
-  const minutes = Number(el.length?.value || 5);
-  const level   = Number(el.level?.value || 3);
-  const voice   = el.voice?.value || 'alloy';
-  const tempo   = Number(el.tempo?.value || 1.0);
-  const idea    = (el.userIdea?.value || '').trim();
-  return { minutes, level, voice, tempo, idea };
-}
-
-// ────────── API helpers ──────────
+// Hälso-check
 async function checkHealth() {
   try {
     const res = await fetch(`${BASE}/health`);
     const ok = res.ok;
-    if (el.apiok) el.apiok.textContent = ok ? 'ok' : 'fail';
-    appendStatus(`API: ${ok ? 'ok' : 'fel'}`);
+    if (ok) appendStatus("API: ok");
+    else appendStatus(`API: fel (status ${res.status})`);
   } catch {
-    if (el.apiok) el.apiok.textContent = 'fail';
-    appendStatus('API: fel (health)');
+    appendStatus("API: fel (health)");
   }
 }
+checkHealth();
 
-// Generera berättelse (hela i ett svar)
-async function doGenerate() {
-  const { idea, level, minutes } = getForm();
-  if (!idea) {
-    setStatus('(skriv en idé först)');
-    return;
-  }
+// ——— Prompt byggare (samma som tidigare) ———
+function invs(levelStr) {
+  const m = String(levelStr || "").match(/\d/);
+  return m ? Number(m[0]) : 3;
+}
 
+function buildUserPrompt() {
+  const lvl = invs($level.value);
+  const minutes = Number($length.value || 5);
+  const idea = ($idea.value || "").trim();
+
+  // Använd samma guide som du har i generate.js
+  return {
+    level: lvl,
+    minutes,
+    idea
+  };
+}
+
+// ——— Generera ———
+async function generate() {
+  cancelled = false;
+  busyGen = true; setBusy();
   try {
-    setBusyGenerating(true);
-    startDots('(genererar)');
-    appendStatus('Genererar…');
+    setStatus("Genererar…");
+    const payload = buildUserPrompt();
 
     const res = await fetch(`${BASE}/generate`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ idea, level, minutes })
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    stopDots();
-
-    if (!res.ok) {
-      const raw = await res.text().catch(()=>'');
-      appendStatus(`Fel vid generering: HTTP ${res.status}`);
-      setStatus(`(fel vid generering: ${res.status})`);
-      console.error('generate error', res.status, raw);
+    const text = await res.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch {
+      appendStatus("Fel vid generering: tomt eller icke-JSON svar");
       return;
     }
 
-    const data = await res.json().catch(()=>null);
-    if (!data || !data.ok || !data.text) {
-      appendStatus('(kunde inte generera – tomt svar)');
-      setStatus('(tomt)');
+    if (!res.ok || !data.ok) {
+      appendStatus(`Fel vid generering: ${data.provider || ""}${data.status ? "_" + data.status : ""} ${data.error || ""}`);
       return;
     }
 
-    // Visa berättelsen
-    if (el.story)  el.story.textContent  = data.text;
-    setStatus('(klart)');
+    const story = (data.story || "").trim();
+    if (!story) {
+      appendStatus("Tom berättelse");
+      return;
+    }
 
+    $story.textContent = story;
+    setStatus("(klart)\n\nHämtar röst…");
+    await doTTS(story);
   } catch (err) {
-    stopDots();
-    appendStatus(`Fel vid generering: ${err?.message || err}`);
-    setStatus('(fel vid generering)');
-    console.error(err);
+    appendStatus(`generate error: ${err?.message || err}`);
   } finally {
-    setBusyGenerating(false);
+    busyGen = false; setBusy();
   }
 }
 
-// Text → TTS
-async function doTts() {
-  const text = el.story?.textContent?.trim();
-  if (!text) {
-    setStatus('(ingen text att läsa upp)');
-    return;
-  }
-  const { voice, tempo } = getForm();
-
+// ——— TTS ———
+// Spela upp en lista av data-URLer i följd, i den takt användaren valt
+async function doTTS(text) {
+  busyTts = true; setBusy();
   try {
-    setBusyTts(true);
-    appendStatus('Hämtar röst…');
+    const tempo = Number($tempo.value || 1.0);
+    const voice = $voice.value || "alloy";
 
+    // 1) Hämta tts-delar
     const res = await fetch(`${BASE}/tts`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, voice })
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, voice }),
     });
 
-    if (!res.ok) {
-      const raw = await res.text().catch(()=> '');
-      appendStatus(`TTS-fel: HTTP ${res.status}`);
-      console.error('tts error', res.status, raw);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      appendStatus(`TTS-fel: ${data.error || res.status}`);
       return;
     }
 
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-
-    if (el.audio) {
-      el.audio.playbackRate = Math.max(0.8, Math.min(1.25, tempo || 1.0));
-      el.audio.src = url;
-      await el.audio.play().catch(()=>{});
+    const parts = Array.isArray(data.parts) ? data.parts : [];
+    if (!parts.length) {
+      appendStatus("TTS-fel: inga delar");
+      return;
     }
-    appendStatus('Spelar upp.');
 
+    appendStatus(`Spelar ${parts.length} del(ar)…`);
+
+    // 2) Spela upp sekventiellt
+    for (let i = 0; i < parts.length; i++) {
+      if (cancelled) break;
+      setStatus(`(spelar del ${i+1}/${parts.length})`);
+      await playOne(parts[i], tempo);
+    }
+    setStatus("(uppspelning klar)");
   } catch (err) {
     appendStatus(`TTS-fel: ${err?.message || err}`);
   } finally {
-    setBusyTts(false);
+    busyTts = false; setBusy();
   }
 }
 
-function stopAudio() {
-  try {
-    if (el.audio) {
-      el.audio.pause();
-      el.audio.currentTime = 0;
-      appendStatus('Stop.');
-    }
-  } catch {}
+function playOne(src, tempo = 1.0) {
+  return new Promise((resolve, reject) => {
+    try {
+      $audioElt.src = src;
+      $audioElt.playbackRate = tempo || 1.0;
+      $audioElt.onended = () => resolve();
+      $audioElt.onerror = () => reject(new Error("audio error"));
+      $audioElt.play().catch(reject);
+    } catch (e) { reject(e); }
+  });
 }
 
-// ────────── Events ──────────
-function bindEvents() {
-  if (el.btnGenerate) el.btnGenerate.addEventListener('click', doGenerate);
-  if (el.btnListen)   el.btnListen.addEventListener('click', doTts);
-  if (el.btnStop)     el.btnStop.addEventListener('click', stopAudio);
-}
+// ——— knappar ———
+$btnGen?.addEventListener("click", () => {
+  if (busyGen || busyTts) return;
+  generate();
+});
 
-// Init
-(function init() {
-  // snabb sanity: om något saknas, skriv tydligt i output
-  const missing = Object.entries(el).filter(([k,v]) => !v && k!=='apiok').map(([k])=>k);
-  if (missing.length) {
-    console.error('Saknas element i index.html:', missing);
-    setStatus(`(fel: saknas element: ${missing.join(', ')})`);
-  } else {
-    setStatus('(tomt)');
-  }
-  bindEvents();
-  checkHealth();
-})();
+$btnPlay?.addEventListener("click", () => {
+  const text = ($story.textContent || "").trim();
+  if (!text) return;
+  doTTS(text);
+});
+
+$btnStop?.addEventListener("click", () => {
+  cancelled = true;
+  try { $audioElt.pause(); } catch {}
+  busyGen = false; busyTts = false; setBusy();
+  setStatus("(stoppad)");
+});
