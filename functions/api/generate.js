@@ -1,224 +1,213 @@
-// functions/api/generate.js — GC v2.5 (L5 = Mistral + lexikon, L3 = OpenAI)
-import { corsHeaders, jsonResponse, badRequest, serverError } from "./_utils.js";
+// functions/api/generate.js  — Golden Copy v3 (Mistral only + retries)
 
-/* ---------- Anti-klyscha / städning ---------- */
-function sanitizeStory(s) {
-  if (!s) return "";
-  s = s.replace(/\s{2,}/g, " ").replace(/[•·]+/g, ".");
-  const sentences = s.split(/(?<=[.!?])\s+/);
-  const seen = new Set(), out = [];
-  for (const sent of sentences) {
-    const key = sent.toLowerCase().replace(/\W+/g, " ").trim().slice(0, 140);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(sent);
-  }
-  // Ta bort typiska klyschor vi sett återkomma
-  [
-    /doften av ceder/gi,
-    /kanel och rök/gi,
-    /elektricitet i luften/gi,
-    /\bplötsligt\b/gi,
-  ].forEach(rx => { s = s.replace(rx, ""); });
+import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
 
-  return out.join(" ").replace(/\s+\./g, ".").trim();
+const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_MODEL = 'mistral-large-latest';
+
+// Ungefärlig tokenbudget: ~400 tok/min för svenska funkar bra i praktiken
+function tokensForMinutes(mins = 5) {
+  const t = Math.max(1, Number(mins) || 5);
+  return Math.min(3500, Math.round(t * 400));
 }
 
-/* ---------- Lexikonladdning (robust) ---------- */
-async function loadLexicon(request) {
-  const base = new URL(request.url).origin;
-  const candidates = ["/lexicon.json", "/sv-lexicon.json", "/sv-lexicon.js"]; // sista är fallback (returns JSON)
-  for (const path of candidates) {
-    try {
-      const r = await fetch(base + path, { cf: { cacheTtl: 60 } });
-      if (!r.ok) continue;
-      const ct = r.headers.get("content-type") || "";
-      if (ct.includes("application/json") || ct.includes("text/json")) {
-        return await r.json();
-      }
-      // Om det är .js som exporterar JSON som text, försök parsa
-      const txt = await r.text();
-      try { return JSON.parse(txt); } catch {}
-    } catch {}
-  }
-  return null;
+// Små hjälpare
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function stripNoise(s = '') {
+  return String(s)
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[ \t]+(\n)/g, '$1')
+    .trim();
 }
 
-function pickSome(arr, n) {
-  if (!Array.isArray(arr) || !arr.length) return [];
-  const out = [];
-  const pool = [...arr];
-  while (out.length < n && pool.length) {
-    const i = Math.floor(Math.random() * pool.length);
-    out.push(pool.splice(i,1)[0]);
-  }
-  return out;
+function dedupeLines(text) {
+  const seen = new Set();
+  return text
+    .split(/\n+/)
+    .filter((ln) => {
+      const key = ln.toLowerCase().trim();
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join('\n');
 }
 
-/* ---------- Prompter ---------- */
-function systemFor(level) {
-  if (level === 5) {
-    // Mer rak, vuxen ton. Undviker klyschor & upprepningar. Fullständiga meningar.
-    return `
-Du skriver på flytande SVENSKA. Ton: vuxen, passionerad, konkret och direkt.
-Använd naturliga dialoger. Undvik klyschor, standardspråk och upprepningar.
-Variera meningslängd och rytm. För handlingen framåt varje stycke.
-Avrunda berättelsen tydligt – inga avklippta meningar.
-`;
-  }
-  // L3 – sensuell och varm, men inte explicit
-  return `
-Du skriver på flytande SVENSKA. Ton: sensuell, varm, närvarande – utan grovt språk.
-Variera meningslängd, undvik upprepningar och klyschor. Avrunda berättelsen tydligt.
-`;
-}
-
-function buildUserPrompt(idea, level, minutes, lex) {
-  const label = level === 5 ? "explicit" : "sensuell";
-  const guideCommon = `
-Skriv en sammanhängande berättelse på svenska i jag-form eller nära tredje person.
-Fokusera på närvaro, blickar, beröring, rörelse och dialog. Undvik "klyschfraser".
-Variera tempo och intensitet mot en tydlig avrundning.
-`;
-
-  // För nivå 5: injicera valda lexikonfraser för variation i språk och ton
-  let lexNote = "";
-  if (level === 5 && lex && lex.level5) {
-    const buckets = [
-      ...(lex.level5.actions || []),
-      ...(lex.level5.sensations || []),
-      ...(lex.level5.dialogue || []),
-      ...(lex.level5.verbs || []),
-      ...(lex.level5.nouns || []),
-      ...(lex.level5.phrases || []),
-    ];
-    const picks = pickSome(buckets, 6);
-    if (picks.length) {
-      lexNote = `\nAnvänd naturligt (spritt och varsamt) några av dessa uttryck i berättelsen där de passar: ${picks.join(" • ")}\n`;
-    }
-  }
-
+function buildAntiClicheBlock() {
+  // Undvik slitna uttryck
   return [
-    `Mål-längd: ~${minutes} min högläsning.`,
-    `Nivå: ${label}.`,
-    `Idé: ${idea || "egen idé; mjuk start, stegring, avrundning."}`,
-    guideCommon.trim(),
-    lexNote.trim()
-  ].filter(Boolean).join("\n");
+    'Undvik klyschor som "doft av ceder och rök", "elektriskt pirr i luften", "världen försvinner", "som i slow motion".',
+    'Undvik upprepade fyllnadsfraser och mekaniska omtagningar.',
+    'Använd korrekt svensk grammatik och naturlig ordföljd.',
+  ].join(' ');
 }
 
-function withTimeout(ms = 45000) {
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
-  return { signal: ac.signal, clear: () => clearTimeout(t) };
+function pickPhrases(lex, level) {
+  if (!lex) return [];
+  if (Number(level) >= 5 && Array.isArray(lex.L5_explicit)) return lex.L5_explicit;
+  if (Array.isArray(lex.L3_sensuell)) return lex.L3_sensuell;
+  // fallback om nycklarna heter lite annorlunda
+  return [].concat(lex.explicit || [], lex.sensuell || []);
 }
 
-/* ---------- Handlers ---------- */
-export async function onRequestOptions({ request }) {
-  return new Response(null, { status: 204, headers: corsHeaders(request) });
+async function loadLexicon(request) {
+  try {
+    // lexicon.json ligger i repo-roten
+    const origin = new URL(request.url).origin;
+    const res = await fetch(`${origin}/lexicon.json`, { headers: { accept: 'application/json' } });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function systemPrompt(level, minutes, phrases = []) {
+  const anti = buildAntiClicheBlock();
+  const minutesTxt = `Mål-längd: cirka ${minutes} min uppläsning.`;
+
+  if (Number(level) >= 5) {
+    // Explicit nivå
+    const bias = phrases.length ? `Inkorporera naturligt några av dessa uttryck när det passar: ${phrases.slice(0, 30).join(', ')}.` : '';
+    return stripNoise(
+      [
+        'Du är en svensk erotikförfattare som skriver explicita, vuxna berättelser i jag-form.',
+        'Håll ett naturligt flyt och rytm; undvik listor, punktade uppräkningar och upprepningar.',
+        'Fokusera på konkreta kroppsliga känslor, dialog och växelvis tempo – bygg upp och släpp loss.',
+        anti,
+        minutesTxt,
+        bias,
+      ].join(' ')
+    );
+  }
+
+  // Sensuell nivå
+  const bias = phrases.length ? `Du kan subtilt använda uttryck som: ${phrases.slice(0, 30).join(', ')}.` : '';
+  return stripNoise(
+    [
+      'Du är en svensk författare som skriver sensuella, romantiska berättelser i jag-form.',
+      'Tonen är intim och varm, inte rå. Undvik grova könsord men tillåt laddade detaljer när det känns äkta.',
+      'Variera meningarnas längd och använd dialog för närvaro. Inga upprepningar.',
+      anti,
+      minutesTxt,
+      bias,
+    ].join(' ')
+  );
+}
+
+function userPrompt(idea, level) {
+  const lead =
+    Number(level) >= 5
+      ? 'Skriv en sammanhängande explicit berättelse på svenska, i jag-form, utan kapitelrubriker:'
+      : 'Skriv en sammanhängande sensuell berättelse på svenska, i jag-form, utan kapitelrubriker:';
+  return `${lead}\n\nIdé: ${idea}`;
+}
+
+async function callMistralWithRetry({ env, sys, usr, max_tokens }, attempts = 5) {
+  if (!env.MISTRAL_API_KEY) throw new Error('saknar MISTRAL_API_KEY');
+
+  // Exponentiellt backoff: 0.6s, 1.0s, 1.6s, 2.4s, 3.2s
+  const backoff = [600, 1000, 1600, 2400, 3200];
+
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(MISTRAL_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.MISTRAL_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MISTRAL_MODEL,
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: usr },
+        ],
+        temperature: Number(sys.includes('explicit')) ? 0.95 : 0.85,
+        top_p: 0.95,
+        max_tokens,
+        // inga "presence_penalty" etc — Mistral stöder inte dem i denna endpoint
+        safe_mode: false,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      return stripNoise(dedupeLines(text));
+    }
+
+    // Kapacitets-/tillfälligt fel → backoff och försök igen
+    if (res.status === 429 || res.status === 503) {
+      if (i < attempts - 1) {
+        await sleep(backoff[i] || 1500);
+        continue;
+      }
+      // Efter sista försöket: skicka informativt fel
+      const hint =
+        'Mistral är tillfälligt fullt för den här nivån. Vänta en liten stund och tryck Generera igen. (Ingen fallback används för att bevara nivån.)';
+      return { __capacityError: true, status: res.status, hint };
+    }
+
+    // Andra fel → försök inte fler gånger
+    const detail = await res.text().catch(() => '');
+    throw new Error(`mistral_${res.status}: ${detail.slice(0, 300)}`);
+  }
 }
 
 export async function onRequestPost({ request, env }) {
   try {
-    const body = await request.json().catch(()=> ({}));
-    const idea = (body?.idea || "").toString().trim();
-    const lvl  = Number(body?.level) || 3;
-    const mins = Number(body?.minutes) || 5;
-    if (mins < 3 || mins > 15) return badRequest("ogiltig längd (3–15)", request);
+    const { idea, level = 3, minutes = 5 } = await request.json().catch(() => ({}));
+    if (!idea || !String(idea).trim()) return badRequest('saknar idé', request);
 
-    // Tokenbudget (~400 tok/min) men kapa för att undvika timeouts
-    const maxTokens = Math.min(1600, Math.max(700, Math.floor(mins * 400)));
+    const max_tokens = tokensForMinutes(minutes);
 
-    // Ladda ev. lexikon (för nivå 5)
-    let lex = null;
-    if (lvl === 5) {
-      lex = await loadLexicon(request).catch(()=> null);
-    }
+    // Lexikon
+    const lex = await loadLexicon(request);
+    const phrases = pickPhrases(lex, level);
 
-    const sys  = systemFor(lvl);
-    const user = buildUserPrompt(idea, lvl, mins, lex);
+    // Prompter
+    const sys = systemPrompt(level, minutes, phrases);
+    const usr = userPrompt(idea, level);
 
-    const useMistralFirst = (lvl === 5);
-    const modelOpenAI = "gpt-4o-mini";
-    const modelMistral = "mistral-large-latest";
+    // Mistral only + retry
+    const out = await callMistralWithRetry({ env, sys, usr, max_tokens }, 5);
 
-    const oaParams = {
-      model: modelOpenAI,
-      input: [{ role: "system", content: sys }, { role: "user", content: user }],
-      max_output_tokens: maxTokens,
-      temperature: 0.6,
-      top_p: 0.9
-    };
-
-    const miParams = {
-      model: modelMistral,
-      input: [{ role: "system", content: sys }, { role: "user", content: user }],
-      max_output_tokens: maxTokens,
-      temperature: 0.8,   // lite friare för nivå 5
-      top_p: 0.92
-    };
-
-    async function callOpenAI(signal) {
-      const r = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
+    if (out && out.__capacityError) {
+      return jsonResponse(
+        {
+          ok: false,
+          provider: 'mistral',
+          code: 'capacity',
+          status: out.status,
+          message: out.hint,
         },
-        body: JSON.stringify(oaParams),
-        signal
-      });
-      if (!r.ok) throw new Error(`openai_${r.status}`);
-      const j = await r.json();
-      return j?.output?.[0]?.content?.[0]?.text || "";
+        429,
+        request
+      );
     }
 
-    async function callMistral(signal) {
-      const r = await fetch("https://api.mistral.ai/v1/responses", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(miParams),
-        signal
-      });
-      if (!r.ok) throw new Error(`mistral_${r.status}`);
-      const j = await r.json();
-      return j?.output?.[0]?.content?.[0]?.text || "";
+    if (!out || out.length < 20) {
+      return serverError('tomt svar från Mistral', request);
     }
 
-    const { signal, clear } = withTimeout(45000);
-    let provider = "", raw = "";
-
-    try {
-      if (useMistralFirst) {
-        provider = "mistral";
-        raw = await callMistral(signal);
-      } else {
-        provider = "openai";
-        raw = await callOpenAI(signal);
-      }
-    } catch (firstErr) {
-      // Fallback
-      try {
-        if (useMistralFirst) {
-          provider = "openai(fallback)";
-          raw = await callOpenAI(signal);
-        } else {
-          provider = "mistral(fallback)";
-          raw = await callMistral(signal);
-        }
-      } catch (secondErr) {
-        clear();
-        return serverError(secondErr?.message || "LM fel", request);
-      }
-    }
-    clear();
-
-    const story = sanitizeStory(raw);
-    return jsonResponse({ ok: true, provider, model: (provider.startsWith("mistral") ? modelMistral : modelOpenAI), story }, 200, request);
+    return jsonResponse(
+      {
+        ok: true,
+        provider: 'mistral',
+        model: MISTRAL_MODEL,
+        text: out,
+      },
+      200,
+      request
+    );
   } catch (err) {
     return serverError(err, request);
   }
+}
+
+// CORS preflight
+export function onRequestOptions({ request }) {
+  return new Response(null, { headers: corsHeaders(request) });
 }
