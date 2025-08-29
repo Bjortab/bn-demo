@@ -1,5 +1,5 @@
 // functions/api/generate-part.js
-import { corsHeaders, jsonResponse, serverError } from '../_utils.js';
+import { corsHeaders, jsonResponse, serverError } from './_utils.js';
 
 export async function onRequestPost({ request, env }) {
   try {
