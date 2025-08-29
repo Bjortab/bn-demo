@@ -1,149 +1,170 @@
-// functions/api/generate.js  (GC v2.1 – 2-nivåsläge, 3=>OpenAI, 5=>Mistral)
+// functions/api/generate.js — GC v2.3 (Mistral ⇄ OpenAI, anti-klyscha, anti-upprepning)
 import { corsHeaders, jsonResponse, badRequest, serverError } from "./_utils.js";
 
-// --- konfig ---
-const OPENAI_URL   = "https://api.openai.com/v1/responses";
-const MISTRAL_URL  = "https://api.mistral.ai/v1/chat/completions";
+/* ---------- Sanering mot upprepningar/klyschor ---------- */
+function sanitizeStory(s) {
+  if (!s) return "";
+  // städa whitespace och kulor
+  s = s.replace(/\s{2,}/g, ' ').replace(/[•·]+/g, '.');
 
-// Säkra / rimliga default-värden
-const DEFAULTS = {
-  minutes: 5,
-  maxTokensOpenAI: 1600,     // håll detta <= 2000 på Pages
-  maxTokensMistral: 1600
-};
-
-// Hjälpfunktion: bygg svensk systemprompt från lexikon + val
-function buildSystemPrompt(level) {
-  // nivå 3 = sensuell (mjuk, romantisk), nivå 5 = explicit
-  if (level >= 5) {
-    return "Skriv en mycket erotisk berättelse på svenska i första person. Var explicit, men håll språket naturligt och utan klyschor. Undvik upprepningar. Använd modern svensk erotik-ton. Inga minderåriga eller våld.";
+  // ta bort upprepade meningar (enkel fuzzy-nyckel)
+  const sentences = s.split(/(?<=[.!?])\s+/);
+  const seen = new Set();
+  const filtered = [];
+  for (const sent of sentences) {
+    const key = sent.toLowerCase().replace(/\W+/g, ' ').trim().slice(0, 120);
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    filtered.push(sent);
   }
-  return "Skriv en sensuell berättelse på svenska i första person. Naturligt språk, romantiskt och mjukt tempo. Undvik klyschor och upprepningar. Inga minderåriga eller våld.";
+  s = filtered.join(' ');
+
+  // ersätt bort klyschor
+  const ban = [
+    /doften av ceder/gi,
+    /kanel och rök/gi,
+    /elektricitet i luften/gi,
+    /över [a-zåäö]+ kroppen/gi,
+    /\bplötsligt\b/gi
+  ];
+  ban.forEach(rx => { s = s.replace(rx, ''); });
+
+  return s.replace(/\s+\./g, '.').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// Hjälpfunktion: bygg user-prompt
-function buildUserPrompt({ idea, minutes, level }) {
-  const mållängd = Math.round((minutes || DEFAULTS.minutes) * 380); // ~380 ord/min lyssning
+/* ---------- Promptbyggare ---------- */
+function buildUserPrompt(idea, level, minutes) {
+  const guide = `
+Skriv en sammanhängande berättelse på svenska i jag-form eller nära tredje person.
+Stil: sensuell, varm, konkret, inga klyschor, *inga* upprepningar. För handlingen framåt i varje stycke.
+Variera meningslängd, använd sinnesdetaljer (ljud, rörelse, beröring) hellre än abstrakta ord.
+Avsluta alltid stycket med en fullständig mening (ingen halv mening).
+`;
+
   return [
-    `Idé: ${idea || "(ingen idé – improvisera sensuellt)"} `,
-    `Mållängd: cirka ${mållängd} ord.`,
-    `Nivå: ${level >= 5 ? "explicit" : "sensuell"}.`,
-    "Håll flyt, naturlig svenska, undvik upprepningar och översättningsklyschor.",
-    "Avsluta med en fullständig, tillfredsställande slutkänsla – ingen abrupt avklippning."
+    `Mål-längd: ~${minutes} min högläsning.`,
+    `Nivå: ${level === 5 ? "explicit" : "sensuell"}.`,
+    `Idé: ${idea || "egen idé; sensuell scen med mjuk start, stegring, avrundning."}`,
+    guide
   ].join("\n");
 }
 
-// --------- API anrop ----------
-async function callOpenAI(env, sys, user, max_tokens, timeoutMs = 45000) {
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-  try {
-    const res = await fetch(OPENAI_URL, {
-      method: "POST",
-      signal: ctrl.signal,
-      headers: {
-        "authorization": `Bearer ${env.OPENAI_API_KEY}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        input: [
-          { role: "system", content: sys },
-          { role: "user",   content: user }
-        ],
-        // OpenAI Responses API tar INTE emot presence_penalty/frequency_penalty här
-        max_output_tokens: max_tokens
-      })
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`openai_${res.status}: ${txt}`);
-    }
-    const data = await res.json();
-    // plocka ut första text-svaret
-    let story = "";
-    if (data.output && data.output.length > 0) {
-      const first = data.output[0];
-      if (first.content && first.content.length > 0) {
-        story = first.content[0].text || "";
-      }
-    }
-    return story.trim();
-  } finally {
-    clearTimeout(to);
-  }
+const SYSTEM_SV = `
+Du skriver på KLANDERFRI SVENSKA.
+Stil: sensuell, varm, naturlig dialog, inga klyschor, ingen upprepning.
+Undvik uttryck: "doften av ceder", "kanel och rök", "elektricitet i luften", "över hela kroppen", "plötsligt".
+Variera meningsstarter, blanda korta och längre meningar, för handlingen framåt varje stycke.
+Använd konkreta sinnesdetaljer (ljud, rörelse, beröring). Avsluta alltid en scen med en full mening.
+`;
+
+/* ---------- Timeout helper ---------- */
+function withTimeout(ms = 45000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(new Error("timeout")), ms);
+  return { signal: ac.signal, clear: () => clearTimeout(t) };
 }
 
-async function callMistral(env, sys, user, max_tokens, timeoutMs = 45000) {
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort("timeout"), timeoutMs);
-  try {
-    const res = await fetch(MISTRAL_URL, {
-      method: "POST",
-      signal: ctrl.signal,
-      headers: {
-        "authorization": `Bearer ${env.MISTRAL_API_KEY}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "open-mistral-7b", // stabil & billig; byt till större vid behov
-        messages: [
-          { role: "system", content: sys },
-          { role: "user",   content: user }
-        ],
-        max_tokens,
-        temperature: 0.9,
-        top_p: 0.9
-      })
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`mistral_${res.status}: ${txt}`);
-    }
-    const data = await res.json();
-    const story = data?.choices?.[0]?.message?.content || "";
-    return (story || "").trim();
-  } finally {
-    clearTimeout(to);
-  }
+export async function onRequestOptions({ request }) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
-// --------- Cloudflare Pages Function handler -----------
 export async function onRequestPost({ request, env }) {
   try {
-    const { idea, level, minutes } = await request.json();
-
-    // enkel validering
+    const { idea, level, minutes } = await request.json().catch(() => ({}));
     const lvl = Number(level) || 3;
-    const mins = Number(minutes) || DEFAULTS.minutes;
-    const sys = buildSystemPrompt(lvl);
-    const user = buildUserPrompt({ idea, minutes: mins, level: lvl });
+    const mins = Number(minutes) || 5;
+    if (mins < 3 || mins > 15) return badRequest("ogiltig längd (3–15)", request);
 
-    // routing: 3 => OpenAI, 5 => Mistral (allt annat faller till OpenAI för säkerhets skull)
-    let story = "";
-    if (lvl >= 5) {
-      story = await callMistral(env, sys, user, DEFAULTS.maxTokensMistral);
-      // fallback om Mistral felar / rate-limitas
-      if (!story) {
-        story = await callOpenAI(env, sys, user, DEFAULTS.maxTokensOpenAI);
-      }
-    } else {
-      story = await callOpenAI(env, sys, user, DEFAULTS.maxTokensOpenAI);
+    // tokens ~400/min är bra för modern LLM utan att timea ut
+    const tokensPerPart = Math.min(1600, Math.max(600, Math.floor(mins * 400)));
+
+    const userPrompt = buildUserPrompt(idea, lvl, mins);
+
+    const useMistral = (lvl === 5); // 5 => Mistral, 3 => OpenAI
+    const modelOpenAI  = "gpt-4o-mini";
+    const modelMistral = "mistral-large-latest";
+
+    const oaParams = {
+      model: modelOpenAI,
+      input: [
+        { role: "system", content: SYSTEM_SV },
+        { role: "user",   content: userPrompt }
+      ],
+      max_output_tokens: tokensPerPart,
+      temperature: 0.6,
+      top_p: 0.9
+    };
+
+    const miParams = {
+      model: modelMistral,
+      input: [
+        { role: "system", content: SYSTEM_SV },
+        { role: "user",   content: userPrompt }
+      ],
+      max_output_tokens: tokensPerPart,
+      temperature: 0.65,
+      top_p: 0.9
+    };
+
+    const { signal, clear } = withTimeout(45000);
+    let rawText = "";
+    let provider = "";
+
+    async function callOpenAI() {
+      provider = "openai";
+      const r = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(oaParams),
+        signal
+      });
+      if (!r.ok) throw new Error(`openai_${r.status}`);
+      const data = await r.json();
+      return data?.output?.[0]?.content?.[0]?.text || "";
     }
 
-    if (!story) return badRequest("tomt svar", request);
+    async function callMistral() {
+      provider = "mistral";
+      const r = await fetch("https://api.mistral.ai/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(miParams),
+        signal
+      });
+      if (!r.ok) throw new Error(`mistral_${r.status}`);
+      const data = await r.json();
+      return data?.output?.[0]?.content?.[0]?.text || "";
+    }
+
+    try {
+      rawText = useMistral ? await callMistral() : await callOpenAI();
+    } catch (e) {
+      // Fallback mellan providers vid 429/500/timeout
+      try {
+        rawText = useMistral ? await callOpenAI() : await callMistral();
+        provider += "(fallback)";
+      } catch (e2) {
+        clear();
+        return serverError(e2?.message || "LM fel", request);
+      }
+    }
+    clear();
+
+    const story = sanitizeStory(rawText);
 
     return jsonResponse(
-      { ok: true, story, provider: (lvl >= 5 ? "mistral→(ev. fallback openai)" : "openai") },
+      { ok: true, provider, model: useMistral ? modelMistral : modelOpenAI, story },
       200,
       request
     );
   } catch (err) {
     return serverError(err, request);
   }
-}
-
-// Hantera CORS preflight
-export async function onRequestOptions({ request }) {
-  return new Response(null, { headers: corsHeaders(request) });
 }
