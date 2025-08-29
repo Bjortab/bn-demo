@@ -1,4 +1,4 @@
-// functions/api/tts.js — GC v2.3 (OpenAI TTS, enkel längdskydd)
+// functions/api/tts.js — GC v2.4 (robust TTS + rätt content-type)
 import { corsHeaders, jsonResponse, serverError, badRequest } from "./_utils.js";
 
 export async function onRequestOptions({ request }) {
@@ -7,10 +7,10 @@ export async function onRequestOptions({ request }) {
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { text, voice } = await request.json();
+    const { text, voice } = await request.json().catch(()=> ({}));
     if (!text || !text.trim()) return badRequest("Ingen text till TTS", request);
 
-    // skydda mot superlånga inputs (OpenAI kan 500:a på allt för långt)
+    // Skydda mot för långa inputs (OpenAI 500:ar hellre än svarar snyggt)
     const trimmed = text.slice(0, 5500);
     const chosenVoice = voice || "alloy";
 
@@ -28,17 +28,22 @@ export async function onRequestPost({ request, env }) {
       })
     });
 
-    if (!r.ok) {
-      const errTxt = await r.text().catch(()=>"");
-      return serverError(`OpenAI TTS-fel: ${r.status} ${errTxt}`, request);
+    // Om OpenAI svarar med JSON istället för ljud (t.ex. fel), exponera felet tydligt
+    const ct = r.headers.get("content-type") || "";
+    if (!r.ok || !ct.startsWith("audio/")) {
+      const errText = await r.text().catch(()=> "");
+      return serverError(`OpenAI TTS-fel: ${r.status} ${errText}`, request);
     }
 
     const buf = await r.arrayBuffer();
     return new Response(buf, {
       status: 200,
       headers: {
-        ...corsHeaders(request, { "content-type": "audio/mpeg" }),
+        // Viktigt: *inte* JSON här – sätt ren audio + CORS
+        "content-type": "audio/mpeg",
+        ...corsHeaders(request, { "cache-control": "no-store" }),
         "content-disposition": "inline; filename=voice.mp3",
+        "accept-ranges": "bytes"
       }
     });
   } catch (err) {
