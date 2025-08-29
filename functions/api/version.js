@@ -1,11 +1,7 @@
-// functions/api/version.js
+// functions/api/version.js — GC v2.3
 import { jsonResponse, corsHeaders } from "./_utils.js";
 
 export async function onRequest({ request, env }) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders(request) });
-  }
-
   const info = {
     ok: true,
     ts: Date.now(),
@@ -13,5 +9,5 @@ export async function onRequest({ request, env }) {
     branch: env?.CF_PAGES_BRANCH || null,
     project: env?.CF_PAGES_PROJECT_NAME || null,
   };
-  return json(info, 200, corsHeaders(request));
+  return jsonResponse(info, 200, request, corsHeaders(request));
 }
