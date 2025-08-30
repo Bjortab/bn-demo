@@ -1,110 +1,79 @@
-// public/app.js — BN front GC v1.4
-(() => {
-  const $ = (q) => document.querySelector(q);
+const generateBtn = document.getElementById("generateBtn");
+const listenBtn = document.getElementById("listenBtn");
+const storyOutput = document.getElementById("storyOutput");
 
-  const out = $('#output');
-  const storyEl = $('#story');
-  const btnGen = $('#generateBtn');
-  const btnPlay = $('#listenBtn');
-  const btnStop = $('#stopBtn');
-  const audioEl = $('#audio');
+const statusMsg = document.getElementById("statusMsg");
+const statusProvider = document.getElementById("statusProvider");
+const statusModel = document.getElementById("statusModel");
 
-  const appendStatus = (t) => {
-    const ts = new Date().toLocaleTimeString();
-    out.textContent += `\n[${ts}] ${t}`;
-    out.scrollTop = out.scrollHeight;
-  };
+let currentStory = "";
+let currentAudio = null;
 
-  async function safePlayMp3Buffer(buf, attempt = 1) {
-    return new Promise((resolve, reject) => {
-      const blob = new Blob([buf], { type: 'audio/mpeg' });
-      const url = URL.createObjectURL(blob);
-      try { audioEl.pause(); } catch {}
-      audioEl.removeAttribute('src');
-      audioEl.setAttribute('playsinline', '');
-      audioEl.preload = 'auto';
-      audioEl.src = url + `?t=${Date.now()}`;
+function setStatus(message, provider = "-", model = "-") {
+  statusMsg.textContent = message;
+  statusProvider.textContent = provider;
+  statusModel.textContent = model;
+}
 
-      let cleaned = false;
-      const cleanup = () => {
-        if (cleaned) return;
-        cleaned = true;
-        try { URL.revokeObjectURL(url); } catch {}
-        audioEl.onerror = null;
-        audioEl.oncanplaythrough = null;
-      };
+generateBtn.addEventListener("click", async () => {
+  const level = document.getElementById("level").value;
+  const length = document.getElementById("length").value;
 
-      audioEl.onerror = () => {
-        cleanup();
-        if (attempt < 2) {
-          appendStatus('TTS: laddning misslyckades – försöker igen…');
-          setTimeout(() => safePlayMp3Buffer(buf, attempt + 1).then(resolve).catch(reject), 400);
-        } else reject(new Error('Load failed'));
-      };
+  storyOutput.value = "";
+  setStatus("Genererar...", "-", "-");
 
-      audioEl.oncanplaythrough = () => {
-        setTimeout(() => {
-          audioEl.play()
-            .then(resolve)
-            .catch((err) => {
-              if (attempt < 2) {
-                appendStatus('TTS: autoplay misslyckades – försöker igen…');
-                setTimeout(() => safePlayMp3Buffer(buf, attempt + 1).then(resolve).catch(reject), 400);
-              } else reject(err);
-            });
-        }, 60);
-      };
-
-      audioEl.onended = () => cleanup();
-      try { audioEl.load(); } catch {}
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level, length })
     });
+
+    if (!res.ok) throw new Error("Fel vid API-anrop");
+
+    const data = await res.json();
+
+    if (data.story) {
+      currentStory = data.story;
+      storyOutput.value = data.story;
+      setStatus("Generering klar", data.provider || "-", data.model || "-");
+    } else {
+      setStatus("Ingen berättelse genererad", data.provider || "-", data.model || "-");
+    }
+  } catch (err) {
+    console.error("Fel vid generering:", err);
+    setStatus("Fel: " + err.message);
+  }
+});
+
+listenBtn.addEventListener("click", async () => {
+  if (!currentStory) {
+    alert("Generera en berättelse först!");
+    return;
   }
 
-  async function fetchTTS(text, voice, level) {
-    appendStatus('Väntar röst…');
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text, voice, level })
+  setStatus("Hämtar röst...", statusProvider.textContent, statusModel.textContent);
+
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: currentStory })
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`TTS HTTP ${res.status}: ${body || '—'}`);
-    }
-    const buf = await res.arrayBuffer();
-    await safePlayMp3Buffer(buf);
-    appendStatus('Spelar röst ✅');
+
+    if (!res.ok) throw new Error("Fel vid TTS-anrop");
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    if (currentAudio) currentAudio.pause();
+
+    currentAudio = new Audio(url);
+    currentAudio.play();
+
+    setStatus("Spelar upp...", statusProvider.textContent, statusModel.textContent);
+  } catch (err) {
+    console.error("Fel vid uppläsning:", err);
+    setStatus("Fel vid uppläsning");
   }
-
-  btnGen.addEventListener('click', async () => {
-    out.textContent = '';
-    storyEl.textContent = '';
-    appendStatus('Genererar…');
-
-    const idea = $('#idea').value.trim();
-    const level = Number($('#level').value);
-    const minutes = Number($('#minutes').value || 5);
-    const voice = $('#voice').value || 'alloy';
-
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ idea, level, minutes })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.detail || data.error || 'Fel vid generering');
-      storyEl.textContent = data.text;
-      appendStatus('(text klar)');
-      await fetchTTS(data.text, voice, level);
-    } catch (err) {
-      appendStatus(`Fel: ${err.message || err}`);
-      if (/429|openrouter_5\d\d/.test(String(err))) {
-        appendStatus('Servern är upptagen – försök igen om någon minut.');
-      }
-    }
-  });
-
-  btnPlay.addEventListener('click', () => { try { audioEl.play(); } catch {} });
-  btnStop.addEventListener('click', () => { try { audioEl.pause(); audioEl.currentTime = 0; } catch {} });
-})();
+});
