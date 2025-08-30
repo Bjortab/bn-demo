@@ -1,70 +1,49 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Blush Narratives</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlushNarratives</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<main class="wrap">
-  <header class="topbar">
-    <h1>Blush Narratives</h1>
-    <small>API: <span id="apiStatus">ok?</span></small>
-  </header>
+  <div class="app-container">
+    <h1>💋 BlushNarratives</h1>
 
-  <section class="row">
-    <div class="panel">
-      <label>Nivå</label>
+    <div class="controls">
+      <label for="level">Nivå:</label>
       <select id="level">
-        <option value="1">1 (romantisk)</option>
-        <option value="2">2 (sensuell, antydande)</option>
-        <option value="3" selected>3 (sensuell+)</option>
-        <option value="4">4 (het, ej grovt)</option>
-        <option value="5">5 (explicit)</option>
+        <option value="1">1 – Romantisk</option>
+        <option value="2">2 – Sensuell</option>
+        <option value="3">3 – Mjuk vuxenprosa</option>
+        <option value="4">4 – Het (ej grov)</option>
+        <option value="5">5 – Explicit</option>
       </select>
-    </div>
 
-    <div class="panel">
-      <label>Längd</label>
-      <select id="minutes">
+      <label for="length">Längd:</label>
+      <select id="length">
+        <option value="1">1 min</option>
+        <option value="2">2 min</option>
         <option value="5">5 min</option>
         <option value="10">10 min</option>
         <option value="15">15 min</option>
       </select>
+
+      <button id="generateBtn">Generera berättelse</button>
+      <button id="listenBtn">▶️ Lyssna</button>
     </div>
 
-    <div class="panel">
-      <label>Röst</label>
-      <select id="voice">
-        <option value="alloy">Alloy (neutral)</option>
-        <option value="verse">Verse (kvinna)</option>
-        <option value="coral">Coral (man)</option>
-      </select>
-    </div>
-  </section>
+    <textarea id="storyOutput" placeholder="Din berättelse kommer här..." readonly></textarea>
 
-  <section class="panel">
-    <label for="idea">Din idé</label>
-    <textarea id="idea" placeholder="Ex: Första dejt, långsam stegring..."></textarea>
-
-    <div class="actions">
-      <button id="generateBtn" class="primary">Generera</button>
-      <button id="listenBtn" class="secondary">Lyssna</button>
-      <button id="stopBtn" class="ghost">Stop</button>
-      <button id="bcBtn" class="ghost" title="BlushConnect">BlushConnect</button>
+    <!-- 🔹 Statusruta för debug -->
+    <div id="statusBox" class="status-box">
+      <strong>Status:</strong> <span id="statusMsg">Ingen generering än</span><br />
+      <strong>Provider:</strong> <span id="statusProvider">-</span><br />
+      <strong>Modell:</strong> <span id="statusModel">-</span>
     </div>
 
-    <article id="story" class="story" aria-live="polite"></article>
-    <audio id="audio" preload="none" playsinline></audio>
-    <pre id="output" class="output">(tomt)</pre>
-  </section>
+  </div>
 
-  <footer class="foot">
-    <small>BN front GC v1.4</small>
-  </footer>
-</main>
-
-<script defer src="/app.js"></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
