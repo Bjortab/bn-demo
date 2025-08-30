@@ -1,134 +1,101 @@
-// functions/api/tts.js — GC (Azure sv-SE först + OpenAI fallback + uttalsfix)
+// functions/api/tts.js — GC v2
 import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
 
-export async function onRequestOptions({ request }) {
-  return new Response(null, { headers: corsHeaders(request) });
-}
-
-function clamp(x, a, b) { return Math.min(b, Math.max(a, x)); }
-
-// mappa tempo [0.8..1.25] till prosody rate
-function tempoToRate(tempo) {
-  const t = clamp(Number(tempo) || 1.0, 0.8, 1.25);
-  if (t < 0.95) return 'slow';
-  if (t > 1.15) return 'x-fast';
-  if (t > 1.05) return 'fast';
-  return 'medium';
-}
-
-// Uttalsfix via SSML/IPA (Azure stöder <phoneme>)
-function ssmlSafe(text) {
-  // markera några problemord
-  const replacements = [
-    // [regex, ssml]
-    [/\bkuk\b/gi, `<phoneme alphabet="ipa" ph="kʉːk">kuk</phoneme>`],
-    [/\bvagina\b/gi, `<phoneme alphabet="ipa" ph="vaˈgiːna">vagina</phoneme>`],
-    [/\bklitoris\b/gi, `<phoneme alphabet="ipa" ph="ˈkliːtorɪs">klitoris</phoneme>`],
-    [/\borgasm\b/gi, `<phoneme alphabet="ipa" ph="ʊrˈɡasm">orgasm</phoneme>`],
-    [/\bLotta\b/g, `<phoneme alphabet="ipa" ph="ˈlɔtːa">Lotta</phoneme>`],
-    [/\bLisa\b/g, `<phoneme alphabet="ipa" ph="ˈliːsa">Lisa</phoneme>`],
-  ];
-  let t = text;
-  for (const [re, rep] of replacements) t = t.replace(re, rep);
-  // lägg in pauser efter punkt/ny rad för bättre andning
-  t = t.replace(/([.!?])(\s+)/g, `$1<break time="200ms" />$2`);
+function ttsSanitize(raw, level = 3) {
+  let t = raw;
+  t = t.replace(/\bfitta\b/gi, 'mellan mina ben');
+  t = t.replace(/\bkuk\b/gi, 'lem');
+  t = t.replace(/\bknulla\b/gi, 'älska');
+  t = t.replace(/\bsprutade\b/gi, 'kom');
+  if (level === 3) {
+    t = t.replace(/\bbröstvårta\b/gi, 'bröst').replace(/\bvåt\b/gi, 'varm');
+  }
   return t;
 }
 
-function buildSSML(text, { voice = 'female', tempo = 1.0 } = {}) {
-  const rate = tempoToRate(tempo);
-  const voiceName = (voice === 'male') ? 'sv-SE-MattiasNeural' : 'sv-SE-SofieNeural';
-  const body = ssmlSafe(text);
-  return `<?xml version="1.0" encoding="utf-8"?>
-<speak version="1.0" xml:lang="sv-SE">
-  <voice name="${voiceName}">
-    <prosody rate="${rate}">
-      ${body}
-    </prosody>
-  </voice>
-</speak>`;
+const TTS_URL   = 'https://api.openai.com/v1/audio/speech';
+const TTS_MODEL = 'gpt-4o-mini-tts';
+const MAX_RETRIES = 3;
+const TIMEOUT_MS  = 45000;
+
+function withTimeout(ms) {
+  const ac = new AbortController();
+  const t  = setTimeout(() => ac.abort(new Error('timeout')), ms);
+  return { signal: ac.signal, cancel: () => clearTimeout(t) };
 }
 
-async function callAzureTTS(env, text, voice, tempo) {
-  if (!env.AZURE_TTS_KEY || !env.AZURE_TTS_REGION) throw new Error('saknar Azure TTS credentials');
-  const ssml = buildSSML(text, { voice, tempo });
-  const url = `https://${env.AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': env.AZURE_TTS_KEY,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
-    },
-    body: ssml,
-  });
-
-  if (!res.ok) {
-    const raw = await res.text();
-    throw new Error(`azure_tts_${res.status}: ${raw.slice(0,200)}`);
-  }
-  const buf = await res.arrayBuffer();
-  return new Uint8Array(buf);
-}
-
-// Fallback till OpenAI (ingen SSML, men vi skickar redan bra skiljetecken från generate-cleanup)
-async function callOpenAITTS(env, text, voice) {
+async function callTTS(env, { text, voice = 'alloy', level = 3 }) {
   if (!env.OPENAI_API_KEY) throw new Error('saknar OPENAI_API_KEY');
-  const chosenVoice = voice === 'male' ? 'verse' : 'alloy';
-  const res = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini-tts',
-      input: text,
-      voice: chosenVoice,
-      format: 'mp3',
-    })
-  });
-  if (!res.ok) {
-    const raw = await res.text();
-    throw new Error(`openai_tts_${res.status}: ${raw.slice(0,200)}`);
+  let lastErr;
+  for (let i = 1; i <= MAX_RETRIES; i++) {
+    const { signal, cancel } = withTimeout(TIMEOUT_MS);
+    try {
+      const res = await fetch(TTS_URL, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+          'Content-Type':  'application/json'
+        },
+        body: JSON.stringify({
+          model: TTS_MODEL,
+          voice: voice || 'alloy',
+          input: ttsSanitize(text, level),
+          format: 'mp3'
+        })
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        if ([429,500,502,503,504].includes(res.status)) {
+          lastErr = new Error(`tts_${res.status}: ${txt || 'retry'}`);
+          await new Promise(r => setTimeout(r, 300 * i));
+          continue;
+        }
+        throw new Error(`tts_${res.status}: ${txt}`);
+      }
+      const buf = await res.arrayBuffer();
+      cancel();
+      return new Uint8Array(buf);
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e?.message || e);
+      if (msg.includes('timeout') || e?.name === 'AbortError' || msg.includes('network')) {
+        await new Promise(r => setTimeout(r, 300 * i));
+        continue;
+      }
+      break;
+    }
   }
-  const buf = await res.arrayBuffer();
-  return new Uint8Array(buf);
+  throw lastErr || new Error('okänt TTS-fel');
 }
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { text, voice, tempo } = await request.json();
-    if (!text) return badRequest('Ingen text skickad till TTS.', request);
+    const body = await request.json().catch(() => null);
+    if (!body) return badRequest('saknar JSON', request);
 
-    // 1) Azure först (bättre svenska)
-    try {
-      const mp3 = await callAzureTTS(env, text, voice, tempo);
-      return new Response(mp3, {
-        status: 200,
-        headers: {
-          ...corsHeaders(request),
-          'content-type': 'audio/mpeg',
-          'cache-control': 'no-store',
-        },
-      });
-    } catch (e) {
-      // fortsätt till fallback
-    }
+    const { text = '', voice = 'alloy', level = 3 } = body;
+    if (!text) return badRequest('ingen text till TTS', request);
 
-    // 2) OpenAI fallback
-    const mp3 = await callOpenAITTS(env, text, voice);
-    return new Response(mp3, {
+    const audio = await callTTS(env, { text, voice, level });
+    return new Response(audio, {
       status: 200,
       headers: {
         ...corsHeaders(request),
         'content-type': 'audio/mpeg',
         'cache-control': 'no-store',
-      },
+        'x-content-type-options': 'nosniff',
+        'accept-ranges': 'bytes'
+      }
     });
-
   } catch (err) {
     return serverError(err, request);
   }
+}
+
+export async function onRequestOptions({ request }) {
+  return new Response(null, { headers: corsHeaders(request) });
+}
+export async function onRequestGet({ request }) {
+  return jsonResponse({ ok: true, service: 'tts', at: Date.now() }, 200, request);
 }
