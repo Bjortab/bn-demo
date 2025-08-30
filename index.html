@@ -10,38 +10,43 @@
   <div class="app-container">
     <h1>💋 BlushNarratives</h1>
 
-    <div class="controls">
-      <label for="level">Nivå:</label>
-      <select id="level">
-        <option value="1">1 – Romantisk</option>
-        <option value="2">2 – Sensuell</option>
-        <option value="3">3 – Mjuk vuxenprosa</option>
-        <option value="4">4 – Het (ej grov)</option>
-        <option value="5">5 – Explicit</option>
-      </select>
-
-      <label for="length">Längd:</label>
-      <select id="length">
-        <option value="1">1 min</option>
-        <option value="2">2 min</option>
-        <option value="5">5 min</option>
-        <option value="10">10 min</option>
-        <option value="15">15 min</option>
-      </select>
-
-      <button id="generateBtn">Generera berättelse</button>
-      <button id="listenBtn">▶️ Lyssna</button>
-    </div>
-
-    <textarea id="storyOutput" placeholder="Din berättelse kommer här..." readonly></textarea>
-
-    <!-- 🔹 Statusruta för debug -->
+    <!-- Statusruta -->
     <div id="statusBox" class="status-box">
       <strong>Status:</strong> <span id="statusMsg">Ingen generering än</span><br />
       <strong>Provider:</strong> <span id="statusProvider">-</span><br />
       <strong>Modell:</strong> <span id="statusModel">-</span>
     </div>
 
+    <div class="controls">
+      <label for="level">Nivå:</label>
+      <select id="level">
+        <option value="1">1 – Romantisk</option>
+        <option value="2">2 – Sensuell</option>
+        <option value="3" selected>3 – Mjuk vuxenprosa</option>
+        <option value="4">4 – Het (ej grov)</option>
+        <option value="5">5 – Explicit</option>
+      </select>
+
+      <label for="minutes">Längd:</label>
+      <select id="minutes">
+        <option value="5" selected>5 min</option>
+        <option value="10">10 min</option>
+        <option value="15">15 min</option>
+      </select>
+    </div>
+
+    <!-- NYTT: Idé-fältet där du skriver din prompt -->
+    <label for="idea"><strong>Din idé</strong></label>
+    <textarea id="idea" placeholder="Ex: Första dejt i baren, långsam stegring, berättat i jag-form…"></textarea>
+
+    <div class="actions">
+      <button id="generateBtn">Generera berättelse</button>
+      <button id="listenBtn">▶️ Lyssna</button>
+      <button id="stopBtn">⏹ Stop</button>
+    </div>
+
+    <label for="storyOutput"><strong>Berättelse</strong></label>
+    <textarea id="storyOutput" placeholder="Din berättelse visas här…" readonly></textarea>
   </div>
 
   <script src="app.js" defer></script>
