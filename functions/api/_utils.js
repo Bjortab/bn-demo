@@ -1,29 +1,25 @@
-// functions/api/_utils.js  — GC v2.3
-export function corsHeaders(request, extra = {}) {
-  const origin = request.headers.get("Origin") || "*";
+// functions/api/_utils.js — Golden Copy
+export function corsHeaders(request) {
+  const origin = request?.headers?.get('origin') || '*';
   return {
-    "access-control-allow-origin": origin,
-    "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, authorization",
-    "access-control-expose-headers": "content-type",
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-    ...extra,
+    'access-control-allow-origin': origin,
+    'access-control-allow-headers': 'content-type, authorization',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
   };
 }
-
-export function jsonResponse(payload, status = 200, request, extra = {}) {
-  return new Response(JSON.stringify(payload), {
+export function jsonResponse(obj, status = 200, request) {
+  return new Response(JSON.stringify(obj), {
     status,
-    headers: corsHeaders(request, extra),
+    headers: { ...corsHeaders(request), 'content-type': 'application/json; charset=utf-8' },
   });
 }
-
-export function badRequest(msg = "bad request", request) {
-  return jsonResponse({ ok: false, error: msg }, 400, request);
+export function badRequest(message = 'Bad Request', request) {
+  return jsonResponse({ ok: false, error: message }, 400, request);
 }
-
-export function serverError(err = "server error", request) {
-  const detail = (typeof err === "string") ? err : (err?.message || "error");
-  return jsonResponse({ ok: false, error: detail }, 500, request);
+export function serverError(err, request) {
+  const msg = (typeof err === 'string') ? err : (err?.stack || err?.message || 'Server Error');
+  return jsonResponse({ ok: false, error: 'server_error', detail: msg }, 500, request);
+}
+export async function handleOptions({ request }) {
+  return new Response(null, { headers: corsHeaders(request) });
 }
