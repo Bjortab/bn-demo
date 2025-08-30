@@ -1,71 +1,70 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Blush Narratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main>
+<main class="wrap">
+  <header class="topbar">
     <h1>Blush Narratives</h1>
-    <div id="apiStatus">API: ok?</div>
+    <small>API: <span id="apiStatus">ok?</span></small>
+  </header>
 
-    <section class="panel">
+  <section class="row">
+    <div class="panel">
       <label>Nivå</label>
       <select id="level">
-        <option value="3">3 (sensuell)</option>
+        <option value="1">1 (romantisk)</option>
+        <option value="2">2 (sensuell, antydande)</option>
+        <option value="3" selected>3 (sensuell+)</option>
+        <option value="4">4 (het, ej grovt)</option>
         <option value="5">5 (explicit)</option>
       </select>
-    </section>
+    </div>
 
-    <section class="panel">
+    <div class="panel">
       <label>Längd</label>
-      <select id="length">
+      <select id="minutes">
         <option value="5">5 min</option>
         <option value="10">10 min</option>
         <option value="15">15 min</option>
       </select>
-    </section>
+    </div>
 
-    <section class="panel">
+    <div class="panel">
       <label>Röst</label>
       <select id="voice">
         <option value="alloy">Alloy (neutral)</option>
         <option value="verse">Verse (kvinna)</option>
         <option value="coral">Coral (man)</option>
       </select>
-    </section>
+    </div>
+  </section>
 
-    <section class="panel">
-      <label for="tempo">Tempo</label>
-      <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0" />
-    </section>
+  <section class="panel">
+    <label for="idea">Din idé</label>
+    <textarea id="idea" placeholder="Ex: Första dejt, långsam stegring..."></textarea>
 
-    <section class="panel">
-      <label for="userIdea">Din idé</label>
-      <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring..."></textarea>
+    <div class="actions">
+      <button id="generateBtn" class="primary">Generera</button>
+      <button id="listenBtn" class="secondary">Lyssna</button>
+      <button id="stopBtn" class="ghost">Stop</button>
+      <button id="bcBtn" class="ghost" title="BlushConnect">BlushConnect</button>
+    </div>
 
-      <div class="actions">
-        <button id="generateBtn" class="primary">Generera</button>
-        <button id="listenBtn" class="secondary">Lyssna</button>
-        <button id="stopBtn" class="ghost">Stop</button>
-      </div>
-
-      <article id="story" class="story" aria-live="polite"></article>
-      <audio id="audio" preload="none"></audio>
-      <pre id="output" class="output">(tomt)</pre>
-    </section>
-  </main>
+    <article id="story" class="story" aria-live="polite"></article>
+    <audio id="audio" preload="none" playsinline></audio>
+    <pre id="output" class="output">(tomt)</pre>
+  </section>
 
   <footer class="foot">
-    <small>BN front v1.2 (Cloudflare)</small>
+    <small>BN front GC v1.4</small>
   </footer>
+</main>
 
-  <link rel="stylesheet" href="/styles.css">
 <script defer src="/app.js"></script>
 </body>
 </html>
-
-
-
