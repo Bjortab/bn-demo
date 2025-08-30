@@ -1,234 +1,157 @@
-// functions/api/generate.js  — GC (svenska förbättrad + cleanup + OR primary)
+// functions/api/generate.js — GC v2.1
 import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
+import { applyFilters } from './filters.js';
 
-/** ---------- utils ---------- **/
-function withTimeout(ms) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(new Error('timeout')), ms);
-  return { signal: ctrl.signal, clear: () => clearTimeout(t) };
-}
+const OR_URL   = 'https://openrouter.ai/api/v1/chat/completions';
+const OR_MODEL = 'mistralai/mixtral-8x7b-instruct';
+const TIMEOUT_MS  = 120000;
+const MAX_RETRIES = 5;
 
-function pick(arr, n) {
-  if (!Array.isArray(arr) || !arr.length) return [];
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = (Math.random() * (i + 1)) | 0;
-    [copy[i], copy[j]] = [copy[j], copy[i]];
+function levelStyle(level, lexHints = []) {
+  const common = [
+    'Skriv på idiomatisk svenska med korrekt grammatik (tempus, pronomen, kongruens).',
+    'Tydlig båge: förväntan → stegring → avslut/efterspel.',
+    'Undvik klyschor (som “ceder och rök”), och undvik upprepningar.',
+    'Inga fysiska motsägelser: två personer kan inte göra två omöjliga saker exakt samtidigt.',
+    'Första person (“jag”) om inte idén säger annat.',
+  ];
+  const densLow  = 'Lexikonfraser sparsamt.';
+  const densHigh = 'Använd lexikonfraser där de passar, undvik upprepning.';
+
+  if (level >= 5) {
+    return [
+      ...common,
+      'Nivå 5 (explicit): Direkt och erotisk utan våld. Grova ord tillåtna där de passar (t.ex. "kuk", "våt", "vagina", "bröstvårta").',
+      densHigh,
+      ...(lexHints.length ? ['Lexikon (inspiration): ' + lexHints.join(' | ')] : []),
+      'Avsluta scenen med ett tydligt efterspel.'
+    ].join(' ');
   }
-  return copy.slice(0, n);
-}
-
-async function loadLexicon(request) {
-  try {
-    const url = new URL('/lexicon.json', request.url);
-    const res = await fetch(url.toString(), { headers: { accept: 'application/json' } });
-    if (!res.ok) return {};
-    return await res.json();
-  } catch { return {}; }
-}
-
-/** ---------- prompts ---------- **/
-function buildSystemPrompt(level, minutes, lexicon) {
-  const base =
-    `Skriv en sammanhängande berättelse på svenska i jag-form. ` +
-    `Flytande, idiomatisk svenska (inte ordagrann översättning). Variera meningslängd, ` +
-    `använd naturlig dialog sparsamt, undvik klyschor ("doften av ceder", "kanel och rök") ` +
-    `och undvik upprepningar. Håll röd tråd och avrunda scenen naturligt. ` +
-    `Undvik svordomar (t.ex. fan, helvete, jävla). ` +
-    `Lägg in subtila pauser med skiljetecken där tempot kräver det. ` +
-    `Cirka ${minutes} min lyssning.`;
-
-  if (Number(level) >= 5) {
-    const phrases = (lexicon?.L5_explicit || []);
-    const inject = pick(phrases, Math.min(10, Math.max(6, (phrases.length / 20) | 0 || 8)));
-    return (
-      base + ' Stil: explicit, vuxet och samtyckande. Tydliga kroppsliga beskrivningar. ' +
-      (inject.length ? `Integrera några uttryck naturligt där de passar: ${inject.join(', ')}. ` : '')
-    );
+  if (level === 4) {
+    return [
+      ...common,
+      'Nivå 4 (het, ej grovt): Het vuxenprosa, ord som lem, vagina, våt, hård är ok, men undvik nedsättande/grovt språk.',
+      densHigh,
+      'Avrunda scenen naturligt.'
+    ].join(' ');
   }
-  return base + ' Stil: sensuell, romantisk, utan grova könsord.';
+  if (level === 3) {
+    return [
+      ...common,
+      'Nivå 3 (sensuell): Heta scener utan explicita könsord. Fokus på beröring, andning, blickar, kyssar.',
+      densLow,
+      'Mjukt efterspel.'
+    ].join(' ');
+  }
+  if (level === 2) {
+    return [
+      ...common,
+      'Nivå 2 (antydande): Sensuell, antydande, ingen explicit anatomi.',
+      densLow
+    ].join(' ');
+  }
+  // level 1
+  return [
+    ...common,
+    'Nivå 1 (romantisk): Fokus på känslor, närhet och blickar. Ingen kroppslig explicithet.',
+    densLow
+  ].join(' ');
 }
 
-function buildUserPrompt(idea, level, minutes) {
+function targetWords(min) {
+  const perMin = 130;
+  return Math.max(200, Math.round(min * perMin));
+}
+function buildUser({ idea, level, minutes }) {
+  const words = targetWords(minutes);
   return [
     `Idé: ${idea}`,
-    `Nivå: ${level}`,
-    `Längd: ${minutes} min`,
-    `Undvik svordomar. Undvik upprepningar. En enda sammanhängande scen.`
+    `Omfattning: ~${words} ord.`,
+    'Skriv som en sammanhängande berättelse, inga listor.'
   ].join('\n');
 }
-
-/** ---------- small post-cleanup på text ---------- **/
-const SWEAR_MAP = {
-  'fan': '…', 'helvete': '…', 'jävla': '…', 'fuck': '…'
-};
-function cleanTextSwedish(s) {
-  if (!s) return s;
-  let t = s;
-
-  // normalisera whitespace/upprepningar
-  t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ ]{2,}/g, ' ');
-  t = t.replace(/([,.!?…])\1{1,}/g, '$1'); // inga "!!", "??"
-  // ta bort identiska fras-upprepningar (enkelt skydd)
-  t = t.replace(/\b(\w{3,} \w{3,})[, ]+\1\b/gi, '$1');
-
-  // neutralisera svordomar
-  for (const bad of Object.keys(SWEAR_MAP)) {
-    const re = new RegExp(`\\b${bad}\\b`, 'gi');
-    t = t.replace(re, SWEAR_MAP[bad]);
-  }
-
-  // små svenska finjusteringar
-  t = t.replace(/\s+–\s+/g, ' – '); // tankstreck
-  return t.trim();
+function withTimeout(ms) {
+  const ac = new AbortController();
+  const t  = setTimeout(() => ac.abort(new Error('timeout')), ms);
+  return { signal: ac.signal, cancel: () => clearTimeout(t) };
 }
-
-/** ---------- providers ---------- **/
-async function callOpenRouter(request, env, sys, user, maxTokens, timeoutMs, modelOverride) {
+async function callOpenRouter(env, { sys, user, maxTokens, referer = 'https://bn-demo01.pages.dev' }) {
   if (!env.OPENROUTER_API_KEY) throw new Error('saknar OPENROUTER_API_KEY');
-  const { signal, clear } = withTimeout(timeoutMs);
-  const model = modelOverride || 'gryphe/mythomax-l2-13b';
-
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      signal,
-      headers: {
-        'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': new URL('/', request.url).toString(),
-        'X-Title': 'Blush Narratives'
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: user }
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.9,
-        presence_penalty: 0.3,
-        frequency_penalty: 0.2,
-      })
-    });
-    const raw = await res.text();
-    if (!res.ok) throw new Error(`openrouter_${res.status}: ${raw.slice(0,400)}`);
-    const data = JSON.parse(raw);
-    const text = data?.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new Error('openrouter: tomt svar');
-    return { provider: 'openrouter', model, text };
-  } finally { clear(); }
-}
-
-async function callMistral(env, sys, user, maxTokens, timeoutMs) {
-  if (!env.MISTRAL_API_KEY) throw new Error('saknar MISTRAL_API_KEY');
-  const { signal, clear } = withTimeout(timeoutMs);
-  try {
-    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST',
-      signal,
-      headers: { 'Authorization': `Bearer ${env.MISTRAL_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'mistral-large-latest',
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-        max_tokens: maxTokens,
-        temperature: 0.9
-      })
-    });
-    const raw = await res.text();
-    if (!res.ok) throw new Error(`mistral_${res.status}: ${raw.slice(0,400)}`);
-    const data = JSON.parse(raw);
-    const text = data?.choices?.[0]?.message?.content?.trim();
-    if (!text) throw new Error('mistral: tomt svar');
-    return { provider: 'mistral', model: 'mistral-large-latest', text };
-  } finally { clear(); }
-}
-
-async function callOpenAI(env, sys, user, maxTokens, timeoutMs) {
-  if (!env.OPENAI_API_KEY) throw new Error('saknar OPENAI_API_KEY');
-  const { signal, clear } = withTimeout(timeoutMs);
-  try {
-    const res = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      signal,
-      headers: { 'Authorization': `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        input: [{ role: 'system', content: sys }, { role: 'user', content: user }],
-        max_output_tokens: maxTokens,
-        temperature: 0.9
-      })
-    });
-    const raw = await res.text();
-    if (!res.ok) throw new Error(`openai_${res.status}: ${raw.slice(0,400)}`);
-    const data = JSON.parse(raw);
-    const text = data?.output?.[0]?.content?.[0]?.text?.trim() ?? data?.output_text?.trim();
-    if (!text) throw new Error('openai: tomt svar');
-    return { provider: 'openai', model: 'gpt-4o-mini', text };
-  } finally { clear(); }
-}
-
-/** ---------- route ---------- **/
-export async function onRequestOptions({ request }) {
-  return new Response(null, { headers: corsHeaders(request) });
+  let lastErr;
+  for (let i = 1; i <= MAX_RETRIES; i++) {
+    const { signal, cancel } = withTimeout(TIMEOUT_MS);
+    try {
+      const res = await fetch(OR_URL, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Authorization': `Bearer ${env.OPENROUTER_API_KEY}`,
+          'Content-Type':  'application/json',
+          'HTTP-Referer':  referer,
+          'X-Title':       'Blush Narratives'
+        },
+        body: JSON.stringify({
+          model: OR_MODEL,
+          temperature: 0.85,
+          top_p: 0.9,
+          max_tokens: maxTokens,
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user',   content: user }
+          ]
+        })
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        if ([429,500,502,503,504].includes(res.status)) {
+          lastErr = new Error(`openrouter_${res.status}: ${txt || 'retry'}`);
+          await new Promise(r => setTimeout(r, 300 * i));
+          continue;
+        }
+        throw new Error(`openrouter_${res.status}: ${txt}`);
+      }
+      const data = await res.json();
+      const out  = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
+      cancel();
+      if (!out) throw new Error('tomt svar från modell');
+      return out;
+    } catch (e) {
+      lastErr = e;
+      const msg = String(e?.message || e);
+      if (msg.includes('timeout') || e?.name === 'AbortError' || msg.includes('network')) {
+        await new Promise(r => setTimeout(r, 300 * i));
+        continue;
+      }
+      break;
+    }
+  }
+  throw lastErr || new Error('okänt OpenRouter-fel');
 }
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { idea, level, minutes } = await request.json();
-    if (!idea || !minutes) return badRequest('saknas fält: idea/minutes', request);
+    const body = await request.json().catch(() => null);
+    if (!body) return badRequest('saknar JSON', request);
 
-    const lvl = Number(level || 3);
-    const mins = Math.max(3, Math.min(15, Number(minutes) || 5));
-    const approxTokens = Math.round(mins * 380);
-    const maxTokens = Math.max(600, Math.min(approxTokens, 2200));
+    const { idea = '', level = 3, minutes = 5, lexHints = [] } = body;
+    if (!idea || typeof idea !== 'string') return badRequest('saknar idé', request);
 
-    const lexicon = await loadLexicon(request);
-    const sys = buildSystemPrompt(lvl, mins, lexicon);
-    const user = buildUserPrompt(idea, lvl, mins);
+    const sys  = levelStyle(Number(level), Array.isArray(lexHints) ? lexHints : []);
+    const user = buildUser({ idea, level, minutes });
+    const maxT = Math.min(3500, Math.max(800, Math.round(targetWords(minutes) * 1.6)));
 
-    // OR primary (5 försök med backoff)
-    let lastErr = null;
-    if (env.OPENROUTER_API_KEY) {
-      for (let a = 1; a <= 5; a++) {
-        try {
-          const preferred = (lvl >= 5)
-            ? 'neversleep/llama-3.1-nemotron-70b-instruct'
-            : 'gryphe/mythomax-l2-13b';
-          const { text, provider, model } =
-            await callOpenRouter(request, env, sys, user, maxTokens, 60_000, preferred);
-          return jsonResponse({ ok: true, text: cleanTextSwedish(text), provider, model }, 200, request);
-        } catch (e) {
-          lastErr = String(e?.message || e);
-          await new Promise(r => setTimeout(r, 350 * a));
-        }
-      }
-    }
+    const raw = await callOpenRouter(env, { sys, user, maxTokens: maxT });
 
-    if (env.MISTRAL_API_KEY) {
-      try {
-        const { text, provider, model } = await callMistral(env, sys, user, maxTokens, 55_000);
-        return jsonResponse({ ok: true, text: cleanTextSwedish(text), provider, model, note: 'fallback:mistral' }, 200, request);
-      } catch (e) { lastErr = String(e?.message || e); }
-    }
-
-    if (env.OPENAI_API_KEY) {
-      try {
-        const { text, provider, model } = await callOpenAI(env, sys, user, maxTokens, 55_000);
-        return jsonResponse({ ok: true, text: cleanTextSwedish(text), provider, model, note: 'fallback:openai' }, 200, request);
-      } catch (e) { lastErr = String(e?.message || e); }
-    }
-
-    return jsonResponse({
-      ok: false,
-      error: 'alla_backends_fel',
-      detail: lastErr || 'ingen provider',
-      advice: (lvl >= 5)
-        ? 'OpenRouter kan vara fullt — prova igen på nivå 5 om några minuter.'
-        : 'Prova igen strax.'
-    }, 502, request);
-
+    const text = applyFilters(raw, { level, persons: 2 });
+    return jsonResponse({ ok: true, text }, 200, request);
   } catch (err) {
     return serverError(err, request);
   }
+}
+
+export async function onRequestOptions({ request }) {
+  return new Response(null, { headers: corsHeaders(request) });
+}
+export async function onRequestGet({ request }) {
+  return jsonResponse({ ok: true, service: 'generate', at: Date.now() }, 200, request);
 }
