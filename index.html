@@ -1,75 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BlushNarratives</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <div class="container">
+  <main class="wrap">
     <h1>💋 BlushNarratives</h1>
 
-    <!-- Statusfält -->
-    <div id="statusBox">
-      <p><b>Status:</b> <span id="status">Redo</span></p>
-      <p><b>Provider:</b> <span id="provider">-</span></p>
-      <p><b>Modell:</b> <span id="model">-</span></p>
-    </div>
+    <p id="status">Status: …</p>
+    <p>Provider: <span id="provider">-</span><br/>Modell: <span id="model">-</span></p>
 
-    <!-- Inställningar -->
-    <label for="level">Nivå:</label>
-    <select id="level">
-      <option value="1">1 – Romantisk</option>
-      <option value="2">2 – Sensuell</option>
-      <option value="3">3 – Sensuell+</option>
-      <option value="4">4 – Het</option>
-      <option value="5" selected>5 – Explicit</option>
-    </select>
+    <section class="panel">
+      <label for="level">Nivå:</label>
+      <select id="level">
+        <option value="1">1 – Romantisk</option>
+        <option value="2">2 – Sensuell</option>
+        <option value="3" selected>3 – Sensuell+</option>
+        <option value="4">4 – Het</option>
+        <option value="5">5 – Explicit</option>
+      </select>
+    </section>
 
-    <label for="minutes">Längd:</label>
-    <select id="minutes">
-      <option value="1">1 min</option>
-      <option value="3">3 min</option>
-      <option value="5" selected>5 min</option>
-      <option value="8">8 min</option>
-      <option value="10">10 min</option>
-    </select>
+    <section class="panel">
+      <label for="length">Längd:</label>
+      <select id="length">
+        <option value="3">3 min</option>
+        <option value="5" selected>5 min</option>
+        <option value="8">8 min</option>
+        <option value="10">10 min</option>
+      </select>
+    </section>
 
-    <label for="voice">Röst:</label>
-    <select id="voice">
-      <option value="alloy">Alloy (neutral)</option>
-      <option value="verse">Verse (kvinna)</option>
-      <option value="ember">Ember (man)</option>
-    </select>
+    <section class="panel">
+      <label for="voice">Röst:</label>
+      <select id="voice">
+        <option value="alloy" selected>Alloy (neutral)</option>
+        <option value="verse">Verse (kvinna)</option>
+        <option value="coral">Coral (man)</option>
+      </select>
+    </section>
 
-    <label for="tempo">Tempo:</label>
-    <input type="range" id="tempo" min="0.5" max="1.5" value="1" step="0.1" />
+    <section class="panel">
+      <label for="tempo">Tempo:</label>
+      <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0" />
+    </section>
 
-    <!-- Prompt -->
-    <label for="idea">Din idé:</label>
-    <textarea id="idea" rows="4" placeholder="Skriv din idé här..."></textarea>
+    <section class="panel">
+      <label for="userIdea">Din idé:</label>
+      <textarea id="userIdea" placeholder="Ex: Jag och min fru en morgon…"></textarea>
+      <div class="actions">
+        <button id="generateBtn" class="primary">Generera</button>
+        <button id="listenBtn" class="secondary">Lyssna</button>
+        <button id="stopBtn" class="ghost">Stop</button>
+      </div>
+    </section>
 
-    <!-- Knappar -->
-    <div class="buttons">
-      <button id="generateBtn">Generera</button>
-      <button id="listenBtn">Lyssna</button>
-      <button id="stopBtn">Stop</button>
-    </div>
+    <section class="panel">
+      <article id="story" class="story" aria-live="polite"></article>
+      <div id="player">
+        <!-- Viktigt: audio finns från start -->
+        <audio id="audio" preload="none" controls></audio>
+      </div>
+      <pre id="output" class="output">(tomt)</pre>
+    </section>
 
-    <!-- Här skrivs berättelsen ut -->
-    <div id="output">
-      <pre id="storyArt">(tomt)</pre>
-    </div>
+    <footer class="foot"><small>BN front v1.2 (Cloudflare)</small></footer>
+  </main>
 
-    <!-- Ljuduppspelning -->
-    <audio id="audioEl" controls style="width:100%; margin-top:10px;"></audio>
-
-    <footer>
-      <p>BN front v1.2 (Cloudflare)</p>
-    </footer>
-  </div>
-
-  <script src="app.js"></script>
+  <script defer src="/app.js"></script>
 </body>
 </html>
