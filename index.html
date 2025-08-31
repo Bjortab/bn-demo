@@ -3,61 +3,71 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Blush Narratives</title>
+  <title>BlushNarratives</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="container">
     <h1>💋 BlushNarratives</h1>
 
-    <!-- STATUS -->
-    <p class="status">
-      <strong>Status:</strong> <span id="statusBox">-</span><br/>
-      <strong>Provider:</strong> <span id="statusProvider">-</span><br/>
-      <strong>Modell:</strong> <span id="statusModel">-</span>
-    </p>
+    <!-- Statusfält -->
+    <div id="statusBox">
+      <p><b>Status:</b> <span id="status">Redo</span></p>
+      <p><b>Provider:</b> <span id="provider">-</span></p>
+      <p><b>Modell:</b> <span id="model">-</span></p>
+    </div>
 
-    <!-- KONTROLLER -->
+    <!-- Inställningar -->
     <label for="level">Nivå:</label>
     <select id="level">
       <option value="1">1 – Romantisk</option>
-      <option value="2">2 – Antydande</option>
-      <option value="3" selected>3 – Sensuell+</option>
+      <option value="2">2 – Sensuell</option>
+      <option value="3">3 – Sensuell+</option>
       <option value="4">4 – Het</option>
-      <option value="5">5 – Explicit</option>
+      <option value="5" selected>5 – Explicit</option>
     </select>
 
-    <label for="length">Längd:</label>
-    <select id="length">
+    <label for="minutes">Längd:</label>
+    <select id="minutes">
+      <option value="1">1 min</option>
+      <option value="3">3 min</option>
       <option value="5" selected>5 min</option>
+      <option value="8">8 min</option>
       <option value="10">10 min</option>
-      <option value="15">15 min</option>
     </select>
 
     <label for="voice">Röst:</label>
     <select id="voice">
-      <option value="alloy" selected>Alloy (neutral)</option>
+      <option value="alloy">Alloy (neutral)</option>
       <option value="verse">Verse (kvinna)</option>
-      <option value="coral">Coral (man)</option>
+      <option value="ember">Ember (man)</option>
     </select>
 
     <label for="tempo">Tempo:</label>
-    <input type="range" id="tempo" min="0.5" max="1.5" value="1.0" step="0.1" />
+    <input type="range" id="tempo" min="0.5" max="1.5" value="1" step="0.1" />
 
-    <label for="userIdea">Din idé:</label>
-    <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring…" rows="3"></textarea>
+    <!-- Prompt -->
+    <label for="idea">Din idé:</label>
+    <textarea id="idea" rows="4" placeholder="Skriv din idé här..."></textarea>
 
+    <!-- Knappar -->
     <div class="buttons">
       <button id="generateBtn">Generera</button>
       <button id="listenBtn">Lyssna</button>
       <button id="stopBtn">Stop</button>
     </div>
 
-    <!-- WARNINGS från backend (maskning mm) -->
-    <div id="warnings" class="warnings" aria-live="polite"></div>
+    <!-- Här skrivs berättelsen ut -->
+    <div id="output">
+      <pre id="storyArt">(tomt)</pre>
+    </div>
 
-    <!-- OUTPUT -->
-    <pre id="output">(tomt)</pre>
+    <!-- Ljuduppspelning -->
+    <audio id="audioEl" controls style="width:100%; margin-top:10px;"></audio>
+
+    <footer>
+      <p>BN front v1.2 (Cloudflare)</p>
+    </footer>
   </div>
 
   <script src="app.js"></script>
