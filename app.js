@@ -1,12 +1,7 @@
-/* BN front – app.js (Hotfix: robust textarea-detektering + DOMContentLoaded) */
-
+/* BN front – app.js (GC: robust DOM + audio-fallback) */
 (function () {
-  // ---------- Helpers ----------
   const $ = (sel) => document.querySelector(sel);
-
-  function now() {
-    return new Date().toLocaleTimeString([], { hour12: false });
-  }
+  const now = () => new Date().toLocaleTimeString([], { hour12: false });
 
   function appendStatus(msg) {
     const pre = $("#output");
@@ -14,31 +9,35 @@
     const line = msg ? `[${now()}] ${msg}` : "";
     pre.textContent = pre.textContent ? pre.textContent + "\n" + line : line;
   }
-
   function setStatus(msg) {
     const s = $("#status");
     if (s) s.textContent = msg || "";
     appendStatus(msg);
   }
-
   function setProviderModel(provider = "", model = "") {
-    const p = $("#provider");
-    const m = $("#model");
-    if (p) p.textContent = provider || "-";
-    if (m) m.textContent = model || "-";
+    $("#provider") && ($("#provider").textContent = provider || "-");
+    $("#model") && ($("#model").textContent = model || "-");
   }
 
-  // Hämta värde ur textarean – prova flera vägar
   function getIdeaValue() {
-    const el =
-      $("#userIdea") ||
-      $("#idea") ||
-      document.querySelector("textarea");
+    const el = $("#userIdea") || $("#idea") || document.querySelector("textarea");
     return (el && typeof el.value === "string") ? el.value.trim() : "";
   }
 
-  // Nolla / säkra audio
+  // --- AUDIO helpers ---
   let currentURL = null;
+  function ensureAudio() {
+    let a = $("#audio");
+    if (!a) {
+      a = document.createElement("audio");
+      a.id = "audio";
+      a.preload = "none";
+      a.controls = true;
+      const host = $("#player") || document.body;
+      host.appendChild(a);
+    }
+    return a;
+  }
   function resetAudio() {
     try {
       const a = $("#audio");
@@ -54,7 +53,6 @@
     } catch {}
   }
 
-  // Timeout-säker fetch
   async function fetchWithTimeout(url, opts = {}, timeoutMs = 90000) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -65,7 +63,7 @@
     }
   }
 
-  // ---------- Actions ----------
+  // --- Actions ---
   let busyGen = false;
 
   async function doHealth() {
@@ -73,6 +71,7 @@
       const r = await fetch("/api/health");
       const j = await r.json().catch(() => ({}));
       appendStatus(j && j.ok ? "API: ok" : "API: fel?");
+      if (j?.provider) setProviderModel(j.provider || "", j.model || "");
     } catch {
       appendStatus("API: fel vid health");
     }
@@ -81,10 +80,7 @@
   async function doGenerate() {
     if (busyGen) return;
     const idea = getIdeaValue();
-    if (!idea) {
-      setStatus("Skriv en idé först.");
-      return;
-    }
+    if (!idea) { setStatus("Skriv en idé först."); return; }
 
     busyGen = true;
     setProviderModel("-", "-");
@@ -112,7 +108,6 @@
         return;
       }
 
-      // JSON först, annars text
       let data, textOut = "";
       try {
         data = await res.json();
@@ -121,10 +116,7 @@
         textOut = await res.text();
       }
 
-      if (!textOut) {
-        setStatus("Kunde inte generera – tomt svar.");
-        return;
-      }
+      if (!textOut) { setStatus("Kunde inte generera – tomt svar."); return; }
 
       setProviderModel(data?.provider || "", data?.model || "");
       if (story) story.textContent = textOut;
@@ -137,18 +129,12 @@
       setStatus(`Fel: ${err?.name === "AbortError" ? "Timeout." : (err?.message || "okänt fel")}`);
     } finally {
       busyGen = false;
-      // knappar
-      const bGen = $("#generateBtn");
-      if (bGen) bGen.disabled = false;
+      $("#generateBtn") && ($("#generateBtn").disabled = false);
     }
   }
 
   async function doTTS(text, voice) {
-    const audio = $("#audio");
-    if (!audio) {
-      appendStatus("TTS: ingen <audio>.");
-      return;
-    }
+    const audio = ensureAudio(); // <- skapar audio om den saknas
     try {
       const res = await fetchWithTimeout("/api/tts", {
         method: "POST",
@@ -178,14 +164,13 @@
     }
   }
 
-  // ---------- Bind när DOM är klar ----------
+  // --- Bind ---
   window.addEventListener("DOMContentLoaded", () => {
-    // Knappar
     $("#generateBtn")?.addEventListener("click", (e) => { e.preventDefault(); doGenerate(); });
     $("#listenBtn")?.addEventListener("click", async (e) => {
       e.preventDefault();
-      const audio = $("#audio");
-      if (!audio?.src) {
+      const audio = $("#audio") || ensureAudio();
+      if (!audio.src) {
         const txt = $("#story")?.textContent || "";
         if (!txt) { setStatus("Inget att läsa upp ännu."); return; }
         appendStatus("Väntar röst…");
