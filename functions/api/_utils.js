@@ -1,27 +1,39 @@
-export function corsHeaders(request) {
-  const origin = request.headers.get('Origin') || '*';
+// functions/api/_utils.js
+// Gemensamma helpers för alla API-routes (CORS + JSON-svar)
+
+export function corsHeaders(request, extra = {}) {
+  const origin = request?.headers?.get("Origin") || "*";
   return {
-    'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type, authorization",
+    "access-control-expose-headers": "content-type",
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    ...extra,
   };
 }
 
-export function jsonResponse(obj, status = 200, request) {
-  return new Response(JSON.stringify(obj), {
+export function jsonResponse(payload, status = 200, request, extra = {}) {
+  return new Response(JSON.stringify(payload), {
     status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      ...corsHeaders(request),
-    },
+    headers: corsHeaders(request, extra),
   });
 }
 
-export function badRequest(message, request, extra = {}) {
-  return jsonResponse({ ok: false, error: message, ...extra }, 400, request);
+export function badRequest(msg = "bad request", request) {
+  return jsonResponse({ ok: false, error: msg }, 400, request);
 }
 
-export function serverError(error, request) {
-  const msg = (error && error.message) ? error.message : String(error);
-  return jsonResponse({ ok: false, error: msg }, 500, request);
+export function serverError(err = "server error", request) {
+  const detail = typeof err === "string" ? err : err?.message || "error";
+  return jsonResponse({ ok: false, error: detail }, 500, request);
+}
+
+// Enkel OPTIONS–handler (om du vill importera och återanvända)
+export function preflight() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders(new Request(""), {}),
+  });
 }
