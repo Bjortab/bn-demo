@@ -1,14 +1,8 @@
-// functions/api/health.js — GC v2.3
-import { jsonResponse, corsHeaders } from "./_utils.js";
-
-export async function onRequest({ request, env }) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
-  }
-  const present = Boolean(env.OPENAI_API_KEY) || Boolean(env.MISTRAL_API_KEY);
-  return jsonResponse(
-    { ok: true, v: "2.3", ts: Date.now(), hasKey: present },
-    200,
-    request
-  );
+export async function onRequestGet() {
+  return new Response(JSON.stringify({ ok: true, service: 'health', at: Date.now() }), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+  });
 }
+export const onRequestOptions = onRequestGet;
+export const onRequestPost = onRequestGet;
