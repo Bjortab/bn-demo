@@ -3,52 +3,63 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BlushNarratives</title>
+  <title>Blush Narratives</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-container">
+  <div class="container">
     <h1>💋 BlushNarratives</h1>
 
-    <!-- Statusruta -->
-    <div id="statusBox" class="status-box">
-      <strong>Status:</strong> <span id="statusMsg">Ingen generering än</span><br />
-      <strong>Provider:</strong> <span id="statusProvider">-</span><br />
+    <!-- STATUS -->
+    <p class="status">
+      <strong>Status:</strong> <span id="statusBox">-</span><br/>
+      <strong>Provider:</strong> <span id="statusProvider">-</span><br/>
       <strong>Modell:</strong> <span id="statusModel">-</span>
+    </p>
+
+    <!-- KONTROLLER -->
+    <label for="level">Nivå:</label>
+    <select id="level">
+      <option value="1">1 – Romantisk</option>
+      <option value="2">2 – Antydande</option>
+      <option value="3" selected>3 – Sensuell+</option>
+      <option value="4">4 – Het</option>
+      <option value="5">5 – Explicit</option>
+    </select>
+
+    <label for="length">Längd:</label>
+    <select id="length">
+      <option value="5" selected>5 min</option>
+      <option value="10">10 min</option>
+      <option value="15">15 min</option>
+    </select>
+
+    <label for="voice">Röst:</label>
+    <select id="voice">
+      <option value="alloy" selected>Alloy (neutral)</option>
+      <option value="verse">Verse (kvinna)</option>
+      <option value="coral">Coral (man)</option>
+    </select>
+
+    <label for="tempo">Tempo:</label>
+    <input type="range" id="tempo" min="0.5" max="1.5" value="1.0" step="0.1" />
+
+    <label for="userIdea">Din idé:</label>
+    <textarea id="userIdea" placeholder="Ex: Takbar i Göteborg, första dejt, långsam stegring…" rows="3"></textarea>
+
+    <div class="buttons">
+      <button id="generateBtn">Generera</button>
+      <button id="listenBtn">Lyssna</button>
+      <button id="stopBtn">Stop</button>
     </div>
 
-    <div class="controls">
-      <label for="level">Nivå:</label>
-      <select id="level">
-        <option value="1">1 – Romantisk</option>
-        <option value="2">2 – Sensuell</option>
-        <option value="3" selected>3 – Mjuk vuxenprosa</option>
-        <option value="4">4 – Het (ej grov)</option>
-        <option value="5">5 – Explicit</option>
-      </select>
+    <!-- WARNINGS från backend (maskning mm) -->
+    <div id="warnings" class="warnings" aria-live="polite"></div>
 
-      <label for="minutes">Längd:</label>
-      <select id="minutes">
-        <option value="5" selected>5 min</option>
-        <option value="10">10 min</option>
-        <option value="15">15 min</option>
-      </select>
-    </div>
-
-    <!-- NYTT: Idé-fältet där du skriver din prompt -->
-    <label for="idea"><strong>Din idé</strong></label>
-    <textarea id="idea" placeholder="Ex: Första dejt i baren, långsam stegring, berättat i jag-form…"></textarea>
-
-    <div class="actions">
-      <button id="generateBtn">Generera berättelse</button>
-      <button id="listenBtn">▶️ Lyssna</button>
-      <button id="stopBtn">⏹ Stop</button>
-    </div>
-
-    <label for="storyOutput"><strong>Berättelse</strong></label>
-    <textarea id="storyOutput" placeholder="Din berättelse visas här…" readonly></textarea>
+    <!-- OUTPUT -->
+    <pre id="output">(tomt)</pre>
   </div>
 
-  <script src="app.js" defer></script>
+  <script src="app.js"></script>
 </body>
 </html>
