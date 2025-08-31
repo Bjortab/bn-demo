@@ -1,187 +1,145 @@
-/* BN front – app.js (GC: robust DOM + audio-fallback) */
-(function () {
-  const $ = (sel) => document.querySelector(sel);
-  const now = () => new Date().toLocaleTimeString([], { hour12: false });
+// app.js – BN front v1.4 (Cloudflare)
+// Väntar på complete=true från /api/generate innan TTS startas
 
-  function appendStatus(msg) {
-    const pre = $("#output");
-    if (!pre) return;
-    const line = msg ? `[${now()}] ${msg}` : "";
-    pre.textContent = pre.textContent ? pre.textContent + "\n" + line : line;
+const $ = (s) => document.querySelector(s);
+
+// UI-element
+const selLevel = $("#level");
+const selMinutes = $("#minutes");
+const selVoice = $("#voice");
+const tempo = $("#tempo");
+const idea = $("#userIdea");
+const btnGen = $("#generateBtn");
+const btnListen = $("#listenBtn");
+const btnStop = $("#stopBtn");
+const out = $("#output");
+const audioEl = $("#audio");
+const storyEl = $("#story");
+const statusEl = $("#status"); // <small id="status"></small> – lägg i footern om du inte har den
+
+let busyGen = false;
+let lastText = "";
+let lastProvider = "-";
+let lastModel = "-";
+
+function now() {
+  return new Date().toLocaleTimeString("sv-SE", { hour12: false });
+}
+function log(line) {
+  const ts = `[${now()}] `;
+  out.textContent += `${ts}${line}\n`;
+  out.scrollTop = out.scrollHeight;
+}
+function setStatus(s) {
+  if (statusEl) statusEl.textContent = s || "";
+}
+
+async function checkAPI() {
+  try {
+    const r = await fetch("/api/health").then(r => r.json());
+    log(r.ok ? "API: ok" : "API: fel");
+  } catch {
+    log("API: fel");
   }
-  function setStatus(msg) {
-    const s = $("#status");
-    if (s) s.textContent = msg || "";
-    appendStatus(msg);
-  }
-  function setProviderModel(provider = "", model = "") {
-    $("#provider") && ($("#provider").textContent = provider || "-");
-    $("#model") && ($("#model").textContent = model || "-");
-  }
+}
 
-  function getIdeaValue() {
-    const el = $("#userIdea") || $("#idea") || document.querySelector("textarea");
-    return (el && typeof el.value === "string") ? el.value.trim() : "";
-  }
+function setBusy(b) {
+  busyGen = b;
+  btnGen.disabled = b;
+  btnListen.disabled = b;
+  btnStop.disabled = false;
+}
 
-  // --- AUDIO helpers ---
-  let currentURL = null;
-  function ensureAudio() {
-    let a = $("#audio");
-    if (!a) {
-      a = document.createElement("audio");
-      a.id = "audio";
-      a.preload = "none";
-      a.controls = true;
-      const host = $("#player") || document.body;
-      host.appendChild(a);
-    }
-    return a;
-  }
-  function resetAudio() {
-    try {
-      const a = $("#audio");
-      if (a) {
-        a.pause();
-        a.removeAttribute("src");
-        a.currentTime = 0;
-      }
-      if (currentURL) {
-        URL.revokeObjectURL(currentURL);
-        currentURL = null;
-      }
-    } catch {}
-  }
+async function generate() {
+  if (busyGen) return;
+  const txt = (idea.value || "").trim();
+  if (!txt) { log("Skriv en idé först."); return; }
 
-  async function fetchWithTimeout(url, opts = {}, timeoutMs = 90000) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      return await fetch(url, { ...opts, signal: ctrl.signal });
-    } finally {
-      clearTimeout(timer);
-    }
-  }
+  setBusy(true);
+  lastText = ""; lastProvider = "-"; lastModel = "-";
+  storyEl.textContent = "";
+  log("Genererar…");
 
-  // --- Actions ---
-  let busyGen = false;
-
-  async function doHealth() {
-    try {
-      const r = await fetch("/api/health");
-      const j = await r.json().catch(() => ({}));
-      appendStatus(j && j.ok ? "API: ok" : "API: fel?");
-      if (j?.provider) setProviderModel(j.provider || "", j.model || "");
-    } catch {
-      appendStatus("API: fel vid health");
-    }
-  }
-
-  async function doGenerate() {
-    if (busyGen) return;
-    const idea = getIdeaValue();
-    if (!idea) { setStatus("Skriv en idé först."); return; }
-
-    busyGen = true;
-    setProviderModel("-", "-");
-    resetAudio();
-    const story = $("#story");
-    if (story) story.textContent = "";
-    appendStatus("");
-    appendStatus("Genererar…");
-
-    const level   = Number(($("#level")?.value)  || 3);
-    const minutes = Number(($("#length")?.value) || 5);
-    const tempo   = Number(($("#tempo")?.value)  || 1.0);
-
-    try {
-      const res = await fetchWithTimeout("/api/generate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idea, level, minutes, tempo })
-      }, 120000);
-
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        setStatus(`Fel vid generering: HTTP ${res.status}`);
-        if (raw) appendStatus(raw);
-        return;
-      }
-
-      let data, textOut = "";
-      try {
-        data = await res.json();
-        textOut = data?.text || data?.story || "";
-      } catch {
-        textOut = await res.text();
-      }
-
-      if (!textOut) { setStatus("Kunde inte generera – tomt svar."); return; }
-
-      setProviderModel(data?.provider || "", data?.model || "");
-      if (story) story.textContent = textOut;
-
-      appendStatus("Väntar röst…");
-      await doTTS(textOut, ($("#voice")?.value) || "alloy");
-
-      setStatus("Klart.");
-    } catch (err) {
-      setStatus(`Fel: ${err?.name === "AbortError" ? "Timeout." : (err?.message || "okänt fel")}`);
-    } finally {
-      busyGen = false;
-      $("#generateBtn") && ($("#generateBtn").disabled = false);
-    }
-  }
-
-  async function doTTS(text, voice) {
-    const audio = ensureAudio(); // <- skapar audio om den saknas
-    try {
-      const res = await fetchWithTimeout("/api/tts", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, voice })
-      }, 90000);
-
-      if (!res.ok) {
-        const raw = await res.text().catch(() => "");
-        appendStatus(`TTS-fel: HTTP ${res.status}`);
-        if (raw) appendStatus(raw);
-        return;
-      }
-
-      const blob = await res.blob();
-      resetAudio();
-      currentURL = URL.createObjectURL(blob);
-      audio.src = currentURL;
-
-      try {
-        await audio.play();
-      } catch {
-        appendStatus("TTS: kräver extra klick (iOS).");
-      }
-    } catch (err) {
-      appendStatus(`TTS-fel: ${err?.name === "AbortError" ? "timeout" : (err?.message || "okänt")}`);
-    }
-  }
-
-  // --- Bind ---
-  window.addEventListener("DOMContentLoaded", () => {
-    $("#generateBtn")?.addEventListener("click", (e) => { e.preventDefault(); doGenerate(); });
-    $("#listenBtn")?.addEventListener("click", async (e) => {
-      e.preventDefault();
-      const audio = $("#audio") || ensureAudio();
-      if (!audio.src) {
-        const txt = $("#story")?.textContent || "";
-        if (!txt) { setStatus("Inget att läsa upp ännu."); return; }
-        appendStatus("Väntar röst…");
-        await doTTS(txt, ($("#voice")?.value) || "alloy");
-      } else {
-        try { await audio.play(); } catch { appendStatus("TTS: tryck Lyssna igen."); }
-      }
+  try {
+    const body = {
+      idea: txt,
+      level: selLevel.value,
+      minutes: selMinutes.value,
+      tempo: Number(tempo.value || 1),
+    };
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
     });
-    $("#stopBtn")?.addEventListener("click", (e) => { e.preventDefault(); try { $("#audio")?.pause(); } catch {} });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}${t ? ": " + t : ""}`);
+    }
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Fel vid generering");
+    lastProvider = data.provider || "-";
+    lastModel = data.model || "-";
+    lastText = String(data.text || "");
+    storyEl.textContent = lastText;
 
-    setStatus("BN front laddad.");
-    doHealth();
-  });
-})();
+    // Vänta tills API bekräftar komplett
+    if (!data.complete) {
+      log("Väntar på fullständig text…");
+      // (API ska numera alltid returnera complete:true)
+    }
+
+    log("(klart)");
+    setStatus(`Provider: ${lastProvider} · Modell: ${lastModel}`);
+    await playTTS();
+  } catch (err) {
+    log(`Fel: ${String(err.message || err)}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function playTTS() {
+  if (!lastText) { log("Ingen text."); return; }
+  const voice = selVoice.value || "alloy";
+  log("Väntar röst…");
+
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: lastText, voice }),
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`TTS-fel: HTTP ${res.status}${t ? " · " + t : ""}`);
+    }
+    const buf = await res.arrayBuffer();
+    const blob = new Blob([buf], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+
+    // iOS behöver användarklick – vi triggar uppspelning på knapptryck,
+    // men om användaren redan klickat “Lyssna” så funkar detta direkt:
+    audioEl.src = url;
+    const p = await audioEl.play().catch(e => e);
+    if (p instanceof Error) {
+      log("TTS: kräver extra klick (iOS).");
+    } else {
+      log("TTS startad.");
+    }
+  } catch (err) {
+    log(String(err.message || err));
+  }
+}
+
+function stopAudio() {
+  try { audioEl.pause(); audioEl.currentTime = 0; } catch {}
+}
+
+btnGen?.addEventListener("click", generate);
+btnListen?.addEventListener("click", playTTS);
+btnStop?.addEventListener("click", stopAudio);
+
+// Init
+log("BN front laddad.");
+checkAPI();
