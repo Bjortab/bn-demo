@@ -1,198 +1,285 @@
-// app.js — Golden Copy v1.3.3 (Audio-safe + warnings)
+// app.js — BlushNarratives Front v1.4 (Golden Copy)
+// Visar provider/modell, robust TTS (iOS-klik), tydlig statuslogg, caching av ljud.
 
-const $ = (s) => document.querySelector(s);
+(() => {
+  const $ = (sel) => document.querySelector(sel);
 
-// UI refs
-const levelSel   = $("#level");
-const lengthSel  = $("#length");
-const voiceSel   = $("#voice");
-const tempoSel   = $("#tempo");
-const ideaInput  = $("#userIdea");
+  // UI-element
+  const levelSel   = $('#level');
+  const lengthSel  = $('#length');
+  const voiceSel   = $('#voice');
+  const tempoInp   = $('#tempo');
+  const ideaTA     = $('#userIdea');
 
-const generateBtn = $("#generateBtn");
-const listenBtn   = $("#listenBtn");
-const stopBtn     = $("#stopBtn");
+  const btnGen     = $('#generateBtn');
+  const btnListen  = $('#listenBtn');
+  const btnStop    = $('#stopBtn');
 
-const outputPre   = $("#output");
-const statusBox   = $("#statusBox");
-const providerEl  = $("#statusProvider");
-const modelEl     = $("#statusModel");
-const warningsEl  = $("#warnings");
+  const outPre     = $('#output');
+  const storyArt   = $('#story');
+  const audioEl    = $('#audio');
 
-// story buffer
-window.currentStory = "";
+  // Status-ruta överst (om du har dessa fält i HTML – annars skapas de)
+  let providerSpan = document.getElementById('providerVal');
+  let modelSpan    = document.getElementById('modelVal');
+  let statusSpan   = document.getElementById('statusVal');
 
-// Audio state
-let currentAudio = null;
-let currentAudioUrl = null;
-let isPlaying = false;
-let isFetchingTTS = false;
-
-function cleanupAudio() {
-  try { if (currentAudio) { currentAudio.pause(); currentAudio.src = ""; } } catch {}
-  try { if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl); } catch {}
-  currentAudio = null;
-  currentAudioUrl = null;
-  isPlaying = false;
-}
-function setButtonsBusy(busy) {
-  generateBtn.disabled = !!busy;
-  listenBtn.disabled   = isFetchingTTS;
-  stopBtn.disabled     = !isPlaying && !isFetchingTTS;
-}
-function setStatus(text, provider = "", model = "") {
-  if (statusBox) statusBox.textContent = text || "-";
-  if (providerEl) providerEl.textContent = provider || "-";
-  if (modelEl) modelEl.textContent = model || "-";
-}
-function setWarnings(list) {
-  if (!warningsEl) return;
-  warningsEl.innerHTML = "";
-  if (Array.isArray(list) && list.length) {
-    const ul = document.createElement("ul");
-    list.forEach(w => { const li = document.createElement("li"); li.textContent = w; ul.appendChild(li); });
-    warningsEl.appendChild(ul);
+  // Om saknas – skapa enkel statusrad överst
+  if (!statusSpan) {
+    const header = document.createElement('div');
+    header.style.margin = '8px 0 16px';
+    header.innerHTML = `
+      <div><strong>Status:</strong> <span id="statusVal">–</span></div>
+      <div><strong>Provider:</strong> <span id="providerVal">–</span></div>
+      <div><strong>Modell:</strong> <span id="modelVal">–</span></div>
+    `;
+    const title = document.querySelector('h1,h2') || document.body.firstElementChild;
+    (title?.parentNode || document.body).insertBefore(header, title?.nextSibling || null);
+    providerSpan = header.querySelector('#providerVal');
+    modelSpan    = header.querySelector('#modelVal');
+    statusSpan   = header.querySelector('#statusVal');
   }
-}
-function appendOut(line) {
-  const now = new Date();
-  const hh = now.getHours().toString().padStart(2,"0");
-  const mm = now.getMinutes().toString().padStart(2,"0");
-  const ss = now.getSeconds().toString().padStart(2,"0");
-  outputPre.textContent += `[${hh}:${mm}:${ss}] ${line}\n`;
-  outputPre.scrollTop = outputPre.scrollHeight;
-}
-function setStory(text) {
-  window.currentStory = text || "";
-  outputPre.textContent = (text || "").trim() || "(tomt)";
-  outputPre.scrollTop = 0;
-}
 
-// Health ping
-(async () => {
-  try {
-    const r = await fetch("/api/health");
-    const js = await r.json().catch(()=>({}));
-    setStatus((js && js.ok) ? "API: ok" : "API: fel");
-  } catch { setStatus("API: fel"); }
-})();
+  // App-state
+  let busyGen   = false;
+  let ttsBusy   = false;
+  let lastText  = '';
+  let lastAudioURL = null; // ObjectURL / dataURL från TTS
+  let lastVoice = '';
+  let lastTempo = 1.0;
+  let lastProv  = '-';
+  let lastModel = '-';
 
-// GENERATE
-generateBtn.addEventListener("click", async () => {
-  cleanupAudio(); setWarnings([]);
-  setButtonsBusy(true);
+  // Hjälp
+  function setBusy(b) {
+    busyGen = b;
+    btnGen.disabled    = b;
+    btnListen.disabled = b; // lås lyssna under generering, öppnas efter
+    btnStop.disabled   = false;
+  }
 
-  const idea   = (ideaInput.value || "").trim();
-  const level  = Number(levelSel.value || 3);
-  const minutes= Number(lengthSel.value || 5);
-  const voice  = (voiceSel.value || "alloy");
-  const tempo  = Number(tempoSel.value || 1.0);
+  function setStatus(line) {
+    statusSpan.textContent = line;
+  }
+  function log(line) {
+    const t = new Date().toLocaleTimeString();
+    outPre.textContent += `[${t}] ${line}\n`;
+    outPre.scrollTop = outPre.scrollHeight;
+  }
+  function clearOutput() {
+    outPre.textContent = '(tomt)\n';
+  }
+  function setProviderModel(p, m) {
+    providerSpan.textContent = p || '-';
+    modelSpan.textContent    = m || '-';
+  }
 
-  if (!idea) { setButtonsBusy(false); setStatus("Skriv in din idé först."); return; }
+  function minutesFromSelect() {
+    // Anta option.value innehåller siffror (t.ex. "5") eller "5 min"
+    const raw = (lengthSel.value || '').toString();
+    const m = parseInt(raw.replace(/[^\d]/g, ''), 10);
+    return isNaN(m) ? 5 : m;
+  }
 
-  setStatus("Genererar…");
-  appendOut("Genererar…");
+  function voiceFromSelect() {
+    return (voiceSel?.value || 'alloy').trim();
+  }
 
-  try {
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ idea, level, minutes, voice, tempo })
-    });
-    const raw = await res.text();
-    let js = {}; try { js = JSON.parse(raw); } catch { throw new Error(`Felaktigt JSON: ${raw.slice(0,160)}…`); }
+  function tempoFromRange() {
+    const v = parseFloat(tempoInp?.value || '1.0');
+    if (isNaN(v)) return 1.0;
+    return Math.max(0.8, Math.min(1.25, v));
+  }
 
-    providerEl.textContent = js.provider || "-";
-    modelEl.textContent    = js.model || "-";
-    setWarnings(js.warnings || []);
+  async function checkAPI() {
+    try {
+      const r = await fetch('/api/health').then(r => r.json()).catch(() => null);
+      if (r && r.ok) {
+        log('API: ok');
+      } else {
+        log('API: fel');
+      }
+    } catch {
+      log('API: fel');
+    }
+  }
 
-    if (!res.ok || !js.ok) {
-      setStatus("Fel vid generering");
-      appendOut(`Fel: ${js.detail || js.error || `HTTP ${res.status}`}`);
-      setButtonsBusy(false);
+  // -------- GENERATE --------
+  async function onGenerate() {
+    if (busyGen) return;
+    const idea   = (ideaTA.value || '').trim();
+    const level  = parseInt(levelSel.value || '3', 10) || 3;
+    const mins   = minutesFromSelect();
+
+    if (!idea) {
+      log('Fel: tom idé.');
       return;
     }
 
-    setStory(js.text || "");
-    setStatus("Klart – tryck Lyssna för uppläsning.", js.provider || "", js.model || "");
-    appendOut("Klart.");
-  } catch (err) {
-    console.error(err);
-    setStatus("Fel vid generering.");
-    appendOut("Fel vid generering.");
-  } finally {
-    isFetchingTTS = false; isPlaying = false; setButtonsBusy(false);
-  }
-});
-
-// STOP
-stopBtn.addEventListener("click", () => {
-  if (currentAudio) currentAudio.pause();
-  cleanupAudio(); setButtonsBusy(false);
-  setStatus("Stoppad.");
-  appendOut("Stoppad.");
-});
-
-// LYSSNA (iOS-säker)
-listenBtn.addEventListener("click", async () => {
-  if (!window.currentStory || !window.currentStory.trim()) {
-    setStatus("Generera en berättelse först."); return;
-  }
-  if (isFetchingTTS || isPlaying) {
-    setStatus("Vänta – uppspelning pågår…"); return;
-  }
-
-  isFetchingTTS = true; setButtonsBusy(true);
-  setStatus("Hämtar röst…"); appendOut("Väntar röst…");
-
-  try {
-    const level = Number(levelSel.value || 3);
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: window.currentStory, level })
-    });
-    if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
-
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-
-    cleanupAudio();
-    currentAudioUrl = url;
-    currentAudio = new Audio(url);
-    currentAudio.preload = "auto";
-    currentAudio.crossOrigin = "anonymous";
-
-    currentAudio.addEventListener("ended", () => {
-      cleanupAudio(); setButtonsBusy(false);
-      setStatus("Klart."); appendOut("Klart.");
-    });
-    currentAudio.addEventListener("error", (e) => {
-      console.warn("Audio error:", e);
-      cleanupAudio(); setButtonsBusy(false);
-      setStatus("Fel vid uppspelning. Tryck Lyssna igen."); appendOut("TTS-fel: uppspelning.");
-    });
+    clearOutput();
+    setStatus('Genererar…');
+    log('Genererar…');
+    setProviderModel('-', '-');
+    setBusy(true);
+    lastAudioURL = null;
+    lastVoice    = voiceFromSelect();
+    lastTempo    = tempoFromRange();
 
     try {
-      await currentAudio.play();
-      isPlaying = true; isFetchingTTS = false; setButtonsBusy(true);
-      setStatus("Spelar upp 🎧");
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ idea, level, minutes: mins })
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>'');
+        log(`Fel vid generering: HTTP ${res.status}`);
+        if (txt) log(txt.slice(0, 400));
+        setStatus('Fel vid generering.');
+        return;
+      }
+
+      const data = await res.json();
+      lastProv  = data.provider || '-';
+      lastModel = data.model || '-';
+      setProviderModel(lastProv, lastModel);
+
+      lastText = (data.text || '').trim();
+      // Visa i story
+      storyArt.textContent = lastText;
+
+      setStatus('Klart.');
+      log('(klart)');
+
+      // Efter generering: tillåt Lyssna
+      btnListen.disabled = false;
+      // Autostarta INTE (iOS blockerar) – visa tydligt
+      log('Väntar röst…');
+
     } catch (err) {
-      console.warn("Auto-play block på iOS:", err);
-      isFetchingTTS = false; cleanupAudio(); setButtonsBusy(false);
-      setStatus("iOS block: tryck Lyssna igen för att starta."); appendOut("TTS: kräver extra klick (iOS).");
+      log(`Fel: ${err?.message || err}`);
+      setStatus('Fel vid generering.');
+    } finally {
+      setBusy(false);
     }
-  } catch (err) {
-    console.error("Fel vid uppläsning:", err);
-    isFetchingTTS = false; cleanupAudio(); setButtonsBusy(false);
-    setStatus("Fel vid uppläsning: " + (err.message || err));
-    appendOut("TTS-fel: " + (err.message || err));
   }
-});
 
-// QoL: Cmd/Ctrl/Shift+Enter för att generera
-ideaInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey || e.shiftKey)) generateBtn?.click();
-});
+  // -------- TTS --------
+  function stopAudio() {
+    try { audioEl.pause(); } catch {}
+    if (audioEl.src && audioEl.src.startsWith('blob:')) {
+      URL.revokeObjectURL(audioEl.src);
+    }
+  }
 
-appendOut("BN front v1.3.3 (Cloudflare)");
+  async function fetchTTSIfNeeded() {
+    if (!lastText) {
+      throw new Error('Ingen text att TTS:a');
+    }
+    if (lastAudioURL) return lastAudioURL;
+
+    ttsBusy = true;
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: lastText,
+          voice: lastVoice,
+          tempo: lastTempo
+        })
+      });
+
+      if (!res.ok) {
+        const t = await res.text().catch(()=> '');
+        const msg = `TTS-fel: HTTP ${res.status}`;
+        log(msg);
+        if (t) log(t.slice(0, 300));
+        throw new Error(msg);
+      }
+
+      // Flex: kan vara audio/* eller JSON med base64/dataURL
+      const ctype = (res.headers.get('content-type') || '').toLowerCase();
+
+      if (ctype.startsWith('audio/')) {
+        const blob = await res.blob();
+        lastAudioURL = URL.createObjectURL(blob);
+        return lastAudioURL;
+      }
+
+      // Annars tolka som JSON { ok, audio: <dataURL|base64> }
+      const data = await res.json();
+      let url = null;
+      if (data && data.audio) {
+        if (data.audio.startsWith('data:audio')) {
+          url = data.audio;
+        } else {
+          // anta base64 mp3
+          url = `data:audio/mpeg;base64,${data.audio}`;
+        }
+      }
+      if (!url) throw new Error('TTS: ogiltigt svar');
+      lastAudioURL = url;
+      return lastAudioURL;
+
+    } finally {
+      ttsBusy = false;
+    }
+  }
+
+  async function onListen() {
+    try {
+      setStatus('Hämtar röst…');
+      log('Väntar röst…');
+      const url = await fetchTTSIfNeeded();
+      stopAudio(); // stäng ev. gammal
+      audioEl.src = url;
+
+      try {
+        await audioEl.play();
+        setStatus('Spelar upp.');
+      } catch (e) {
+        // iOS/autoplay kräver användarklick
+        log('TTS: kräver extra klick (iOS).');
+        setStatus('Klicka Lyssna igen för att starta.');
+        // sätt upp one-shot på nästa användarklick
+        const onFirstUser = async () => {
+          document.removeEventListener('touchend', onFirstUser, true);
+          document.removeEventListener('click', onFirstUser, true);
+          try {
+            await audioEl.play();
+            setStatus('Spelar upp.');
+          } catch (err) {
+            log('TTS-fel: uppspelning.');
+            setStatus('Uppspelningsfel.');
+          }
+        };
+        document.addEventListener('touchend', onFirstUser, true);
+        document.addEventListener('click', onFirstUser, true);
+      }
+    } catch (err) {
+      log(`TTS-fel: ${err?.message || err}`);
+      setStatus('TTS-fel.');
+    }
+  }
+
+  function onStop() {
+    stopAudio();
+    setStatus('Stoppad.');
+  }
+
+  // Eventkopplingar
+  btnGen?.addEventListener('click', onGenerate);
+  btnListen?.addEventListener('click', onListen);
+  btnStop?.addEventListener('click', onStop);
+
+  // Init
+  (function init() {
+    clearOutput();
+    btnListen.disabled = true;
+    setProviderModel('-', '-');
+    setStatus('Init…');
+    checkAPI();
+  })();
+})();
