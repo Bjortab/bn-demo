@@ -1,10 +1,19 @@
 // functions/api/tts.js
-import { corsHeaders, jsonResponse, serverError } from "../_utils.js";
+// BN TTS endpoint – returnerar base64-ljud i JSON
+
+import { corsHeaders, jsonResponse, serverError } from "./_utils.js";
+
+export async function onRequestOptions() {
+  // CORS preflight
+  return new Response(null, { status: 204, headers: corsHeaders(new Request(""), {}) });
+}
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { text, voice } = await request.json();
-    if (!text) return serverError("Ingen text skickad till TTS.");
+    const { text, voice } = await request.json().catch(() => ({}));
+    if (!text || typeof text !== "string") {
+      return jsonResponse({ ok: false, error: "Ingen text skickad till TTS." }, 400);
+    }
 
     const chosenVoice = voice || "alloy";
 
@@ -24,17 +33,23 @@ export async function onRequestPost({ request, env }) {
     });
 
     if (!res.ok) {
-      const errText = await res.text();
-      return serverError("OpenAI TTS-fel: " + errText);
+      const errText = await res.text().catch(() => "");
+      return jsonResponse(
+        { ok: false, error: "OpenAI TTS-fel", detail: errText || res.statusText },
+        res.status === 0 ? 502 : res.status
+      );
     }
 
-    // Hämta binär MP3 och konvertera till base64
+    // Konvertera binärt ljud → base64 och returnera som JSON
     const arrayBuffer = await res.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Audio = buffer.toString("base64");
+    // Buffer finns i Cloudflare Workers numera via polyfill; fallback om inte:
+    const b64 =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(arrayBuffer).toString("base64")
+        : btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
 
-    return jsonResponse({ audio: base64Audio });
+    return jsonResponse({ ok: true, audio: b64 });
   } catch (err) {
-    return serverError("Fel i TTS: " + err.message);
+    return serverError("Fel i TTS: " + (err?.message || String(err)));
   }
 }
