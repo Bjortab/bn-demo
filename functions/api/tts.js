@@ -1,76 +1,69 @@
 // functions/api/tts.js
-import { corsHeaders, jsonResponse, serverError } from './_utils.js';
+import { json, badRequest, serverError, corsHeaders } from '../_utils.js';
 
-const ELEVEN_API = "https://api.elevenlabs.io/v1/text-to-speech";
-
-// Exempel på röster (du kan byta till andra ID:n från ElevenLabs dashboard)
-const VOICES = {
-  alloy: "pNInz6obpgDQGcFmaJgB",     // neutral
-  nova: "EXAVITQu4vr4xnSDxMaL",      // kvinnlig
-  verse: "TxGEqnHWrfWFTfGW9XjX"      // manlig
-};
-
-// Maxlängd på text som skickas till ElevenLabs
-const MAX_CHARS = 5000;
-
-export async function onRequestPost({ request, env }) {
+export const onRequestPost = async (context) => {
   try {
-    const { text, voice = "alloy", tempo = 1.0 } = await request.json();
+    const { request, env } = context;
 
-    if (!text || text.trim().length === 0) {
-      return jsonResponse({ ok: false, error: "Ingen text till TTS" }, 400, request);
+    // Läs in API-nyckeln från Cloudflare
+    const ELEVENLABS_API_KEY = env.ELEVENLABS_API_KEY;
+    if (!ELEVENLABS_API_KEY) {
+      return badRequest("Missing ELEVENLABS_API_KEY");
     }
 
-    if (!env.ELEVENLABS_API_KEY) {
-      return jsonResponse({ ok: false, error: "Saknar ELEVENLABS_API_KEY i Cloudflare" }, 500, request);
+    const data = await request.json();
+    const { text, voice } = data;
+
+    if (!text) {
+      return badRequest("Missing text for TTS");
     }
 
-    // Städa texten & kapa om den är för lång
-    let clean = text.replace(/\s+/g, " ").trim();
-    if (clean.length > MAX_CHARS) clean = clean.slice(0, MAX_CHARS);
-
-    // Välj röst-ID
-    const voiceId = VOICES[voice] || VOICES.alloy;
-
-    // Skapa payload för ElevenLabs
-    const body = {
-      text: clean,
-      model_id: "eleven_multilingual_v2",
-      voice_settings: {
-        stability: 0.4,
-        similarity_boost: 0.8,
-        style: 0.5,
-        use_speaker_boost: true
-      }
+    // Mappar rösterna
+    const voices = {
+      charlotte: "EXAVITQu4vr4xnSDxMaL", // <-- Voice ID för Charlotte
+      antoni: "ErXwobaYiN019PkySvjV"     // <-- Voice ID för Antoni
     };
 
-    // Skicka till ElevenLabs API
-    const res = await fetch(`${ELEVEN_API}/${voiceId}`, {
+    const voiceId = voices[voice] || voices.charlotte;
+
+    // Bygg request mot ElevenLabs
+    const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: {
-        "xi-api-key": env.ELEVENLABS_API_KEY,
-        "Content-Type": "application/json"
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        text,
+        model_id: "eleven_multilingual_v2", // 🔑 ser till att rösterna pratar svenska
+        voice_settings: {
+          stability: 0.4,          // lite variation
+          similarity_boost: 0.8,   // bibehåller rösten
+          style: 0.6,              // lite mer känsla
+          use_speaker_boost: true
+        }
+      })
     });
 
-    if (!res.ok) {
-      const errText = await res.text();
-      return jsonResponse({ ok: false, error: "ElevenLabs API fel", details: errText }, 500, request);
+    if (!ttsResponse.ok) {
+      const err = await ttsResponse.text();
+      console.error("ElevenLabs error:", err);
+      return serverError("TTS generation failed: " + err);
     }
 
-    const audio = await res.arrayBuffer();
+    const audioBuffer = await ttsResponse.arrayBuffer();
 
-    return new Response(audio, {
+    return new Response(audioBuffer, {
       status: 200,
       headers: {
-        ...corsHeaders(request),
         "Content-Type": "audio/mpeg",
-        "Cache-Control": "no-store"
-      }
+        "Content-Length": audioBuffer.byteLength,
+        ...corsHeaders,
+      },
     });
 
   } catch (err) {
-    return serverError(err, request);
+    console.error("TTS API error:", err);
+    return serverError("TTS API failed: " + err.message);
   }
-}
+};
