@@ -1,90 +1,91 @@
 // functions/api/tts.js
-// Robust TTS med korrekt hantering av POST / OPTIONS / GET
+import { corsHeaders, jsonResponse, serverError, sha256 } from "./_utils.js";
 
-const CORS_BASE_HEADERS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization",
-  "access-control-expose-headers": "content-type",
-  "cache-control": "no-store",
+const DEFAULT_VOICES = {
+  alloy: "21m00Tcm4TlvDq8ikWAM",  // byt till dina riktiga voice IDs
+  verse: "EXAVITQu4vr4xnSDxMaL",
+  coral: "ErXwobaYiN019PkySvjV",
 };
 
-// Hjälp: JSON-respons
-function jsonResponse(payload, status = 200, extra = {}) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", ...CORS_BASE_HEADERS, ...extra },
-  });
+export async function onRequestOptions({ request }) {
+  return new Response("", { status: 204, headers: corsHeaders(request) });
 }
 
-// Preflight
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: CORS_BASE_HEADERS,
-  });
-}
-
-// GET (för snabbtest)
-export async function onRequestGet() {
-  return jsonResponse({ ok: true, hint: "POST { text, voice } till /api/tts" });
-}
-
-// POST = huvudfunktionen
 export async function onRequestPost({ request, env }) {
   try {
-    const body = await request.json();
-    let { text, voice } = body || {};
-    if (!text || typeof text !== "string") {
-      return jsonResponse({ ok: false, error: "Ingen text skickad till TTS." }, 400);
+    const { text, voice = "alloy", tempo = 1.0, templateId = "-", version = 1, name = "" } =
+      await request.json().catch(() => ({}));
+
+    if (!text || !String(text).trim()) return jsonResponse({ ok: false, error: "Ingen text." }, 400, request);
+    if (!env.BN_AUDIO) return jsonResponse({ ok: false, error: "Saknar R2-binding BN_AUDIO." }, 500, request);
+    if (!env.ELEVENLABS_API_KEY) return jsonResponse({ ok: false, error: "Saknar ELEVENLABS_API_KEY." }, 500, request);
+
+    let clean = String(text).replace(/[\u0000-\u0008\u000B-\u001F]/g, "").trim();
+    const MAX_CHARS = 6000;
+    if (clean.length > MAX_CHARS) clean = clean.slice(0, MAX_CHARS) + "…";
+
+    const vKey = (voice || "alloy").toLowerCase();
+    const tKey = Number(tempo || 1.0).toFixed(2);
+    const fullKey = await sha256(`${vKey}|${tKey}|${templateId}|v${version}|${(name||"").toLowerCase()}|${clean.slice(0,256)}`);
+    const objectKey = `v1/${vKey}/${tKey}/${templateId}/v${version}/${fullKey}.mp3`;
+
+    const head = await env.BN_AUDIO.head(objectKey);
+    if (head) {
+      const obj = await env.BN_AUDIO.get(objectKey);
+      if (obj) {
+        return new Response(obj.body, {
+          status: 200,
+          headers: {
+            ...corsHeaders(request),
+            "Content-Type": "audio/mpeg",
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": head.httpEtag || `"${fullKey}"`,
+          },
+        });
+      }
     }
 
-    // Sanering + längdgräns
-    text = text.trim().replace(/[\uD800-\uDFFF]/g, "");
-    const MAX_CHARS = 4500;
-    if (text.length > MAX_CHARS) {
-      text = text.slice(0, MAX_CHARS) + "…";
-    }
+    const VOICE_ID = env.ELEVENLABS_VOICE_ID || DEFAULT_VOICES[vKey] || DEFAULT_VOICES.alloy;
+    const payload = {
+      text: clean,
+      model_id: "eleven_multilingual_v2",
+      voice_settings: {
+        stability: 0.42,
+        similarity_boost: 0.82,
+        style: 0.55,
+        use_speaker_boost: true
+      },
+    };
 
-    const v = (voice || "alloy").toLowerCase();
-    const voiceMap = { alloy: "alloy", verse: "verse", coral: "coral" };
-    const chosenVoice = voiceMap[v] || "alloy";
-
-    const OPENAI_API_KEY = env.OPENAI_API_KEY;
-    if (!OPENAI_API_KEY) {
-      return jsonResponse({ ok: false, error: "Saknar OPENAI_API_KEY." }, 500);
-    }
-
-    // Anropa OpenAI TTS
-    const ttsRes = await fetch("https://api.openai.com/v1/audio/speech", {
+    const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "content-type": "application/json",
+        "xi-api-key": env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: chosenVoice,
-        input: text,
-        format: "mp3",
-      }),
+      body: JSON.stringify(payload),
     });
 
-    if (!ttsRes.ok) {
-      const errText = await ttsRes.text().catch(() => "");
-      return jsonResponse({ ok: false, error: "TTS-provider fel", status: ttsRes.status, detail: errText }, 502);
+    if (!elRes.ok) {
+      const errTxt = await elRes.text().catch(() => "");
+      return jsonResponse({ ok: false, error: "ElevenLabs TTS-fel", status: elRes.status, detail: errTxt }, 502, request);
     }
 
-    const audioBuf = await ttsRes.arrayBuffer();
+    const audioBuf = await elRes.arrayBuffer();
+
+    await env.BN_AUDIO.put(objectKey, audioBuf, {
+      httpMetadata: { contentType: "audio/mpeg", cacheControl: "public, max-age=31536000, immutable" },
+    });
 
     return new Response(audioBuf, {
       status: 200,
       headers: {
-        ...CORS_BASE_HEADERS,
-        "content-type": "audio/mpeg",
+        ...corsHeaders(request),
+        "Content-Type": "audio/mpeg",
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "ETag": `"${fullKey}"`,
       },
     });
-  } catch (err) {
-    return jsonResponse({ ok: false, error: "TTS-intern", detail: String(err?.message || err) }, 500);
-  }
+  } catch (err) { return serverError(err, request); }
 }
