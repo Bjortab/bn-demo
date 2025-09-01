@@ -1,5 +1,5 @@
 // functions/api/tts.js
-import { json, badRequest, serverError, corsHeaders } from '../_utils.js';
+import { json, badRequest, serverError, corsHeaders } from './_utils.js';
 
 export const onRequestPost = async (context) => {
   try {
