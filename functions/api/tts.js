@@ -1,69 +1,65 @@
 // functions/api/tts.js
-import { json, badRequest, serverError, corsHeaders } from './_utils.js';
+import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
 
-export const onRequestPost = async (context) => {
+const DEFAULT_VOICES = {
+  // Byt till dina riktiga voice IDs från ElevenLabs
+  alloy: '21m00Tcm4TlvDq8ikWAM',     // exempel
+  charlotte: 'ELEVEN_VOICE_ID_CHARLOTTE', // byt
+  erik: 'ELEVEN_VOICE_ID_ERIK',           // byt
+};
+
+export async function onRequestOptions({ request }) {
+  return new Response('', { status: 204, headers: corsHeaders(request) });
+}
+
+export async function onRequestPost({ request, env }) {
   try {
-    const { request, env } = context;
+    const { text, voice = 'alloy', tempo = 1.0, templateId = null, version = 'v1' } = await request.json().catch(() => ({}));
+    if (!text || !text.trim()) return badRequest('Ingen text till TTS.', request);
+    if (!env.ELEVENLABS_API_KEY) return jsonResponse({ ok: false, error: 'Saknar ELEVENLABS_API_KEY.' }, 500, request);
 
-    // Läs in API-nyckeln från Cloudflare
-    const ELEVENLABS_API_KEY = env.ELEVENLABS_API_KEY;
-    if (!ELEVENLABS_API_KEY) {
-      return badRequest("Missing ELEVENLABS_API_KEY");
-    }
+    // Rensa upp kontrolltecken etc.
+    const clean = String(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim();
+    if (!clean) return badRequest('Tom/smutsig text efter städning.', request);
 
-    const data = await request.json();
-    const { text, voice } = data;
+    // Tempo → prosody-speed via SSML, ElevenLabs ignorerar ibland det – vi låter servern bära parametern ändå
+    const speed = Math.max(0.75, Math.min(1.5, Number(tempo) || 1.0));
 
-    if (!text) {
-      return badRequest("Missing text for TTS");
-    }
+    // Hämta voiceId
+    const voiceId = DEFAULT_VOICES[voice] || voice; // tillåt att skicka direkt voiceId
+    const modelId = 'eleven_multilingual_v2';       // svenska stöds
 
-    // Mappar rösterna
-    const voices = {
-      charlotte: "EXAVITQu4vr4xnSDxMaL", // <-- Voice ID för Charlotte
-      antoni: "ErXwobaYiN019PkySvjV"     // <-- Voice ID för Antoni
+    const body = {
+      model_id: modelId,
+      voice_settings: { stability: 0.55, similarity_boost: 0.7, style: 0.4, use_speaker_boost: true },
+      text: clean,
+      // Tips: använd SSML för mer rytm (kan aktiveras via tts: { use_ssml: true } i din app senare)
     };
 
-    const voiceId = voices[voice] || voices.charlotte;
-
-    // Bygg request mot ElevenLabs
-    const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-      method: "POST",
+    const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
       headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
+        'xi-api-key': env.ELEVENLABS_API_KEY,
+        'content-type': 'application/json',
+        accept: 'audio/mpeg',
       },
-      body: JSON.stringify({
-        text,
-        model_id: "eleven_multilingual_v2", // 🔑 ser till att rösterna pratar svenska
-        voice_settings: {
-          stability: 0.4,          // lite variation
-          similarity_boost: 0.8,   // bibehåller rösten
-          style: 0.6,              // lite mer känsla
-          use_speaker_boost: true
-        }
-      })
+      body: JSON.stringify(body),
     });
 
-    if (!ttsResponse.ok) {
-      const err = await ttsResponse.text();
-      console.error("ElevenLabs error:", err);
-      return serverError("TTS generation failed: " + err);
+    if (!res.ok) {
+      const errTxt = await res.text().catch(() => '');
+      return serverError(`TTS-fel: HTTP ${res.status} ${errTxt || ''}`, request);
     }
 
-    const audioBuffer = await ttsResponse.arrayBuffer();
+    const audio = await res.arrayBuffer();
 
-    return new Response(audioBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Content-Length": audioBuffer.byteLength,
-        ...corsHeaders,
-      },
-    });
-
+    const headers = {
+      ...corsHeaders(request, { 'content-type': 'audio/mpeg' }),
+      'content-disposition': 'inline; filename="bn-voice.mp3"',
+      'cache-control': 'no-store',
+    };
+    return new Response(audio, { status: 200, headers });
   } catch (err) {
-    console.error("TTS API error:", err);
-    return serverError("TTS API failed: " + err.message);
+    return serverError(err, request);
   }
-};
+}
