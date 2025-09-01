@@ -1,30 +1,34 @@
 // functions/api/_utils.js
+import crypto from 'crypto';
 
-export function corsHeaders(request, extra = {}) {
-  const origin = request.headers.get('Origin') || '*';
+export function corsHeaders(request) {
   return {
-    'access-control-allow-origin': origin,
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type, authorization',
-    'access-control-expose-headers': 'content-type',
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    ...extra,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': request.headers.get('Access-Control-Request-Headers') || '*',
   };
 }
 
-export function jsonResponse(payload, status = 200, request, extra = {}) {
-  return new Response(JSON.stringify(payload), {
+export function jsonResponse(obj, status = 200, request) {
+  return new Response(JSON.stringify(obj), {
     status,
-    headers: corsHeaders(request, extra),
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(request),
+    },
   });
 }
 
-export function badRequest(msg = 'bad request', request) {
+export function badRequest(msg, request) {
   return jsonResponse({ ok: false, error: msg }, 400, request);
 }
 
-export function serverError(err = 'server error', request) {
-  const detail = typeof err === 'string' ? err : (err?.message || 'error');
-  return jsonResponse({ ok: false, error: detail }, 500, request);
+export function serverError(err, request) {
+  console.error(err);
+  return jsonResponse({ ok: false, error: String(err) }, 500, request);
+}
+
+// 🔑 lägg till sha256 här så andra filer kan importera
+export function sha256(message) {
+  return crypto.createHash('sha256').update(message).digest('hex');
 }
