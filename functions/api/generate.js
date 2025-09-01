@@ -1,56 +1,95 @@
 // functions/api/generate.js
-import { corsHeaders, jsonResponse, serverError, sanitizeIdea, normalizeFirstName } from "./_utils.js";
+import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
 
 export async function onRequestOptions({ request }) {
-  return new Response("", { status: 204, headers: corsHeaders(request) });
+  return new Response('', { status: 204, headers: corsHeaders(request) });
 }
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { idea, level = 3, minutes = 5, tags = [], name = "" } = await request.json().catch(() => ({}));
-
-    const check = sanitizeIdea(idea);
-    if (!check.ok) return jsonResponse({ ok: false, error: check.error }, 400, request);
-    const lvl = Number(level) || 3;
-    const mins = Math.min(20, Math.max(3, Number(minutes) || 5));
-    const wantedTags = Array.isArray(tags) ? tags.map(t => String(t).toLowerCase()) : [];
-    const firstName = normalizeFirstName(name);
-
-    const indexRaw = await env.BN_KV.get("templates_index");
-    const ids = indexRaw ? JSON.parse(indexRaw) : [];
-    if (!ids.length) return jsonResponse({ ok: false, error: "Inga mallar uppladdade ännu." }, 500, request);
-
-    const candidates = [];
-    for (const id of ids) {
-      const raw = await env.BN_KV.get(`templates/${id}`);
-      if (!raw) continue;
-      const tpl = JSON.parse(raw);
-      if (Number(tpl.level) !== lvl) continue;
-      if (Number(tpl.minutes) !== mins) continue;
-      if (wantedTags.length && !wantedTags.every(t => tpl.tags.map(x => x.toLowerCase()).includes(t))) continue;
-      candidates.push(tpl);
+    const { prompt, level = 3, maxTokens = 800 } = await request.json().catch(() => ({}));
+    if (!prompt || !prompt.trim()) {
+      return badRequest('Ingen prompt angiven.', request);
     }
 
-    if (!candidates.length) {
-      return jsonResponse({ ok: false, error: "Hittade ingen passande mall för valda nivå/längd." }, 404, request);
+    // --- välj provider beroende på nivå ---
+    let provider = 'openrouter';
+    let model = 'meta-llama/llama-3.1-70b-instruct'; // default
+
+    if (level === 3) {
+      // sensuell/mjuk nivå
+      provider = 'openrouter';
+      model = 'meta-llama/llama-3.1-70b-instruct';
+    } else if (level === 5) {
+      // explicit nivå → lexicon kan blandas in här senare
+      provider = 'openrouter';
+      model = 'meta-llama/llama-3.1-70b-instruct';
     }
 
-    const tpl = candidates[Math.floor(Math.random() * candidates.length)];
+    // --- bygg request body ---
+    const body = {
+      model,
+      prompt: `${prompt}\n\nSkriv på svenska.`,
+      max_tokens: maxTokens,
+      temperature: 0.9,
+    };
 
-    let text = tpl.text_template;
-    if (firstName && Array.isArray(tpl.name_slots) && tpl.name_slots.length) {
-      for (const slot of tpl.name_slots.slice(0, 2)) {
-        text = text.replaceAll(`{{${slot}}}`, firstName);
-      }
-      text = text.replaceAll(/\{\{NAME_OPT\}\}/g, "");
-    } else {
-      text = text.replaceAll(/\{\{NAME_OPT\}\}/g, "");
+    // --- hämta rätt API-nyckel ---
+    let apiKey = null;
+    let url = null;
+
+    if (provider === 'openrouter') {
+      apiKey = env.OPENROUTER_API_KEY;
+      url = 'https://openrouter.ai/api/v1/chat/completions';
+      body['messages'] = [
+        { role: 'system', content: 'Du är en svensk berättarröst. Skriv naturligt och flytande.' },
+        { role: 'user', content: prompt },
+      ];
+      delete body.prompt; // openrouter kräver messages-formatet
     }
+
+    if (!apiKey) {
+      return serverError(`Ingen API-nyckel för ${provider}`, request);
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      return serverError(`Fel från ${provider}: HTTP ${res.status} ${txt}`, request);
+    }
+
+    const data = await res.json().catch(() => null);
+    const text =
+      data?.choices?.[0]?.message?.content?.trim() ||
+      data?.choices?.[0]?.text?.trim() ||
+      '';
+
+    if (!text) {
+      return serverError('Tomt svar från modellen.', request);
+    }
+
+    // Lägg till [SLUT]-tagg så vi ser att texten blev komplett
+    const finalText = text.endsWith('[SLUT]') ? text : text + '\n\n[SLUT]';
 
     return jsonResponse(
-      { ok: true, provider: "templates", model: "-", templateId: tpl.id, version: tpl.version, text },
+      {
+        ok: true,
+        provider,
+        model,
+        text: finalText,
+      },
       200,
       request
     );
-  } catch (err) { return serverError(err, request); }
+  } catch (err) {
+    return serverError(err, request);
+  }
 }
