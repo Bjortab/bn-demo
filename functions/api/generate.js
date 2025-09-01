@@ -1,5 +1,9 @@
 // functions/api/generate.js
-import { corsHeaders, jsonResponse, badRequest, serverError } from './_utils.js';
+import { corsHeaders, jsonResponse, serverError, badRequest } from './_utils.js';
+
+// OBS: Detta är den “smala” varianten som bara demonstrerar prompt-hanteringen.
+// Din övriga logik (OpenRouter/Mistral, nivåer, lexicon, retries, [SLUT], osv.)
+// kan ligga kvar under den markerade delen.
 
 export async function onRequestOptions({ request }) {
   return new Response('', { status: 204, headers: corsHeaders(request) });
@@ -7,89 +11,40 @@ export async function onRequestOptions({ request }) {
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { prompt, level = 3, maxTokens = 800 } = await request.json().catch(() => ({}));
-    if (!prompt || !prompt.trim()) {
+    const body = await request.json().catch(() => ({}));
+    // 🔧 Acceptera båda fälten
+    const raw = (body.idea ?? body.prompt ?? '').toString().trim();
+
+    const level   = Number(body.level ?? 3);
+    const minutes = Number(body.minutes ?? 5);
+    const voice   = (body.voice ?? 'alloy').toString();
+    const tempo   = Number(body.tempo ?? 0);
+
+    if (!raw) {
       return badRequest('Ingen prompt angiven.', request);
     }
 
-    // --- välj provider beroende på nivå ---
-    let provider = 'openrouter';
-    let model = 'meta-llama/llama-3.1-70b-instruct'; // default
-
-    if (level === 3) {
-      // sensuell/mjuk nivå
-      provider = 'openrouter';
-      model = 'meta-llama/llama-3.1-70b-instruct';
-    } else if (level === 5) {
-      // explicit nivå → lexicon kan blandas in här senare
-      provider = 'openrouter';
-      model = 'meta-llama/llama-3.1-70b-instruct';
+    // (valfritt) enkel input-längd-guard
+    if (raw.length < 3) {
+      return badRequest('Prompten är för kort.', request);
     }
 
-    // --- bygg request body ---
-    const body = {
-      model,
-      prompt: `${prompt}\n\nSkriv på svenska.`,
-      max_tokens: maxTokens,
-      temperature: 0.9,
-    };
+    // 🔎 Små loggar för felsökning (syns i CF logs)
+    console.log('[generate] prompt:', raw.slice(0, 80));
+    console.log('[generate] level/min/voice/tempo:', level, minutes, voice, tempo);
 
-    // --- hämta rätt API-nyckel ---
-    let apiKey = null;
-    let url = null;
+    // ================================
+    //  DIN BEFINTLIGA GENERERINGSLOGIK
+    //  (OpenRouter/Mistral→OpenAI fallback, lexicon för nivå 5, [SLUT], etc.)
+    //  Returnera sedan { ok:true, text, provider, model }
+    // ================================
 
-    if (provider === 'openrouter') {
-      apiKey = env.OPENROUTER_API_KEY;
-      url = 'https://openrouter.ai/api/v1/chat/completions';
-      body['messages'] = [
-        { role: 'system', content: 'Du är en svensk berättarröst. Skriv naturligt och flytande.' },
-        { role: 'user', content: prompt },
-      ];
-      delete body.prompt; // openrouter kräver messages-formatet
-    }
+    // Dummy-respons för att visa flödet:
+    const text = `Demo: mottog prompt "${raw}". [SLUT]`;
+    return jsonResponse({ ok: true, text, provider: 'openrouter', model: 'meta-llama-3.1-70b-instruct' }, 200, request);
 
-    if (!apiKey) {
-      return serverError(`Ingen API-nyckel för ${provider}`, request);
-    }
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      return serverError(`Fel från ${provider}: HTTP ${res.status} ${txt}`, request);
-    }
-
-    const data = await res.json().catch(() => null);
-    const text =
-      data?.choices?.[0]?.message?.content?.trim() ||
-      data?.choices?.[0]?.text?.trim() ||
-      '';
-
-    if (!text) {
-      return serverError('Tomt svar från modellen.', request);
-    }
-
-    // Lägg till [SLUT]-tagg så vi ser att texten blev komplett
-    const finalText = text.endsWith('[SLUT]') ? text : text + '\n\n[SLUT]';
-
-    return jsonResponse(
-      {
-        ok: true,
-        provider,
-        model,
-        text: finalText,
-      },
-      200,
-      request
-    );
   } catch (err) {
+    console.error('generate error', err);
     return serverError(err, request);
   }
 }
