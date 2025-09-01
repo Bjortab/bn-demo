@@ -1,75 +1,68 @@
-<!doctype html>
+<!-- BN GC index.html v3 (templates + ElevenLabs) -->
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlushNarratives</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="wrap">
-    <h1>💋 BlushNarratives</h1>
+  <header>
+    <h1>✨ BlushNarratives</h1>
+  </header>
 
-    <p id="status">Status: …</p>
-    <p>Provider: <span id="provider">-</span><br/>Modell: <span id="model">-</span></p>
+  <main>
+    <textarea id="userPrompt" placeholder="Skriv din idé här..."></textarea>
 
-    <section class="panel">
+    <div class="controls">
       <label for="level">Nivå:</label>
       <select id="level">
         <option value="1">1 – Romantisk</option>
         <option value="2">2 – Sensuell</option>
-        <option value="3" selected>3 – Sensuell+</option>
+        <option value="3">3 – Sensuell+</option>
         <option value="4">4 – Het</option>
         <option value="5">5 – Explicit</option>
       </select>
-    </section>
 
-    <section class="panel">
       <label for="length">Längd:</label>
       <select id="length">
         <option value="3">3 min</option>
         <option value="5" selected>5 min</option>
-        <option value="8">8 min</option>
         <option value="10">10 min</option>
+        <option value="15">15 min</option>
       </select>
-    </section>
 
-    <section class="panel">
       <label for="voice">Röst:</label>
       <select id="voice">
-        <option value="alloy" selected>Alloy (neutral)</option>
-        <option value="verse">Verse (kvinna)</option>
-        <option value="coral">Coral (man)</option>
+        <option value="female">Kvinna</option>
+        <option value="male">Man</option>
+        <option value="neutral" selected>Neutral</option>
       </select>
-    </section>
 
-    <section class="panel">
       <label for="tempo">Tempo:</label>
-      <input id="tempo" type="range" min="0.8" max="1.25" step="0.05" value="1.0" />
-    </section>
+      <select id="tempo">
+        <option value="slow">Långsamt</option>
+        <option value="normal" selected>Normalt</option>
+        <option value="fast">Snabbt</option>
+      </select>
+    </div>
 
-    <section class="panel">
-      <label for="userIdea">Din idé:</label>
-      <textarea id="userIdea" placeholder="Ex: Jag och min fru en morgon…"></textarea>
-      <div class="actions">
-        <button id="generateBtn" class="primary">Generera</button>
-        <button id="listenBtn" class="secondary">Lyssna</button>
-        <button id="stopBtn" class="ghost">Stop</button>
-      </div>
-    </section>
+    <div class="buttons">
+      <button id="generateBtn">🎲 Generera</button>
+      <button id="listenBtn" disabled>🔊 Lyssna</button>
+    </div>
 
-    <section class="panel">
-      <article id="story" class="story" aria-live="polite"></article>
-      <div id="player">
-        <!-- Viktigt: audio finns från start -->
-        <audio id="audio" preload="none" controls></audio>
-      </div>
-      <pre id="output" class="output">(tomt)</pre>
-    </section>
+    <div id="status" class="status"></div>
 
-    <footer class="foot"><small>BN front v1.2 (Cloudflare)</small></footer>
+    <pre id="storyOutput"></pre>
+    <audio id="audioPlayer" controls></audio>
   </main>
 
-  <script defer src="/app.js"></script>
+  <footer>
+    <button id="bcBtn">💡 BC</button>
+  </footer>
+
+  <script defer src="app.js"></script>
 </body>
 </html>
