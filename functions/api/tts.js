@@ -1,141 +1,136 @@
 // functions/api/tts.js
-import { corsHeaders, jsonResponse, serverError, sha256 } from './_utils.js';
+// BN TTS → ElevenLabs + sparning i R2 (BN_AUDIO)
+// Returnerar MP3 direkt till klienten OCH lagrar samma MP3 i R2.
 
-// ======= KONFIG =======
-const DEFAULT_VOICES = {
-  // Byt till dina riktiga ElevenLabs-IDs när du vill
-  // (du kan även skicka voice från frontend)
-  female: 'EXAVITQu4vr4xnSDxMaL', // ex: "Charlotte" eller liknande
-  male:   'pNInz6obpgDQGcFmaJgB', // ex: "Adam" eller liknande
-};
+const CORS_HEADERS = (origin) => ({
+  "access-control-allow-origin": origin || "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type, authorization",
+  "access-control-expose-headers": "content-type",
+  "content-type": "application/json; charset=utf-8",
+  "cache-control": "no-store",
+});
 
-const ELEVEN_MODEL = 'eleven_multilingual_v2';
-const MAX_CHARS = 9_500;           // rejäl säkerhetsmarginal
-const RETRIES = 2;                  // gör några få kontrollerade omförsök
-const CACHE_TTL_SECONDS = 60 * 60;  // 1h cache i CF KV
+function okJson(data, origin) {
+  return new Response(JSON.stringify(data), { status: 200, headers: CORS_HEADERS(origin) });
+}
+function badJson(message, origin, status = 400) {
+  return new Response(JSON.stringify({ ok: false, error: message }), {
+    status,
+    headers: CORS_HEADERS(origin),
+  });
+}
 
 export async function onRequestOptions({ request }) {
-  return new Response('', { status: 204, headers: corsHeaders(request) });
+  return new Response(null, { status: 204, headers: CORS_HEADERS(request.headers.get("Origin")) });
 }
 
-export async function onRequestGet({ request }) {
-  // enkel diagnos-endpoint
-  return jsonResponse({ ok: true, tts: 'elevenlabs', model: ELEVEN_MODEL }, 200, request);
-}
+// GET ?key=<r2Key> → streama audio från R2 (bra om du vill ladda om sparade filer)
+export async function onRequestGet({ request, env }) {
+  const origin = request.headers.get("Origin");
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key");
+  if (!key) return badJson("Saknar 'key' i query", origin);
 
-export async function onRequestPost({ request, env }) {
   try {
-    const { text, voice, templateId } = await request.json();
+    const object = await env.BN_AUDIO.get(key);
+    if (!object) return badJson("Hittar inte ljudfilen", origin, 404);
 
-    if (!text || typeof text !== 'string') {
-      return jsonResponse({ ok: false, error: 'ingen text till TTS' }, 400, request);
-    }
-    if (!env.ELEVENLABS_API_KEY) {
-      return jsonResponse({ ok: false, error: 'saknar ELEVENLABS_API_KEY' }, 500, request);
-    }
-    if (!env.BN_AUDIO) {
-      // KV-binding saknas – ge tydlig diagnos
-      return jsonResponse({ ok: false, error: 'saknar KV-binding BN_AUDIO' }, 500, request);
-    }
-
-    // Sanera / trunkera text
-    let clean = text.replace(/\u0000/g, '').trim();
-    if (clean.length > MAX_CHARS) clean = clean.slice(0, MAX_CHARS);
-
-    // Välj röst (tillåt explicit voice-id från klienten)
-    const chosen = (voice && typeof voice === 'string' ? voice : '').trim()
-      || DEFAULT_VOICES.female;
-
-    // Nyckel för KV-cache baserat på (text + voice + templateId)
-    const keyMaterial = `${ELEVEN_MODEL}::${chosen}::${templateId ?? ''}::${clean}`;
-    const cacheKey = await sha256(keyMaterial);
-
-    // KV: försök hämta
-    const head = await env.BN_AUDIO.get(cacheKey, { type: 'arrayBuffer' });
-    if (head) {
-      return new Response(head, {
-        status: 200,
-        headers: {
-          ...corsHeaders(request),
-          'content-type': 'audio/mpeg',
-          'cache-control': 'public, max-age=31536000, immutable',
-          'x-bn-tts': 'elevenlabs-kv-hit',
-          'etag': cacheKey,
-        }
-      });
-    }
-
-    // Annars hämta från ElevenLabs (med små omförsök)
-    let audioBuf = null;
-    let lastErr = null;
-    for (let attempt = 0; attempt <= RETRIES; attempt++) {
-      try {
-        const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${chosen}`, {
-          method: 'POST',
-          headers: {
-            'accept': 'audio/mpeg',
-            'content-type': 'application/json',
-            'xi-api-key': env.ELEVENLABS_API_KEY,
-          },
-          body: JSON.stringify({
-            text: clean,
-            model_id: ELEVEN_MODEL,
-            voice_settings: {
-              stability: 0.45,
-              similarity_boost: 0.7,
-              style: 0.4,
-              use_speaker_boost: true
-            }
-          })
-        });
-
-        if (!res.ok) {
-          const msg = await safeText(res);
-          throw new Error(`elevenlabs_${res.status}: ${msg}`);
-        }
-
-        audioBuf = await res.arrayBuffer();
-        break; // klart
-      } catch (e) {
-        lastErr = e;
-        // liten backoff men inga rekursiva loopar
-        if (attempt < RETRIES) await sleep(400 * (attempt + 1));
-      }
-    }
-
-    if (!audioBuf) {
-      return serverError(`TTS-fel: ${String(lastErr?.message || lastErr)}`, 502, request);
-    }
-
-    // Spara i KV (best-effort)
-    try {
-      await env.BN_AUDIO.put(cacheKey, audioBuf, {
-        expirationTtl: CACHE_TTL_SECONDS,
-        metadata: { voice: chosen, model: ELEVEN_MODEL, bytes: audioBuf.byteLength }
-      });
-    } catch (e) {
-      // skriv bara logg – miss i cache ska inte fälla TTS
-      console.warn('KV put miss:', e);
-    }
-
-    return new Response(audioBuf, {
-      status: 200,
-      headers: {
-        ...corsHeaders(request),
-        'content-type': 'audio/mpeg',
-        'content-length': String(audioBuf.byteLength),
-        'cache-control': 'public, max-age=31536000, immutable',
-        'x-bn-tts': 'elevenlabs',
-        'etag': cacheKey,
-      }
+    const headers = new Headers({
+      "access-control-allow-origin": origin || "*",
+      "content-type": object.httpMetadata?.contentType || "audio/mpeg",
+      "cache-control": "public, max-age=31536000, immutable",
     });
+    return new Response(object.body, { status: 200, headers });
   } catch (err) {
-    return serverError(err, 500, request);
+    return badJson(`GET-fel: ${String(err)}`, origin, 500);
   }
 }
 
-// ===== helpers =====
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-async function safeText(res) {
-  try { return await res.text(); } catch { return '(no-body)'; }
+// POST { text, voice? } → generera MP3 via ElevenLabs, spara till R2 och returnera MP3 direkt
+export async function onRequestPost({ request, env }) {
+  const origin = request.headers.get("Origin");
+  try {
+    const { text, voice } = await request.json().catch(() => ({}));
+    if (!text || typeof text !== "string" || !text.trim()) {
+      return badJson("Ingen text skickad till TTS.", origin);
+    }
+
+    if (!env.ELEVENLABS_API_KEY) {
+      return badJson("ElevenLabs API-nyckel saknas (ELEVENLABS_API_KEY).", origin, 500);
+    }
+
+    // Röster (byt via secrets om du vill)
+    const VOICE_MAP = {
+      charlotte: env.ELEVEN_VOICE_CHARLOTTE || "CHARLOTTE_VOICE_ID_HERE",
+      gustav: env.ELEVEN_VOICE_GUSTAV || "GUSTAV_VOICE_ID_HERE",
+      alloy: "EXAVITQu4vr4xnSDxMaL", // OpenAI:s Alloy för kompat – låt stå som backup om du vill
+    };
+
+    // Voice kan vara: "charlotte" | "gustav" | direkt voiceId (36 tecken)
+    let voiceId = VOICE_MAP.charlotte; // standard
+    if (voice && typeof voice === "string") {
+      const v = voice.toLowerCase().trim();
+      voiceId = VOICE_MAP[v] || voice; // om inte namnmatch, använd som voiceId
+    }
+
+    // Trimma och begränsa text (ElevenLabs klarar långa, men praktiskt att kapa lite)
+    const cleanText = text.replace(/\s+/g, " ").trim().slice(0, 5000);
+
+    // ElevenLabs TTS call
+    const body = {
+      text: cleanText,
+      model_id: "eleven_multilingual_v2",
+      // Lite neutral/varm inställning. Kan tunas per röst senare.
+      voice_settings: {
+        stability: 0.52,
+        similarity_boost: 0.75,
+        style: 0.35,
+        use_speaker_boost: true,
+      },
+      // Du kan skicka in `pronunciation_dictionary_locators` här senare om du vill tvinga vissa uttal
+    };
+
+    const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": env.ELEVENLABS_API_KEY,
+        "content-type": "application/json",
+        // Tips: "accept": "audio/mpeg" är default, men sätt explicit:
+        accept: "audio/mpeg",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!elRes.ok) {
+      const errTxt = await elRes.text().catch(() => "");
+      return badJson(`ElevenLabs-fel ${elRes.status}: ${errTxt || elRes.statusText}`, origin, 502);
+    }
+
+    const audioBuf = await elRes.arrayBuffer();
+
+    // Spara till R2 (BN_AUDIO)
+    const date = new Date();
+    const yyyy = date.getUTCFullYear();
+    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(date.getUTCDate()).padStart(2, "0");
+    const key = `v1/${yyyy}-${mm}-${dd}/${crypto.randomUUID()}.mp3`;
+
+    await env.BN_AUDIO.put(key, audioBuf, {
+      httpMetadata: { contentType: "audio/mpeg" },
+    });
+
+    // Returnera MP3 direkt (så spelaren kan spela utan extra fetch)
+    const headers = new Headers({
+      "access-control-allow-origin": origin || "*",
+      "content-type": "audio/mpeg",
+      "cache-control": "no-store",
+      // bonus: skicka med var filen sparades om klienten vill spara/visa länk senare
+      "x-bn-r2-key": key,
+    });
+
+    return new Response(audioBuf, { status: 200, headers });
+  } catch (err) {
+    return badJson(`TTS-fel: ${String(err)}`, request.headers.get("Origin"), 500);
+  }
 }
