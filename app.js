@@ -1,143 +1,207 @@
-// app.js (BN front — stabil TTS)
+// BN front – Golden Copy (prompt fix + robust TTS)
+
 (() => {
-  const $ = s => document.querySelector(s);
+  // UI refs
+  const ideaEl   = document.getElementById('idea');      // <-- VIKTIG
+  const levelEl  = document.getElementById('level');
+  const lenEl    = document.getElementById('length');
+  const voiceEl  = document.getElementById('voice');
+  const tempoEl  = document.getElementById('tempo');
 
-  const selLevel   = $('#level');
-  const selLength  = $('#length');
-  const selVoice   = $('#voice');
-  const tempo      = $('#tempo');
-  const idea       = $('#idea');
-  const btnGen     = $('#btnGen');
-  const btnPlay    = $('#btnPlay');
-  const btnStop    = $('#btnStop');
-  const statusEl   = $('#status');
-  const storyEl    = $('#story');
-  const providerEl = $('#provider');
-  const modelEl    = $('#model');
-  const audioEl    = $('#audio');
+  const btnGen   = document.getElementById('btnGen');
+  const btnPlay  = document.getElementById('btnPlay');
+  const btnStop  = document.getElementById('btnStop');
 
-  let busy = false;
-  let lastStory = '';
+  const audioEl  = document.getElementById('audioEl');
+  const statusEl = document.getElementById('status');
+  const providerEl = document.getElementById('provider');
+  const modelEl    = document.getElementById('model');
+  const logEl    = document.getElementById('log');
+
+  let lastText = '';
+  let lastAudioURL = '';
+
+  function now() {
+    const d = new Date();
+    return `[${d.toLocaleTimeString()}]`;
+  }
 
   function log(line) {
-    const now = new Date().toTimeString().slice(0,8);
-    statusEl.textContent += `\n[${now}] ${line}`;
-    statusEl.scrollTop = statusEl.scrollHeight;
+    logEl.textContent += `${now()} ${line}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
   }
+
+  function setStatus(msg) {
+    statusEl.textContent = msg;
+  }
+
   function setBusy(b) {
-    busy = b;
     btnGen.disabled = b;
     btnPlay.disabled = b;
     btnStop.disabled = !b && audioEl.paused;
   }
 
-  async function health() {
+  async function healthCheck() {
     try {
-      const res = await fetch('/api/version');
-      const j = await res.json();
-      providerEl.textContent = 'openrouter'; // sätts av backendet i generate.js vid text
-      modelEl.textContent = j.tts_engine || '-';
-      log('BN front laddad.');
-      if (!j.has_eleven_key) log('VARNING: saknar ELEVENLABS_API_KEY');
-      if (!j.has_kv) log('VARNING: saknar KV-binding BN_AUDIO');
-    } catch {
-      log('Kunde inte läsa /api/version');
+      const r = await fetch('/api/health');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const js = await r.json().catch(()=>({ok:true}));
+      setStatus('API: ok');
+      log('API: ok');
+    } catch (e) {
+      setStatus(`API: fel – ${String(e)}`);
+      log(`API: fel – ${String(e)}`);
     }
   }
 
+  // --- Generate story then ask TTS ---
   async function generate() {
-    if (busy) return;
-    const text = (idea.value || '').trim();
-    if (!text) { log('Skriv en idé först.'); return; }
+    // Läs prompten SÄKERT
+    const idea = (ideaEl.value || '').trim();
 
-    setBusy(true); log('Genererar…');
-    storyEl.textContent = '';
-    lastStory = '';
+    if (!idea) {
+      setStatus('Skriv en idé först.');
+      log('Ingen prompt angiven.');
+      return;
+    }
+
+    // reset vy
+    providerEl.textContent = '-';
+    modelEl.textContent = '-';
+    lastText = '';
+    if (lastAudioURL) {
+      URL.revokeObjectURL(lastAudioURL);
+      lastAudioURL = '';
+    }
+    audioEl.removeAttribute('src');
+
+    const payload = {
+      idea,
+      level: Number(levelEl.value),
+      minutes: Number(lenEl.value),
+      voice: voiceEl.value,
+      tempo: Number(tempoEl.value)
+    };
+
+    setBusy(true);
+    setStatus('Genererar…');
+    log('Genererar…');
 
     try {
-      const body = {
-        level: Number(selLevel.value),
-        minutes: Number(selLength.value),
-        idea: text,
-        tempo: Number(tempo.value),
-        voice: selVoice.value || ''
-      };
-      const res = await fetch('/api/generate', {
+      const r = await fetch('/api/generate', {
         method: 'POST',
         headers: {'content-type':'application/json'},
-        body: JSON.stringify(body)
+        body: JSON.stringify(payload)
       });
-      const j = await res.json();
-      if (!res.ok || !j.ok) throw new Error(j.error || `HTTP ${res.status}`);
 
-      providerEl.textContent = j.provider || '-';
-      modelEl.textContent = j.model || '-';
-
-      lastStory = (j.text || '').trim();
-      storyEl.textContent = lastStory;
-
-      // Vänta tills [SLUT] finns innan TTS
-      if (!/\[SLUT\]/.test(lastStory)) {
-        log('VARNING: text saknar [SLUT] – TTS kan klippa.');
+      if (!r.ok) {
+        const txt = await r.text().catch(()=> '');
+        setStatus(`Fel vid generering: HTTP ${r.status}`);
+        log(`Fel vid generering: HTTP ${r.status}\n${txt}`);
+        setBusy(false);
+        return;
       }
 
-      await speak(lastStory);
-      log('Klart.');
+      const data = await r.json();
+      if (!data || data.ok === false) {
+        setStatus(`Fel: ${data?.error || 'ok:false'}`);
+        log(`Fel: ${data?.error || 'ok:false'}`);
+        setBusy(false);
+        return;
+      }
+
+      // Stöd både data.text och data.story
+      const story = (data.text || data.story || '').trim();
+      if (!story) {
+        setStatus('Fel: tom berättelse från API.');
+        log('Tom berättelse från API.');
+        setBusy(false);
+        return;
+      }
+
+      lastText = story;
+      providerEl.textContent = data.provider || '-';
+      modelEl.textContent = data.model || '-';
+
+      // Visa i status (för debug)
+      setStatus('Klart.');
+      log('(klart)');
+
+      // Starta TTS direkt
+      await speak();
     } catch (e) {
-      log(`Fel: ${String(e.message || e)}`);
+      setStatus(`Fel: ${String(e)}`);
+      log(`Fel: ${String(e)}`);
     } finally {
       setBusy(false);
     }
   }
 
-  async function speak(text) {
-    log('Väntar röst…');
-    // iOS kräver user-gesture: om vi får NotAllowedError, be om extra klick
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      headers: {'content-type':'application/json'},
-      body: JSON.stringify({ text, voice: selVoice.value })
-    });
-
-    if (res.headers.get('content-type')?.includes('application/json')) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(`TTS: ${j.error || 'okänd JSON'}`);
+  async function speak() {
+    if (!lastText) {
+      setStatus('Ingen text att läsa upp.');
+      log('Ingen text att läsa upp.');
+      return;
     }
-    if (!res.ok) throw new Error(`TTS: HTTP ${res.status}`);
+    setStatus('Väntar röst…');
+    log('Väntar röst…');
 
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-
-    // Städa ev. tidigare src
-    audioEl.pause();
-    audioEl.removeAttribute('src');
-    audioEl.load();
-
-    audioEl.src = url;
-
+    // iOS kräver interaktion—försök trigga uppspelning efter fetch
     try {
-      await audioEl.play();
-    } catch (err) {
-      // Kräver klick på iOS
-      log('TTS: kräver extra klick (iOS).');
+      const r = await fetch('/api/tts', {
+        method: 'POST',
+        headers: {'content-type':'application/json'},
+        body: JSON.stringify({
+          text: lastText,
+          voice: voiceEl.value,
+          tempo: Number(tempoEl.value)
+        })
+      });
+
+      if (!r.ok) {
+        const t = await r.text().catch(()=> '');
+        log(`TTS-fel: HTTP ${r.status}`);
+        log(t || '');
+        setStatus('TTS-fel.');
+        return;
+      }
+
+      const blob = await r.blob();
+      if (!blob || !blob.size) {
+        log('TTS: ingen <audio>.');
+        setStatus('TTS: ingen audio.');
+        return;
+      }
+
+      if (lastAudioURL) URL.revokeObjectURL(lastAudioURL);
+      lastAudioURL = URL.createObjectURL(blob);
+      audioEl.src = lastAudioURL;
+
+      // Autoplay kan blockeras på iOS – kräver klick
+      const p = audioEl.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          log('TTS: kräver extra klick (iOS).');
+          setStatus('Tryck på Lyssna för att spela.');
+        });
+      }
+    } catch (e) {
+      log(`TTS-fel: ${String(e)}`);
+      setStatus(`TTS-fel: ${String(e)}`);
     }
   }
 
+  function stopAudio() {
+    try { audioEl.pause(); } catch {}
+    setStatus('Stoppad.');
+  }
+
+  // events
   btnGen.addEventListener('click', generate);
-  btnPlay.addEventListener('click', async () => {
-    if (!audioEl.src) {
-      if (!lastStory) { log('Ingen text finns. Generera först.'); return; }
-      await speak(lastStory);
-    } else {
-      try { await audioEl.play(); } catch { log('TTS: klicka Lyssna igen.'); }
-    }
-  });
-  btnStop.addEventListener('click', () => { audioEl.pause(); });
+  btnPlay.addEventListener('click', speak);
+  btnStop.addEventListener('click', stopAudio);
 
-  // Autologg på slut
-  audioEl.addEventListener('ended', () => {
-    log('Uppspelning slut.');
-  });
-
-  health();
+  // init
+  log('(tomt)');
+  healthCheck();
 })();
