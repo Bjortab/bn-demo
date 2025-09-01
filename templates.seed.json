@@ -1,0 +1,140 @@
+{
+  "templates": [
+    {
+      "id": "tpl-natt-trapphus",
+      "version": 1,
+      "level": 5,
+      "minutes": 5,
+      "title": "Natt i trapphuset",
+      "roles": ["grannfrun","jag"],
+      "tags": ["urban","explicit","svenska"],
+      "language": "sv",
+      "name_slots": ["NAME_OPT"],
+      "text_template": "Det var sent när jag mötte {{NAME_OPT}} i trapphuset. Lamporna klickade igång och hennes blick stannade i min. Hon kom nära, så nära att jag kände hennes andning mot huden. Hennes röst var låg och bestämd: \"Du tänkte på mig, visst?\" Jag hann inte svara innan hon tog min handled och placerade den där hon ville känna mig. Värmen steg mellan oss, kroppen svarade av sig själv. Hon drog mig mot väggen, styrde min rytm, och jag följde. Vi tappade tid; det fanns bara hennes kropp, min kropp och den växande viljan. Hon höll mig kvar, djupare, fastare, tills allting brann och rann av i lång, darrande stillhet. [SLUT]"
+    },
+    {
+      "id": "tpl-terrass-midnatt",
+      "version": 1,
+      "level": 5,
+      "minutes": 8,
+      "title": "Terrassen efter midnatt",
+      "roles": ["jag","hon"],
+      "tags": ["explicit","utomhus","svenska"],
+      "language": "sv",
+      "name_slots": ["NAME_OPT"],
+      "text_template": "Musiken dämpades när vi öppnade dörren till terrassen. Natten var varm och {{NAME_OPT}} lutade sig mot räcket. Jag ställde mig nära, lät händerna vila på hennes höfter. Hon drog mitt ansikte mot sitt, kysste mig otåligt och pressade mig mot väggen. Mina fingrar hittade hennes takt; hennes höfter svarade, djupare varje gång. Vår andning slet i mörkret, vi höll i varandra, och allt kokade över i vågor som inte gav upp förrän vi lutade pannorna mot varandra och log åt hur högt hjärtat slog. [SLUT]"
+    },
+    {
+      "id": "tpl-spa-efterstangning",
+      "version": 1,
+      "level": 5,
+      "minutes": 10,
+      "title": "Efter stängning på spa",
+      "roles": ["jag","hon"],
+      "tags": ["explicit","spa","svenska"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Det sista vattnet droppade från kanten och rummet doftade varmt och rent. Hon stod nära, drog fingertopparna långsamt över min mage och vidare ned, som för att kartlägga mig. Jag följde hennes rörelse, öppnade hennes tempo med min mun. Hennes svar kom lågt, med en beslutsam hand som styrde mig dit hon ville. När hon drog mig in, hittade vi en stadig rytm; hon tog emot, mötte, krävde, tills världen krympte till ett enda ja som skakade kroppen. Vi stod kvar, tysta, med hennes panna mot min. [SLUT]"
+    },
+    {
+      "id": "tpl-hiss-stadshotell",
+      "version": 1,
+      "level": 5,
+      "minutes": 5,
+      "title": "Hissen på stadshotellet",
+      "roles": ["jag","hon"],
+      "tags": ["explicit","hotell","svenska"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Vi kliver in i hissen, dörrarna stängs. Hon lutar sig mot väggen, drar mig närmare med ett leende som säger allt. Min hand hittar hennes midja, hennes hand hittar min nacke. Kyssen är djup, hungrig, bråttom. Golvet darrar svagt när vi flyttar oss; hon lyfter ena benet, pressar mitt lår mellan sina. När hissdinget låter, skrattar hon, tar min hand och säger lågt: \"Inte färdigt. Följ med.\" [SLUT]"
+    },
+    {
+      "id": "tpl-baren-horn",
+      "version": 1,
+      "level": 5,
+      "minutes": 8,
+      "title": "Hörnet i baren",
+      "roles": ["jag","hon"],
+      "tags": ["explicit","bar","svenska"],
+      "language": "sv",
+      "name_slots": ["NAME_OPT"],
+      "text_template": "Vi hittade ett mörkt hörn i baren. {{NAME_OPT}} lutade sig fram, andades nära mitt öra och lät handen hitta vägen under bordskanten. Jag tappade ord och riktning; allt var hennes mun, hennes fingrar, hennes vilja som ledde mig. När vi till sist gick därifrån, var min kropp redan hennes, och natten fortsatte exakt där vi slutade. [SLUT]"
+    },
+
+    { "id": "tpl-morgon-hotell", "version": 1, "level": 3, "minutes": 5,
+      "title": "Morgon på hotellet", "roles": ["jag","du"], "tags": ["sensuell","mjuk","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Ljuset rann över lakanen och jag kände din hand mot min axel. Inget behövde sägas; din mun hittade min och morgonen öppnade sig långsamt. Dina fingertoppar följde min rygg, min andning mötte din. Vi lät tystnaden bära, och det som började stilla växte till en mjuk rörelse som fyllde hela rummet. [SLUT]"
+    },
+    { "id": "tpl-atelje-stan", "version": 1, "level": 3, "minutes": 8,
+      "title": "Ateljén i stan", "roles": ["jag","hon"], "tags": ["sensuell","kreativ","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Fönsterljuset låg över hennes kinder. Vi pratade om färgerna, men hennes blick dröjde vid min mun. När hon tog min hand och lade den på sin midja var det självklart att komma nära. Kyssen var mjuk, men säker. Vi ritade upp varandra långsamt, som om varje rörelse var en linje i en tavla vi gjort tillsammans. [SLUT]"
+    },
+    { "id": "tpl-kok-midnatt", "version": 1, "level": 3, "minutes": 10,
+      "title": "Köket efter midnatt", "roles": ["jag","partner"], "tags": ["mjuk","hemtam","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Köket var halvmörkt och golvet svalt. Du log, och jag ställde koppen åt sidan. Våra steg möttes mitt på klinkern. Jag gled bakom dig, lät händerna vila där de trivdes, följde din andning. Allt blev enkel rörelse, ett långsamt ja som fyllde natten. [SLUT]"
+    },
+    { "id": "tpl-park-bänk", "version": 1, "level": 3, "minutes": 5,
+      "title": "Parkbänken i skymningen", "roles": ["jag","hon"], "tags": ["sensuell","utomhus","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Skymningen stillnade över parken. Vi satt nära, axel mot axel, och hennes hand fann min. När hon lutade pannan mot min blev världen tyst. Kyssen var lågmäld först, sedan tydlig, och vår andning hittade en gemensam takt. [SLUT]"
+    },
+    { "id": "tpl-bastu-lugn", "version": 1, "level": 3, "minutes": 8,
+      "title": "Den varma bastun", "roles": ["jag","hon"], "tags": ["sensuell","spa","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Värmen slog emot oss och luften doftade trä. Hon satte sig nära, droppar gled över hennes hud. När hon tog min hand och lade den på sitt lår förstod jag allt utan ord. Våra läppar möttes långsamt och världen krympte till värmen, huden och ett mjukt, gemensamt tempo. [SLUT]"
+    },
+
+    { "id": "tpl-romantisk-promenad", "version": 1, "level": 1, "minutes": 5,
+      "title": "Promenaden vid vattnet", "roles": ["jag","du"], "tags": ["romantisk","lugnt","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Vi gick längs vattnet och pratade om allt och ingenting. Din hand i min kändes självklar. När du lutade huvudet mot min axel stannade vi och såg på ljusen över ytan. Jag kysste din panna och kände hur kvällen bar oss varsamt hem. [SLUT]"
+    },
+    { "id": "tpl-kafé-regn", "version": 1, "level": 1, "minutes": 8,
+      "title": "Regnet utanför kaféet", "roles": ["jag","hon"], "tags": ["romantisk","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Regnet slog mjukt mot rutan. Vi delade filt och skratt, lät samtalet svänga mellan minnen och planer. Hennes hand vilade i min och allt kändes stilla och rätt. När vi gick ut doftade gatan friskt, och hon drog mig närmare under paraplyet. [SLUT]"
+    },
+    { "id": "tpl-bokhandel-mote", "version": 1, "level": 1, "minutes": 10,
+      "title": "Mötet i bokhandeln", "roles": ["jag","hon"], "tags": ["romantisk","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Vi nådde samma bok i hyllan och skrattade åt sammanträffen. Samtalet blev enkelt, som om vi känt varandra längre än några minuter. Vi vandrade mellan hyllorna och delade favoriter. När vi sa hejdå utanför dörren kändes det mer som ett löfte än ett avslut. [SLUT]"
+    },
+    { "id": "tpl-tågresa-stilla", "version": 1, "level": 1, "minutes": 5,
+      "title": "Tågresan norrut", "roles": ["jag","du"], "tags": ["romantisk","resa","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Landskapet gled förbi som en målning. Vi delade hörlurar och tystnad. Din hand vilade på mitt knä. När du somnade mot min axel kändes det som att tiden stannade till. [SLUT]"
+    },
+    { "id": "tpl-picknick-sommar", "version": 1, "level": 1, "minutes": 8,
+      "title": "Sommarens picknick", "roles": ["jag","partner"], "tags": ["romantisk","sommar","svenska"], "language": "sv",
+      "name_slots": [], "text_template": "Gräset doftade sol och bär. Vi delade jordgubbar och en filt, såg molnen långsamt flytta sig. När vinden tog tag i håret skrattade du och lutade dig nära. Jag höll om dig och lät dagen bli vår. [SLUT]"
+    },
+
+    { "id": "tpl-kontor-efterhand", "version": 1, "level": 5, "minutes": 15,
+      "title": "Sent på kontoret",
+      "roles": ["jag","chefen"],
+      "tags": ["explicit","inomhus","svenska"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Kontoret var tyst, bara tangenternas eko fanns kvar. Hon stängde dörren, lutade sig mot skrivbordet och såg på mig med en blick som inte gick att missförstå. Hon drog mig närmare, drog ned mig i stolen och styrde mina händer dit hon ville. Vår rytm byggdes långsamt och bestämt; varje suck, varje rörelse, ett nytt ja. Vi flyttade oss till fönstret, till väggen, tillbaka till skrivbordet där allt rann av oss i ett långt, darrande slut. [SLUT]"
+    },
+    { "id": "tpl-gym-sen-kvall", "version": 1, "level": 5, "minutes": 8,
+      "title": "Sena passet på gymmet",
+      "roles": ["jag","tränaren"],
+      "tags": ["explicit","svenska","gym"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Hallens fläkt brummade lågt. Tränaren stod nära och rätade till min hållning, handen dröjde. När jag vände mig om, mötte jag hennes blick – klar, med en aning utmaning. Hon tog ett steg närmare, och ett till. Min rygg mot spegeln, hennes händer över min hud, en rytm som blev tydligare för varje andetag. [SLUT]"
+    },
+    { "id": "tpl-barberare-bakomdorr", "version": 1, "level": 3, "minutes": 5,
+      "title": "Bakom dörren hos barberaren",
+      "roles": ["jag","hon"],
+      "tags": ["sensuell","svenska","urban"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Dörrklockan klingade när sista kunden gick. Hon låste, mötte min blick i spegeln. Hennes fingrar drog längs min nacke, långsamt. Vi sa inget; ljuden från gatan blev avlägsna. När hon lutade sig fram, var allt redan på väg mot samma håll – mjukt, självklart, nära. [SLUT]"
+    },
+    { "id": "tpl-yoga-skymning",
+      "version": 1, "level": 3, "minutes": 10,
+      "title": "Skymning i yogasalen",
+      "roles": ["jag","instruktören"],
+      "tags": ["sensuell","svenska","studio"],
+      "language": "sv",
+      "name_slots": [],
+      "text_template": "Mattan kändes varm under händerna. Instruktören rättade min position, hennes hand stannade kvar en sekund för länge. Andningen föll in i samma takt. När vi såg på varandra över axeln var allt redan bestämt utan ord. [SLUT]"
+    }
+  ]
+}
