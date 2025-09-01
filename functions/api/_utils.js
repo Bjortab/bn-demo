@@ -1,34 +1,32 @@
 // functions/api/_utils.js
-import crypto from 'crypto';
 
-export function corsHeaders(request) {
+export const corsHeaders = (request) => {
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': request.headers.get('Access-Control-Request-Headers') || '*',
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
-}
+};
 
-export function jsonResponse(obj, status = 200, request) {
-  return new Response(JSON.stringify(obj), {
+export const jsonResponse = (data, status = 200) => {
+  return new Response(JSON.stringify(data), {
     status,
-    headers: {
-      'Content-Type': 'application/json',
-      ...corsHeaders(request),
-    },
+    headers: { "Content-Type": "application/json", ...corsHeaders() },
   });
-}
+};
 
-export function badRequest(msg, request) {
-  return jsonResponse({ ok: false, error: msg }, 400, request);
-}
+export const badRequest = (message, request) => {
+  return jsonResponse({ ok: false, error: message }, 400);
+};
 
-export function serverError(err, request) {
-  console.error(err);
-  return jsonResponse({ ok: false, error: String(err) }, 500, request);
-}
+export const serverError = (message, request) => {
+  return jsonResponse({ ok: false, error: message?.toString?.() || message }, 500);
+};
 
-// 🔑 lägg till sha256 här så andra filer kan importera
-export function sha256(message) {
-  return crypto.createHash('sha256').update(message).digest('hex');
+// ✅ Ersätter Node.js crypto med Web Crypto API
+export async function sha256(message) {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
