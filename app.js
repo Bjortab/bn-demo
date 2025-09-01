@@ -1,68 +1,143 @@
-<!-- BN GC index.html v3 (templates + ElevenLabs) -->
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BlushNarratives</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <header>
-    <h1>✨ BlushNarratives</h1>
-  </header>
+// app.js (BN front — stabil TTS)
+(() => {
+  const $ = s => document.querySelector(s);
 
-  <main>
-    <textarea id="userPrompt" placeholder="Skriv din idé här..."></textarea>
+  const selLevel   = $('#level');
+  const selLength  = $('#length');
+  const selVoice   = $('#voice');
+  const tempo      = $('#tempo');
+  const idea       = $('#idea');
+  const btnGen     = $('#btnGen');
+  const btnPlay    = $('#btnPlay');
+  const btnStop    = $('#btnStop');
+  const statusEl   = $('#status');
+  const storyEl    = $('#story');
+  const providerEl = $('#provider');
+  const modelEl    = $('#model');
+  const audioEl    = $('#audio');
 
-    <div class="controls">
-      <label for="level">Nivå:</label>
-      <select id="level">
-        <option value="1">1 – Romantisk</option>
-        <option value="2">2 – Sensuell</option>
-        <option value="3">3 – Sensuell+</option>
-        <option value="4">4 – Het</option>
-        <option value="5">5 – Explicit</option>
-      </select>
+  let busy = false;
+  let lastStory = '';
 
-      <label for="length">Längd:</label>
-      <select id="length">
-        <option value="3">3 min</option>
-        <option value="5" selected>5 min</option>
-        <option value="10">10 min</option>
-        <option value="15">15 min</option>
-      </select>
+  function log(line) {
+    const now = new Date().toTimeString().slice(0,8);
+    statusEl.textContent += `\n[${now}] ${line}`;
+    statusEl.scrollTop = statusEl.scrollHeight;
+  }
+  function setBusy(b) {
+    busy = b;
+    btnGen.disabled = b;
+    btnPlay.disabled = b;
+    btnStop.disabled = !b && audioEl.paused;
+  }
 
-      <label for="voice">Röst:</label>
-      <select id="voice">
-        <option value="female">Kvinna</option>
-        <option value="male">Man</option>
-        <option value="neutral" selected>Neutral</option>
-      </select>
+  async function health() {
+    try {
+      const res = await fetch('/api/version');
+      const j = await res.json();
+      providerEl.textContent = 'openrouter'; // sätts av backendet i generate.js vid text
+      modelEl.textContent = j.tts_engine || '-';
+      log('BN front laddad.');
+      if (!j.has_eleven_key) log('VARNING: saknar ELEVENLABS_API_KEY');
+      if (!j.has_kv) log('VARNING: saknar KV-binding BN_AUDIO');
+    } catch {
+      log('Kunde inte läsa /api/version');
+    }
+  }
 
-      <label for="tempo">Tempo:</label>
-      <select id="tempo">
-        <option value="slow">Långsamt</option>
-        <option value="normal" selected>Normalt</option>
-        <option value="fast">Snabbt</option>
-      </select>
-    </div>
+  async function generate() {
+    if (busy) return;
+    const text = (idea.value || '').trim();
+    if (!text) { log('Skriv en idé först.'); return; }
 
-    <div class="buttons">
-      <button id="generateBtn">🎲 Generera</button>
-      <button id="listenBtn" disabled>🔊 Lyssna</button>
-    </div>
+    setBusy(true); log('Genererar…');
+    storyEl.textContent = '';
+    lastStory = '';
 
-    <div id="status" class="status"></div>
+    try {
+      const body = {
+        level: Number(selLevel.value),
+        minutes: Number(selLength.value),
+        idea: text,
+        tempo: Number(tempo.value),
+        voice: selVoice.value || ''
+      };
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {'content-type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      const j = await res.json();
+      if (!res.ok || !j.ok) throw new Error(j.error || `HTTP ${res.status}`);
 
-    <pre id="storyOutput"></pre>
-    <audio id="audioPlayer" controls></audio>
-  </main>
+      providerEl.textContent = j.provider || '-';
+      modelEl.textContent = j.model || '-';
 
-  <footer>
-    <button id="bcBtn">💡 BC</button>
-  </footer>
+      lastStory = (j.text || '').trim();
+      storyEl.textContent = lastStory;
 
-  <script defer src="app.js"></script>
-</body>
-</html>
+      // Vänta tills [SLUT] finns innan TTS
+      if (!/\[SLUT\]/.test(lastStory)) {
+        log('VARNING: text saknar [SLUT] – TTS kan klippa.');
+      }
+
+      await speak(lastStory);
+      log('Klart.');
+    } catch (e) {
+      log(`Fel: ${String(e.message || e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function speak(text) {
+    log('Väntar röst…');
+    // iOS kräver user-gesture: om vi får NotAllowedError, be om extra klick
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({ text, voice: selVoice.value })
+    });
+
+    if (res.headers.get('content-type')?.includes('application/json')) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(`TTS: ${j.error || 'okänd JSON'}`);
+    }
+    if (!res.ok) throw new Error(`TTS: HTTP ${res.status}`);
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    // Städa ev. tidigare src
+    audioEl.pause();
+    audioEl.removeAttribute('src');
+    audioEl.load();
+
+    audioEl.src = url;
+
+    try {
+      await audioEl.play();
+    } catch (err) {
+      // Kräver klick på iOS
+      log('TTS: kräver extra klick (iOS).');
+    }
+  }
+
+  btnGen.addEventListener('click', generate);
+  btnPlay.addEventListener('click', async () => {
+    if (!audioEl.src) {
+      if (!lastStory) { log('Ingen text finns. Generera först.'); return; }
+      await speak(lastStory);
+    } else {
+      try { await audioEl.play(); } catch { log('TTS: klicka Lyssna igen.'); }
+    }
+  });
+  btnStop.addEventListener('click', () => { audioEl.pause(); });
+
+  // Autologg på slut
+  audioEl.addEventListener('ended', () => {
+    log('Uppspelning slut.');
+  });
+
+  health();
+})();
