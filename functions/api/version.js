@@ -1,13 +1,16 @@
-// functions/api/version.js — GC v2.3
-import { jsonResponse, corsHeaders } from "./_utils.js";
+// functions/api/version.js
+import { corsHeaders, jsonResponse } from './_utils.js';
 
-export async function onRequest({ request, env }) {
-  const info = {
+export async function onRequestGet({ request, env }) {
+  return jsonResponse({
     ok: true,
-    ts: Date.now(),
-    commit: env?.CF_PAGES_COMMIT_SHA || null,
-    branch: env?.CF_PAGES_BRANCH || null,
-    project: env?.CF_PAGES_PROJECT_NAME || null,
-  };
-  return jsonResponse(info, 200, request, corsHeaders(request));
+    bn: 'front',
+    tts_engine: 'elevenlabs',
+    has_kv: !!env.BN_AUDIO,
+    has_eleven_key: !!env.ELEVENLABS_API_KEY
+  }, 200, request);
+}
+
+export async function onRequestOptions({ request }) {
+  return new Response('', { status: 204, headers: corsHeaders(request) });
 }
