@@ -21,3 +21,4 @@ wrangler d1 create BN_DB
 wrangler kv namespace create KV
 # R2
 wrangler r2 bucket create BN_R2
+update: Testdeploy via Github (Sep 2, 2025)
