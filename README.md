@@ -1,2 +1,0 @@
-# bn-demo
-"force rebuild"
