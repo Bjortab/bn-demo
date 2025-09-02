@@ -1,7 +1,7 @@
 name = "bn-worker"
 main = "index.js"
 compatibility_date = "2024-11-20"
-account_id = ""
+account_id = "från wrangler whoami"
 
 [vars]
 # Mock-läge för torrkörning (1 = på, 0 = av)
@@ -14,15 +14,15 @@ BN_DEFAULT_WORDS = "800"
 [[d1_databases]]
 binding = "DB"
 database_name = "BN_DB"
-database_id = ""
+database_id = "från wrangler d1 create BN_DB"
 
 [[kv_namespaces]]
 binding = "KV"
-id = ""
+id = "från wrangler kv namespace create KV"
 
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "BN_R2"
+bucket_name = "från wrangler r2 bucket create BN_R2"
 
 [observability]
 enabled = true
