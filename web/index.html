@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BN 0.4 – Demo</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>BN 0.4</h1>
+    <div id="status">Status: …</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Konto & Credits</h2>
+      <div id="authRow">
+        <button id="btnAuth">Skapa anonym session</button>
+      </div>
+      <div id="balRow" class="hide">
+        <div>Saldo: <strong id="balance">0</strong> credits (Reserverat: <span id="holds">0</span>)</div>
+        <button id="btnRefresh">Uppdatera saldo</button>
+        <button id="btnTopup">Lägg till (demo +500)</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Skapa berättelse</h2>
+      <label>Prompt</label>
+      <textarea id="prompt" rows="4" placeholder="Ex: min heta granne förförde mig"></textarea>
+
+      <div class="row">
+        <label>Nivå (1–5)</label>
+        <input type="range" id="level" min="1" max="5" value="4" />
+        <span id="levelVal">4</span>
+      </div>
+
+      <div class="row">
+        <label>Röst</label>
+        <select id="voice">
+          <option value="elevenlabs:charlotte">EL Charlotte (kvinnlig)</option>
+          <option value="elevenlabs:male">EL Male</option>
+          <option value="basic:female">Basic Female (billigare)</option>
+        </select>
+        <label class="inline"><input type="checkbox" id="tts" checked /> Skapa ljud</label>
+      </div>
+
+      <div class="row">
+        <label>Karaktär (valfritt)</label>
+        <select id="character"></select>
+        <button id="btnSaveChar">Spara som karaktär</button>
+      </div>
+
+      <div id="quoteBox" class="muted">Kostnad: –</div>
+      <div class="row">
+        <button id="btnQuote">Beräkna kostnad</button>
+        <button id="btnGenerate" disabled>Generera</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Resultat</h2>
+      <div id="result" class="result"></div>
+      <audio id="player" controls class="hide"></audio>
+    </section>
+
+    <section class="card">
+      <h2>Mina karaktärer</h2>
+      <ul id="chars" class="list"></ul>
+    </section>
+
+    <section class="card">
+      <h2>Mina episoder</h2>
+      <ul id="eps" class="list"></ul>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
