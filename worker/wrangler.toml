@@ -2,7 +2,7 @@
 name = "bn-worker"
 main = "index.js"
 compatibility_date = "2024-11-20"
-account_id = "d7dcc102ad44b645f2885c53a0b65"
+account_id = "d7dcc102dcaa44fb6452f885c35a0b65"
 
 [vars]
 # Mock-läge (1 = mockar LLM/TTS; 0 = riktiga providers)
