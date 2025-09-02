@@ -1,4 +1,4 @@
-const API = location.origin.replace(/\/+$/, "") + "/api/v1";
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 const els = {
   status: document.getElementById("status"),
   btnAuth: document.getElementById("btnAuth"),
