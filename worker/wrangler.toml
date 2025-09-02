@@ -18,7 +18,7 @@ database_id = "från wrangler d1 create BN_DB"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "från wrangler kv namespace create KV"
+id = "a940091560aa4fa5a1f15c194f485695"
 
 [[r2_buckets]]
 binding = "R2"
