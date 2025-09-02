@@ -1,0 +1,13 @@
+{
+  "name": "bn-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BN 0.4 Cloudflare Worker (D1 + KV + R2)",
+  "scripts": {
+    "dev": "wrangler dev --local --persist-to ./data",
+    "publish": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply BN_DB"
+  },
+  "dependencies": {}
+}
