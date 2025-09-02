@@ -1,0 +1,28 @@
+name = "bn-worker"
+main = "index.js"
+compatibility_date = "2024-11-20"
+account_id = ""
+
+[vars]
+# Mock-läge för torrkörning (1 = på, 0 = av)
+BN_MOCK_PROVIDERS = "1"
+BN_ALLOWED_ORIGIN = "*"
+BN_DEFAULT_LANG = "sv"
+BN_DEFAULT_WORDS = "800"
+
+# Bindningar
+[[d1_databases]]
+binding = "DB"
+database_name = "BN_DB"
+database_id = ""
+
+[[kv_namespaces]]
+binding = "KV"
+id = ""
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "BN_R2"
+
+[observability]
+enabled = true
