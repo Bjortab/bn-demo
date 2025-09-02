@@ -1,28 +1,15 @@
+# bn-demo/worker/wrangler.toml  — BN 0.4 (Dashboard bindings)
 name = "bn-worker"
 main = "index.js"
 compatibility_date = "2024-11-20"
-account_id = "d7dcc102dcaa44fb6452f885c35a0b65"
+account_id = "DITT_ACCOUNT_ID_HÄR"   # t.ex. d7dcc102ad44b645f2885c53a0b65
 
 [vars]
-# Mock-läge för torrkörning (1 = på, 0 = av)
+# Mock-läge (1 = mockar LLM/TTS; 0 = riktiga providers)
 BN_MOCK_PROVIDERS = "1"
 BN_ALLOWED_ORIGIN = "*"
-BN_DEFAULT_LANG = "sv"
-BN_DEFAULT_WORDS = "800"
-
-# Bindningar
-[[d1_databases]]
-binding = "DB"
-database_name = "BN_DB"
-database_id = "från wrangler d1 create BN_DB"
-
-[[kv_namespaces]]
-binding = "KV"
-id = "a940091560aa4fa5a1f15c194f485695"
-
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "bn-audio"
+BN_DEFAULT_LANG   = "sv"
+BN_DEFAULT_WORDS  = "800"
 
 [observability]
 enabled = true
