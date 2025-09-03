@@ -1,221 +1,129 @@
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
-const els = {
-  status: document.getElementById("status"),
-  btnAuth: document.getElementById("btnAuth"),
-  balRow: document.getElementById("balRow"),
-  authRow: document.getElementById("authRow"),
-  balance: document.getElementById("balance"),
-  holds: document.getElementById("holds"),
-  btnRefresh: document.getElementById("btnRefresh"),
-  btnTopup: document.getElementById("btnTopup"),
-  prompt: document.getElementById("prompt"),
-  level: document.getElementById("level"),
-  levelVal: document.getElementById("levelVal"),
-  voice: document.getElementById("voice"),
-  tts: document.getElementById("tts"),
-  character: document.getElementById("character"),
-  btnSaveChar: document.getElementById("btnSaveChar"),
-  quoteBox: document.getElementById("quoteBox"),
-  btnQuote: document.getElementById("btnQuote"),
-  btnGenerate: document.getElementById("btnGenerate"),
-  result: document.getElementById("result"),
-  player: document.getElementById("player"),
-  chars: document.getElementById("chars"),
-  eps: document.getElementById("eps"),
+// --- Konfig ---
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra om du skapar egen subdomän
+
+// --- Hjälpare ---
+const $ = (id) => document.getElementById(id);
+const post = (p, d = {}) =>
+  fetch(`${API}${p}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(d),
+  }).then((r) => r.json());
+const get = (p) => fetch(`${API}${p}`).then((r) => r.json());
+
+function saveLocal(key, v) { localStorage.setItem(key, JSON.stringify(v)); }
+function loadLocal(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
+
+// --- State ---
+let SESSION = null;
+let CHARACTER = null;
+let ARC = null;
+
+// --- Init ---
+(async function init() {
+  $("statusText").textContent = "Hämtar status…";
+  try {
+    const s = await get("/status");
+    $("statusText").textContent = `Version: ${s.version}, mock: ${s.mock ? "ON" : "OFF"}`;
+    $("providerPill").textContent = `worker ${s.version}${s.mock ? " (mock)" : ""}`;
+  } catch {
+    $("statusText").textContent = "Kunde inte läsa status";
+  }
+
+  // Session
+  SESSION = loadLocal("bn:session");
+  if (!SESSION) {
+    SESSION = await get("/session");
+    saveLocal("bn:session", SESSION);
+  }
+  $("statusText").textContent += ` | user: ${SESSION.user_id.slice(0, 8)}…`;
+
+  // Förifyll
+  $("charName").value = "Nadja";
+  $("arcTitle").value = "Första mötet";
+})();
+
+// --- UI actions ---
+$("btnCreateChar").onclick = async () => {
+  if (!SESSION) return alert("Ingen session");
+  const name = $("charName").value.trim();
+  if (!name) return alert("Ange namn");
+  const res = await post("/characters/create", { user_id: SESSION.user_id, name });
+  CHARACTER = res;
+  $("charInfo").textContent = `id: ${res.character_id}`;
+  saveLocal("bn:character", CHARACTER);
 };
 
-let session = {
-  token: localStorage.getItem("bn_token") || null,
-  user_id: localStorage.getItem("bn_uid") || null,
-  lastQuote: null,
-  lastHold: null
+$("btnStartArc").onclick = async () => {
+  if (!SESSION) return alert("Ingen session");
+  CHARACTER = CHARACTER || loadLocal("bn:character");
+  if (!CHARACTER) return alert("Skapa karaktär först");
+  const title = $("arcTitle").value.trim();
+  if (!title) return alert("Ange titel");
+  const res = await post("/arcs/start", {
+    user_id: SESSION.user_id,
+    character_id: CHARACTER.character_id,
+    title,
+    level_min: 1,
+    level_max: 5,
+  });
+  ARC = res;
+  $("arcInfo").textContent = `arc_id: ${res.arc_id}`;
+  saveLocal("bn:arc", ARC);
 };
-updateUI();
 
-els.level.addEventListener("input", () => els.levelVal.textContent = els.level.value);
+$("btnGenerate").onclick = async () => {
+  try {
+    if (!SESSION) return alert("Ingen session");
+    CHARACTER = CHARACTER || loadLocal("bn:character");
+    if (!CHARACTER) return alert("Skapa karaktär först");
+    ARC = ARC || loadLocal("bn:arc");
+    if (!ARC) return alert("Starta en arc först");
 
-els.btnAuth.addEventListener("click", async () => {
-  const r = await fetch(API + "/auth/anonymous", { method:"POST" });
-  const j = await r.json();
-  if (j.user_id && j.token) {
-    session.user_id = j.user_id; session.token = j.token;
-    localStorage.setItem("bn_token", session.token);
-    localStorage.setItem("bn_uid", session.user_id);
-    await refreshBal();
-    await refreshChars();
-    await refreshEps();
-    updateUI();
-  } else alert("Kunde inte skapa session.");
-});
+    const payload = {
+      user_id: SESSION.user_id,
+      character_id: CHARACTER.character_id,
+      arc_id: ARC.arc_id,
+      prompt: $("prompt").value,
+      level: Number($("level").value),
+      lang: $("lang").value,
+      words: Number($("words").value),
+      make_audio: false,
+    };
 
-els.btnRefresh.addEventListener("click", refreshBal);
-els.btnTopup.addEventListener("click", async () => {
-  // Demo: direkt webhook-stub
-  const r = await fetch(API + "/payments/ccbill/webhook", {
-    method:"POST",
-    headers: authJson(),
-    body: JSON.stringify({ user_id: session.user_id })
-  });
-  if (r.ok) {
-    await refreshBal();
-    alert("Saldo +500 (demo)");
-  } else {
-    alert("Top-up misslyckades");
+    const res = await post("/episodes/generate", payload);
+    $("resultCard").style.display = "block";
+    $("story").textContent = res.story || "(tom)";
+    $("summary").textContent = res.summary || "";
+    $("memory").textContent = res.memory_summary || "";
+
+    await listEpisodes(); // uppdatera listan direkt
+  } catch (e) {
+    console.error(e);
+    alert("Kunde inte generera");
   }
-});
+};
 
-els.btnSaveChar.addEventListener("click", async () => {
-  const display_name = prompt("Namn på karaktären (t.ex. Heta grannen):");
-  if (!display_name) return;
-  const body = {
-    display_name,
-    archetype_key: detectArch(els.prompt.value || ""),
-    traits: {},
-    voice_preset: els.voice.value
-  };
-  const r = await fetch(API + "/characters", {
-    method:"POST",
-    headers: authJson(),
-    body: JSON.stringify(body)
+$("btnList").onclick = listEpisodes;
+
+async function listEpisodes() {
+  if (!SESSION) return;
+  CHARACTER = CHARACTER || loadLocal("bn:character");
+  if (!CHARACTER) return;
+  const r = await post("/episodes/by-character", {
+    user_id: SESSION.user_id,
+    character_id: CHARACTER.character_id,
+    limit: 50,
   });
-  const j = await r.json();
-  if (j.character_id) {
-    await refreshChars();
-    alert("Karaktär sparad.");
-  } else {
-    alert("Kunde inte spara karaktär.");
-  }
-});
-
-els.btnQuote.addEventListener("click", async () => {
-  const body = buildQuoteBody();
-  const r = await fetch(API + "/credits/quote", {
-    method:"POST",
-    headers: authJson(),
-    body: JSON.stringify(body)
+  const ul = $("list");
+  ul.innerHTML = "";
+  (r.items || []).forEach((it) => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div><b>${new Date(it.created_at || Date.now()).toLocaleString()}</b></div>
+      <div class="muted">nivå ${it.level} • steg ${it.arc_step} • ${it.lang || "sv"}</div>
+      <div class="mono">${(it.episode_summary || "").slice(0, 220)}</div>
+    `;
+    ul.appendChild(li);
   });
-  const j = await r.json();
-  if (j.error) { showErr(j.error); return; }
-  session.lastQuote = j;
-  els.quoteBox.textContent = `Kostnad ≈ ${j.total_credits} credits (${j.notes})`;
-  els.btnGenerate.disabled = false;
-});
-
-els.btnGenerate.addEventListener("click", async () => {
-  if (!session.lastQuote) return alert("Beräkna kostnad först.");
-  // Hold
-  const hr = await fetch(API + "/credits/hold", {
-    method:"POST",
-    headers: authJson(),
-    body: JSON.stringify({ quote_id: session.lastQuote.quote_id })
-  });
-  const h = await hr.json();
-  if (h.error) { showErr(h.error); return; }
-  session.lastHold = h;
-
-  // Generate
-  const idem = crypto.randomUUID();
-  const body = {
-    quote_id: session.lastQuote.quote_id,
-    hold_id: session.lastHold.hold_id,
-    character_id: els.character.value || null
-  };
-  const r = await fetch(API + "/generate", {
-    method:"POST",
-    headers: { ...authJson(), "X-Idempotency-Key": idem },
-    body: JSON.stringify(body)
-  });
-  const j = await r.json();
-  if (j.error) { showErr(j.error); return; }
-  if (j.status === "DONE") {
-    els.result.textContent = "";
-    // Hämta text (proxy: i demo är r2:// – visa direkt text från serverns TLDR + info)
-    els.result.textContent = `TL;DR: ${j.episode.tldr}\n\n(Fulltext sparad i R2: ${j.episode.text_url})\n\nProvider: ${j.provider}\nCredits: ${j.cost.credits}`;
-    if (j.episode.audio_url) {
-      els.player.src = j.episode.audio_url;
-      els.player.classList.remove("hide");
-    } else {
-      els.player.classList.add("hide");
-    }
-    await refreshBal();
-    await refreshEps();
-  } else {
-    alert("Jobbstatus: " + j.status);
-  }
-});
-
-async function refreshBal() {
-  if (!session.token) return;
-  const r = await fetch(API + "/credits/balance", { headers: authOnly() });
-  const j = await r.json();
-  if (j.error) return;
-  els.balance.textContent = j.balance;
-  els.holds.textContent = j.holds;
-}
-
-async function refreshChars() {
-  if (!session.token) return;
-  const r = await fetch(API + "/characters", { headers: authOnly() });
-  const j = await r.json();
-  const list = j.items || [];
-  els.character.innerHTML = `<option value="">(ingen)</option>` + list.map(c => `<option value="${c.id}">${c.display_name}</option>`).join("");
-  els.chars.innerHTML = list.map(c => `<li><strong>${c.display_name}</strong> <small>${c.archetype_key || ""}</small></li>`).join("");
-}
-
-async function refreshEps() {
-  if (!session.token) return;
-  const r = await fetch(API + "/episodes", { headers: authOnly() });
-  const j = await r.json();
-  const list = j.items || [];
-  els.eps.innerHTML = list.map(e => `<li>#${e.episode_no} – nivå ${e.level} – ${new Date(e.created_at).toLocaleString()}<br><em>${e.tldr}</em></li>`).join("");
-}
-
-function updateUI() {
-  if (session.token) {
-    els.authRow.classList.add("hide");
-    els.balRow.classList.remove("hide");
-    setStatus();
-  } else {
-    els.authRow.classList.remove("hide");
-    els.balRow.classList.add("hide");
-  }
-}
-async function setStatus() {
-  const r = await fetch(API + "/status");
-  const j = await r.json();
-  els.status.textContent = `v${j.version} — mock:${j.mock ? "på" : "av"}`;
-}
-
-function buildQuoteBody() {
-  const level = parseInt(els.level.value, 10);
-  const lang = "sv";
-  const voice_preset = els.voice.value;
-  const tts = els.tts.checked ? { enabled: true, tier: voice_preset.startsWith("elevenlabs:") ? "EL" : "BASIC" } : { enabled:false };
-  const mode = els.character.value ? "CONTINUE" : "NEW";
-  return {
-    mode, level, lang, voice_preset,
-    words_target: 800,
-    tts,
-    character_id: els.character.value || null,
-    prompt: els.prompt.value || "romantisk kväll"
-  };
-}
-
-function detectArch(p) {
-  const s = (p || "").toLowerCase();
-  if (s.includes("granne")) return "heta_grannen";
-  if (s.includes("chef")) return "chef";
-  if (s.includes("hotel")) return "hotellet";
-  if (s.includes("pt") || s.includes("personlig tränare")) return "pt";
-  return "fri_fantasi";
-}
-
-function authOnly() {
-  return { "Authorization": `Bearer ${session.token}` };
-}
-function authJson() {
-  return { ...authOnly(), "Content-Type": "application/json" };
-}
-function showErr(e) {
-  alert(`${e.code}: ${e.message}`);
 }
