@@ -2,131 +2,123 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BN 0.4 – Demo</title>
   <link rel="stylesheet" href="./styles.css" />
   <style>
-    body{background:#0b0b0e;color:#eaeaea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif}
-    .wrap{max-width:900px;margin:32px auto;padding:0 16px}
-    h1{font-weight:700;font-size:24px;margin:0 0 16px}
-    .card{background:#14141a;border:1px solid #24242b;border-radius:12px;padding:16px;margin-bottom:16px}
-    label{display:block;font-size:13px;opacity:.85;margin-bottom:6px}
-    input,select,textarea{width:100%;background:#0f0f14;border:1px solid #2a2a33;border-radius:10px;color:#eaeaea;padding:10px 12px}
-    textarea{min-height:90px;resize:vertical}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-    button{background:#e9426f;border:none;color:white;padding:10px 14px;border-radius:10px;cursor:pointer}
-    button.secondary{background:#2b2b33}
-    .status{font-size:12px;opacity:.8}
-    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;white-space:pre-wrap}
-    .story{white-space:pre-wrap;line-height:1.5}
-    .kbar{display:flex;gap:8px;align-items:center}
-    .kbar > * {flex:1}
-    .pill{padding:2px 8px;border:1px solid #383845;border-radius:999px;font-size:12px}
-    .muted{opacity:.75}
-    .list li{padding:10px;border-bottom:1px solid #24242b}
-
-    /* Nivåväljare */
-    .levels{display:flex;gap:8px;flex-wrap:wrap}
-    .lvl-btn{background:#1a1a22;border:1px solid #343446;color:#d9d9e3;border-radius:10px;padding:8px 12px;cursor:pointer}
-    .lvl-btn[data-active="true"]{background:#e9426f;border-color:#e9426f;color:#fff}
-    .lvl-desc{margin-top:8px;font-size:13px;opacity:.9}
+    body{background:#0f0f12;color:#eee;font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+    h1{font-weight:700;margin:0 0 8px}
+    .muted{opacity:.7}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .card{background:#17171c;border:1px solid #2a2a2f;border-radius:10px;padding:16px}
+    .stack{display:flex;gap:10px;flex-wrap:wrap}
+    input,select,textarea,button{background:#121218;border:1px solid #2a2a2f;color:#eee;border-radius:8px;padding:10px 12px}
+    textarea{min-height:84px;width:100%}
+    button{cursor:pointer}
+    .lvl .lvl-btn{padding:8px 10px;border-radius:8px;border:1px solid #2a2a2f;background:#121218}
+    .lvl .lvl-btn[data-active="true"]{background:#2a2f57;border-color:#4652c4}
+    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;white-space:pre-wrap}
+    .pill{display:inline-block;font-size:12px;padding:4px 8px;border:1px solid #2a2a2f;border-radius:999px;background:#121218}
+    .list{list-style:none;padding:0;margin:0}
+    .list li{padding:10px 0;border-top:1px solid #26262b}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>BN 0.4 – Demo</h1>
+    <h1>BlushNarratives <span class="pill" id="providerPill">…</span></h1>
+    <div class="muted" id="statusText">Init…</div>
 
-    <div class="card" id="statusCard">
-      <div><b>Status</b></div>
-      <div class="status" id="statusText">Init…</div>
-    </div>
-
-    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
-      <a href="./faq.html" class="pill" style="text-decoration:none">FAQ</a>
-      <button id="btnFeedback" class="secondary">Skicka feedback</button>
-    </div>
-
-    <div class="card">
-      <div class="row">
+    <div class="card" style="margin-top:16px">
+      <div class="grid3">
         <div>
           <label>Karaktärsnamn</label>
-          <div class="kbar">
-            <input id="charName" placeholder="t.ex. Nadja" />
+          <input id="charName" placeholder="ex. Nadja" />
+          <div class="actions" style="margin-top:8px">
             <button id="btnCreateChar">Skapa karaktär</button>
+            <div class="muted" id="charInfo"></div>
           </div>
-          <div class="muted" id="charInfo"></div>
         </div>
         <div>
           <label>Story-arc</label>
-          <div class="kbar">
-            <input id="arcTitle" placeholder="t.ex. Första mötet" />
+          <input id="arcTitle" placeholder="ex. Första mötet" />
+          <div class="actions" style="margin-top:8px">
             <button id="btnStartArc">Starta arc</button>
+            <div class="muted" id="arcInfo"></div>
           </div>
-          <div class="muted" id="arcInfo"></div>
         </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <label>Prompt</label>
-      <textarea id="prompt" placeholder="Ex: vi möts på tåget …"></textarea>
-
-      <div class="row3" style="margin-top:12px">
         <div>
-          <label>Nivå (klicka 1–5)</label>
-          <div class="levels" id="levels">
+          <label>Nivå (1–5)</label>
+          <div id="levels" class="lvl stack" style="margin-top:6px">
             <button class="lvl-btn" data-level="1">1</button>
             <button class="lvl-btn" data-level="2">2</button>
             <button class="lvl-btn" data-level="3">3</button>
             <button class="lvl-btn" data-level="4">4</button>
             <button class="lvl-btn" data-level="5">5</button>
           </div>
-          <div class="lvl-desc" id="lvlDesc"></div>
-        </div>
-        <div>
-          <label>Språk</label>
-          <select id="lang">
-            <option value="sv">Svenska</option>
-            <option value="en">Engelska</option>
-          </select>
-        </div>
-        <div>
-          <label>Ord (ungefär)</label>
-          <input id="words" type="number" value="180" />
-        </div>
-      </div>
-
-      <div style="margin-top:12px;display:flex;gap:8px">
-        <button id="btnGenerate">Generera</button>
-        <button class="secondary" id="btnList">Lista avsnitt</button>
-        <span class="pill" id="providerPill">worker v1.4 (mock)</span>
-      </div>
-      <div class="muted" id="costHint"></div>
-    </div>
-
-    <div class="card" id="resultCard" style="display:none">
-      <div class="row">
-        <div>
-          <div><b>Resultat</b></div>
-          <div class="story" id="story"></div>
-        </div>
-        <div>
-          <div><b>Sammanfattning</b></div>
-          <div class="mono" id="summary"></div>
-          <div style="margin-top:8px"><b>Minne (karaktär)</b></div>
-          <div class="mono" id="memory"></div>
+          <div class="muted" id="lvlDesc" style="margin-top:6px"></div>
         </div>
       </div>
     </div>
 
-    <div class="card">
-      <div><b>Mina avsnitt</b></div>
-      <ul class="list" id="list"></ul>
+    <div class="card two">
+      <div>
+        <label>Prompt</label>
+        <textarea id="prompt" placeholder="ex: vi möttes på tåget…"></textarea>
+
+        <div class="row">
+          <div>
+            <label>Språk</label>
+            <select id="lang">
+              <option value="sv" selected>Svenska</option>
+              <option value="en">Engelska</option>
+            </select>
+          </div>
+          <div>
+            <label>Ord (ungefär)</label>
+            <select id="words">
+              <option>120</option>
+              <option selected>180</option>
+              <option>260</option>
+              <option>340</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top:10px">
+          <button id="btnGenerate">Generera</button>
+          <button id="btnListen">Lyssna</button>
+          <button id="btnList">Lista avsnitt</button>
+          <button id="btnFeedback">Skicka feedback</button>
+        </div>
+      </div>
+
+      <div id="resultCard" style="display:none">
+        <div class="card">
+          <b>Resultat</b>
+          <div class="mono" id="story" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="margin-top:8px">
+          <b>Sammanfattning</b>
+          <div class="mono" id="summary" style="margin-top:8px"></div>
+        </div>
+        <div class="card" style="margin-top:8px">
+          <b>Minne (karaktär)</b>
+          <div class="mono" id="memory" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <b>Mina avsnitt</b>
+      <ul id="list" class="list" style="margin-top:8px"></ul>
     </div>
   </div>
 
-  <!-- cache-bust -->
-  <script src="./app.js?v=151"></script>
+  <!-- CACHE-BUST bumpa siffran vid behov -->
+  <script src="./app.js?v=154"></script>
 </body>
 </html>
