@@ -1,19 +1,20 @@
-// BN Worker v1.2 — Episodes API + Generate (mock), D1 writes, CORS, robust routing
+// BN Worker v1.3 — Dynamic Tone Shaping (levels 1–5), mock generate, D1 writes, CORS
 
-const ALLOWED_ORIGIN = "*"; // sätt till din Pages-domän när du vill låsa ner
+const ALLOWED_ORIGIN = "*"; // Lås till din Pages-domän i prod, t.ex. "https://bn-demo01.pages.dev"
 
-/* ------------------------------- Helpers -------------------------------- */
-function json(data, status = 200, extraHeaders = {}) {
+/* ------------------------------- Base utils ------------------------------ */
+const newId = () => crypto.randomUUID();
+
+function json(data, status = 200, extra = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-      ...extraHeaders,
-    },
+      ...extra
+    }
   });
 }
-
 function handleOptions() {
   return new Response(null, {
     status: 204,
@@ -21,52 +22,145 @@ function handleOptions() {
       "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Access-Control-Max-Age": "86400",
-    },
+      "Access-Control-Max-Age": "86400"
+    }
   });
 }
-
-function matchPath(urlPath, target) {
-  const p = urlPath.replace(/\/+$/, "");
+function matchPath(p, target) {
+  const path = p.replace(/\/+$/, "");
   const t = target.startsWith("/") ? target : `/${target}`;
-  return (
-    p === t ||
-    p === `/v1${t}` ||
-    p === `/api${t}` ||
-    p === `/api/v1${t}`
-  );
+  return path === t || path === `/v1${t}` || path === `/api${t}` || path === `/api/v1${t}`;
 }
-
-const newId = () => crypto.randomUUID();
 
 async function sha256Hex(str) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
-
 function normPrompt(s) {
-  return (s || "").trim().toLowerCase().replace(/\s+/g, " ").slice(0, 2000);
+  return (s || "").toLowerCase().trim().replace(/\s+/g, " ").slice(0, 2000);
 }
 
-function mockSummarize(text) {
-  const plain = String(text || "").replace(/\s+/g, " ").trim();
-  const cut = plain.slice(0, 450);
-  const parts = cut.split(/[.!?]\s/).slice(0, 5);
-  const res = parts.join(". ").trim();
-  return res ? (res.endsWith(".") ? res : res + ".") : cut;
+/* ------------------------- Dynamic Tone Shaping -------------------------- */
+/** Grundlistor för omskrivningar när explicit inte är tillåtet */
+const REWRITE_MAP = [
+  { bad: /\b(fitta|slida)\b/gi, soft: "hennes hetta", mild: "mellan henne", explicit: "fitta" },
+  { bad: /\b(kuk|lem|stake)\b/gi, soft: "min hårdhet", mild: "mig själv", explicit: "kuk" },
+  { bad: /\b(slicka|slickade|slickar)\b/gi, soft: "smekte med läpparna", mild: "med munnen", explicit: "slickade" },
+  { bad: /\b(knulla|knullade|knullar)\b/gi, soft: "älska", mild: "vi gav oss hän", explicit: "knullade" },
+  { bad: /\b(sprut|kom|utlöst[e]?)\b/gi, soft: "topp", mild: "nådde klimax", explicit: "kom" },
+];
+
+/** Nivå → policy */
+function levelPolicy(level) {
+  const L = Math.max(1, Math.min(5, Number(level || 3)));
+  return {
+    level: L,
+    allowExplicit: L >= 4,
+    soften: L <= 2,
+    moderate: L === 3,
+    maxWords: L <= 2 ? 700 : L === 3 ? 900 : 1200,
+    style: L <= 2 ? "sensuell, suggestiv, metaforer, inga könsord"
+         : L === 3 ? "sensuell+, försiktig explicit med smakfull ton"
+         : L === 4 ? "het, tydlig och direkt, men estetisk"
+         : "explicit och direkt, detaljerad men stilren"
+  };
 }
-function mockUpdateMemory(oldSummary, newEpisodeSummary) {
-  const base = (oldSummary || "").trim();
-  const add = (newEpisodeSummary || "").trim();
+
+/** Byter ut/tonar ned explicit ordval beroende på nivå */
+function shapeUserInputByLevel(raw, policy) {
+  let text = String(raw || "");
+
+  if (policy.allowExplicit) {
+    // Nivå 4–5: normalisera till renare explicita ord (för konsekvens)
+    for (const rule of REWRITE_MAP) {
+      text = text.replace(rule.bad, rule.explicit);
+    }
+    return text;
+  }
+
+  if (policy.moderate) {
+    // Nivå 3: dämpa
+    for (const rule of REWRITE_MAP) {
+      text = text.replace(rule.bad, rule.mild);
+    }
+    return text;
+  }
+
+  // Nivå 1–2: inga könsord, ersätt med sensuella metaforer
+  for (const rule of REWRITE_MAP) {
+    text = text.replace(rule.bad, rule.soft);
+  }
+  return text;
+}
+
+/** Systemprompt som ska återanvändas när vi kopplar på riktig LLM */
+function buildSystemPrompt(policy) {
+  return [
+    "Du är en skicklig författare på svenska som skriver korta, fängslande, sensuella berättelser.",
+    "Skriv varierat, utan upprepningar, med naturlig rytm och jämn flyt.",
+    `Tonalitet: ${policy.style}.`,
+    policy.level <= 2 ? "Undvik könsord. Använd metaforer och antydningar." : "",
+    policy.level === 3 ? "Håll explicit på låg nivå; antydningar tillåts men håll det smakfullt." : "",
+    policy.level >= 4 ? "Explicit språk tillåtet; var direkt men estetisk och inte grovt för grovhetens skull." : "",
+    "Texten ska passa för högläsning: variera meningars längd; föreslå pauser där rytmen kräver det.",
+    "Avsluta alltid med en stark känsla eller bild. Lägg till [SLUT] i slutet.",
+  ].filter(Boolean).join("\n");
+}
+
+/** Mock-sammanfattning + minnes-uppdatering */
+function mockSummarize(text) {
+  const s = (text || "").replace(/\s+/g, " ").trim();
+  const cut = s.slice(0, 450);
+  const sent = cut.split(/[.!?]\s/).slice(0, 5).join(". ");
+  const res = (sent || cut).trim();
+  return res ? (res.endsWith(".") ? res : res + ".") : "";
+}
+function updateMemory(oldSum, newEpisodeSummary) {
+  const base = (oldSum || "").trim();
+  const add  = (newEpisodeSummary || "").trim();
   return (base + " " + add).trim().slice(-1200);
 }
 
-/* --------------------------- Shared handlers ---------------------------- */
+/** Skapar en mockad berättelse i rätt ton för vald nivå */
+function makeMockStory({ policy, character, promptUser, lang, level }) {
+  const name  = character?.name || "din motspelare";
+  const intro =
+    level <= 2
+      ? `Hon drog mig närmare, och värmen mellan oss blev en mjuk signal.`
+      : level === 3
+      ? `Hennes hand stannade en sekund för länge, blicken sa mer än orden.`
+      : level === 4
+      ? `Hon tog min hand och ledde den dit hon ville ha den, självsäkert och hungrigt.`
+      : `Jag lät fingrarna utforska henne med en säker, otålig nyfikenhet.`;
+  const closure =
+    level <= 2
+      ? `Luften vibrerade av löften, och allt annat tystnade. [SLUT]`
+      : level === 3
+      ? `Vi andades i samma takt, närmare, djupare, oundvikligt. [SLUT]`
+      : level === 4
+      ? `Hon krökte ryggen, viskade mitt namn, och världen smälte. [SLUT]`
+      : `Smaken, värmen, hennes puls mot mina läppar – allt brann i samma sekund. [SLUT]`;
+
+  return [
+    `SYSTEM (nivå ${policy.level}): ${policy.style}.`,
+    `KONCEPT: ${promptUser}`,
+    "",
+    `${name} och jag:`,
+    intro,
+    "",
+    `Ögonblicket växte, ${level>=4 ? "direkt och oförlåtande" : "tätt och förföriskt"},`,
+    `med ord som ${level>=4 ? "inte dolde vad vi ville" : "bara anade fortsättningen"}.`,
+    "",
+    closure
+  ].join("\n");
+}
+
+/* ------------------------------ Handlers API ----------------------------- */
 
 async function handleSession(env) {
   const now = new Date().toISOString();
   const userId = newId();
-  const token = "demo-" + newId();
+  const token  = "demo-" + newId();
   try {
     if (env.DB) {
       await env.DB.prepare(
@@ -82,10 +176,10 @@ async function handleSession(env) {
 
 async function handleCharactersCreate(request, env) {
   const body = await request.json().catch(() => ({}));
-  const user_id = body.user_id || null;
-  const name = (body.name || "").trim();
+  const user_id = body.user_id;
+  const name    = (body.name || "").trim();
   const profile = body.profile || {};
-  const facts = body.facts || {};
+  const facts   = body.facts || {};
   if (!user_id || !name) return json({ error: "user_id och name krävs" }, 400);
 
   const id = newId();
@@ -111,9 +205,9 @@ async function handleCharactersCreate(request, env) {
 
 async function handleCharactersList(request, env) {
   const body = await request.json().catch(() => ({}));
-  const user_id = body.user_id || null;
+  const user_id = body.user_id;
   if (!user_id) return json({ error: "user_id krävs" }, 400);
-  let rows = [];
+  let items = [];
   try {
     if (env.DB) {
       const q = await env.DB.prepare(`
@@ -122,17 +216,17 @@ async function handleCharactersList(request, env) {
         WHERE user_id = ?
         ORDER BY created_at DESC
       `).bind(user_id).all();
-      rows = q?.results || [];
+      items = q?.results || [];
     }
   } catch (_) {}
-  return json({ items: rows });
+  return json({ items });
 }
 
 async function handleArcStart(request, env) {
   const body = await request.json().catch(() => ({}));
   const { user_id, character_id, title } = body;
-  const level_min = Math.max(1, Math.min(5, Number(body.level_min ?? 1)));
-  const level_max = Math.max(level_min, Math.min(5, Number(body.level_max ?? 5)));
+  let level_min = Math.max(1, Math.min(5, Number(body.level_min ?? 1)));
+  let level_max = Math.max(level_min, Math.min(5, Number(body.level_max ?? 5)));
   if (!user_id || !character_id || !title) {
     return json({ error: "user_id, character_id och title krävs" }, 400);
   }
@@ -153,10 +247,10 @@ async function handleArcStart(request, env) {
 
 async function handleEpisodesByCharacter(request, env) {
   const body = await request.json().catch(() => ({}));
-  const { user_id, character_id, limit } = body;
+  const { user_id, character_id } = body;
+  const limit = Math.max(1, Math.min(50, Number(body.limit || 10)));
   if (!user_id || !character_id) return json({ error: "user_id och character_id krävs" }, 400);
-  const LIM = Math.max(1, Math.min(50, Number(limit || 10)));
-  let rows = [];
+  let items = [];
   try {
     if (env.DB) {
       const q = await env.DB.prepare(`
@@ -165,33 +259,34 @@ async function handleEpisodesByCharacter(request, env) {
         WHERE user_id = ? AND character_id = ?
         ORDER BY created_at DESC
         LIMIT ?
-      `).bind(user_id, character_id, LIM).all();
-      rows = q?.results || [];
+      `).bind(user_id, character_id, limit).all();
+      items = q?.results || [];
     }
   } catch (_) {}
-  return json({ items: rows });
+  return json({ items });
 }
 
-/** Shared generate used by both /generate and /episodes/generate */
+/** Shared generate for /generate och /episodes/generate */
 async function handleGenerate(request, env) {
   const body = await request.json().catch(() => ({}));
-  const user_id = body.user_id || null;
+  const user_id      = body.user_id || null;
   const character_id = body.character_id || null;
-  const arc_id = body.arc_id || null;
+  const arc_id       = body.arc_id || null;
 
-  const promptRaw = body.prompt || "";
   const level = Math.max(1, Math.min(5, Number(body.level || 3)));
-  const lang = (body.lang || "sv").toLowerCase();
+  const lang  = (body.lang || "sv").toLowerCase();
   const words = Number(body.words || 800);
-  const voiceId = body.voice_id || null;
-  const makeAudio = !!body.make_audio;
+  const make_audio = !!body.make_audio;
+  const voice_id = body.voice_id || null;
 
   if (!user_id) return json({ error: "user_id krävs" }, 400);
 
-  // Läs karaktär + minne + senaste summaries
+  const policy = levelPolicy(level);
+
+  // Läs karaktär, minne och senaste summaries
   let character = null;
   let recentSummaries = [];
-  let arc = null;
+  let memory_summary = "";
   try {
     if (env.DB && character_id) {
       const cq = await env.DB.prepare(`
@@ -200,15 +295,7 @@ async function handleGenerate(request, env) {
         WHERE id = ? AND user_id = ?
       `).bind(character_id, user_id).all();
       character = (cq?.results || [])[0] || null;
-
-      if (arc_id) {
-        const aq = await env.DB.prepare(`
-          SELECT id, title, status, level_min, level_max
-          FROM story_arcs
-          WHERE id = ? AND user_id = ? AND character_id = ?
-        `).bind(arc_id, user_id, character_id).all();
-        arc = (aq?.results || [])[0] || null;
-      }
+      memory_summary = character?.memory_summary || "";
 
       const rq = await env.DB.prepare(`
         SELECT episode_summary
@@ -221,41 +308,24 @@ async function handleGenerate(request, env) {
     }
   } catch (_) {}
 
-  const profile = character?.profile_json ? JSON.parse(character.profile_json) : {};
-  const facts   = character?.facts_json ? JSON.parse(character.facts_json) : {};
-  const memory_summary = character?.memory_summary || "";
+  // Nivåstyrd omskrivning av användarens input
+  const promptUser = shapeUserInputByLevel(body.prompt || "", policy);
 
-  const contextHeader = [
-    `KARAKTÄR: ${character?.name || "(okänd)"}`,
-    `Profil: ${JSON.stringify(profile)}`,
-    `Preferenser: ${JSON.stringify(facts)}`,
-    `MINNE: ${memory_summary || "(tomt)"}`,
-    `SENASTE: ${recentSummaries.slice(0,3).join(" | ") || "(—)"}`
-  ].join("\n");
+  // Systemprompt (återanvänd senare när LLM kopplas på)
+  const systemPrompt = buildSystemPrompt(policy);
 
-  // Mockad berättelse (ersätts med riktig LLM senare)
-  const story = [
-    `TL;DR: Fortsättning (nivå ${level}, ${lang}).`,
-    "",
-    contextHeader,
-    "",
-    `PROMPT: ${promptRaw}`,
-    "",
-    `BERÄTTELSE (mock):`,
-    `Ni tar nästa steg i er historia. Denna text är mockad tills LLM kopplas in.`,
-    "[SLUT]"
-  ].join("\n");
-
-  // Sammanfattning + uppdatera minnet
+  // MOCKED story (ton, rytm, nivå)
+  const story = makeMockStory({ policy, character, promptUser, lang, level });
   const episode_summary = mockSummarize(story);
-  const new_memory = mockUpdateMemory(memory_summary, episode_summary);
+  const new_memory = updateMemory(memory_summary, episode_summary);
 
-  const norm = normPrompt(promptRaw);
-  const pHash = await sha256Hex(`${norm}|${lang}|${level}|${character_id || "anon"}`);
+  // Cacha/spara
+  const prompt_norm = normPrompt(promptUser);
+  const prompt_hash = await sha256Hex(`${prompt_norm}|${lang}|${level}|${character_id || "anon"}`);
 
-  const episodeId = newId();
+  const id = newId();
   const now = new Date().toISOString();
-  let nextArcStep = 1;
+  let arc_step = 1;
 
   try {
     if (env.DB) {
@@ -264,7 +334,7 @@ async function handleGenerate(request, env) {
           SELECT COALESCE(MAX(arc_step), 0) AS m FROM episodes
           WHERE user_id = ? AND character_id = ? AND arc_id = ?
         `).bind(user_id, character_id, arc_id).all();
-        nextArcStep = ((stepq?.results || [])[0]?.m || 0) + 1;
+        arc_step = ((stepq?.results || [])[0]?.m || 0) + 1;
       }
 
       await env.DB.prepare(`
@@ -277,29 +347,29 @@ async function handleGenerate(request, env) {
           character_id, arc_id, arc_step, episode_summary
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        episodeId, user_id, promptRaw, norm, pHash,
-        lang, level, words, "mock", "mock-v1",
-        0, 0, makeAudio ? "mock-tts" : null, voiceId,
+        id, user_id, body.prompt || "", prompt_norm, prompt_hash,
+        lang, level, Math.min(words, policy.maxWords), "mock", "mock-v1",
+        0, 0, make_audio ? "mock-tts" : null, voice_id,
         null, null, null, null,
         now, "ok", null,
-        character_id, arc_id, nextArcStep, episode_summary
+        character_id, arc_id, arc_step, episode_summary
       ).run();
 
-      // bump prompt_cache (ok om tabellen saknas – då ignoreras felet)
+      // prompt_cache (ignorera fel om tabell saknas)
       try {
         await env.DB.prepare(`
           INSERT OR IGNORE INTO prompt_cache (
             id, prompt_norm, prompt_hash, lang, level, story_text, meta_json, hits, created_at, last_used_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
         `).bind(
-          pHash, norm, pHash, lang, level,
+          prompt_hash, prompt_norm, prompt_hash, lang, level,
           story,
-          JSON.stringify({ provider: "mock", model: "mock-v1", character_id, arc_id }),
+          JSON.stringify({ provider: "mock", model: "mock-v1", character_id, arc_id, level }),
           now, now
         ).run();
         await env.DB.prepare(
           "UPDATE prompt_cache SET hits = hits + 1, last_used_at = ? WHERE prompt_hash = ?"
-        ).bind(now, pHash).run();
+        ).bind(now, prompt_hash).run();
       } catch (_) {}
 
       if (character_id) {
@@ -311,33 +381,29 @@ async function handleGenerate(request, env) {
       }
     }
   } catch (e) {
-    // Vi returnerar ändå mock-respons om skrivning faller
-    console.warn("D1 write error in /generate:", e);
+    console.warn("D1 write error:", e);
   }
 
   return json({
-    episode_id: episodeId,
-    character_id,
-    arc_id,
-    arc_step: nextArcStep,
-    prompt_hash: pHash,
+    episode_id: id,
+    character_id, arc_id, arc_step,
+    level, lang,
     story,
     summary: episode_summary,
     memory_summary: new_memory,
-    tts: makeAudio ? { url: null, provider: "mock-tts", voice_id: voiceId } : null,
+    prompt_hash,
+    tts: make_audio ? { url: null, provider: "mock-tts", voice_id } : null
   });
 }
 
-/* ------------------------------ Fetch root ------------------------------ */
-
+/* --------------------------------- Router -------------------------------- */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-
     if (request.method === "OPTIONS") return handleOptions();
 
     try {
-      // Public
+      // Public info
       if (request.method === "GET" && matchPath(url.pathname, "/status")) {
         return json({
           llm: [
@@ -349,17 +415,16 @@ export default {
             { name: "ElevenLabs", healthy: false, tier: "EL" },
             { name: "CLOUDFLARE:SPEECH", healthy: true, tier: "BASIC" },
           ],
-          version: "v1.2",
-          mock: true,
+          version: "v1.3",
+          mock: true
         });
       }
       if (request.method === "GET" && matchPath(url.pathname, "/health")) {
-        return json({ ok: true, service: "bn-worker", time: Date.now() });
+        return json({ ok: true, time: Date.now(), service: "bn-worker" });
       }
 
-      // Sessions
-      if ((request.method === "POST" || request.method === "GET") &&
-          matchPath(url.pathname, "/session")) {
+      // Session (GET för enkel test, POST också OK)
+      if ((request.method === "GET" || request.method === "POST") && matchPath(url.pathname, "/session")) {
         return await handleSession(env);
       }
 
@@ -379,18 +444,17 @@ export default {
         return await handleEpisodesByCharacter(request, env);
       }
 
-      // Generate — båda vägarna pekar på samma handler
+      // Generate (både gamla och nya vägen)
       if (request.method === "POST" && (
-          matchPath(url.pathname, "/generate") ||
-          matchPath(url.pathname, "/episodes/generate")
+        matchPath(url.pathname, "/generate") ||
+        matchPath(url.pathname, "/episodes/generate")
       )) {
         return await handleGenerate(request, env);
       }
 
       return json({ error: "Not found", path: url.pathname }, 404);
-
     } catch (err) {
       return json({ error: err?.message || "Internal error" }, 500);
     }
-  },
+  }
 };
