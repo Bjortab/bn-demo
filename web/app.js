@@ -1,5 +1,5 @@
 // --- Konfig ---
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra om du skapar egen subdomän
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra vid behov
 
 // --- Hjälpare ---
 const $ = (id) => document.getElementById(id);
@@ -14,10 +14,20 @@ const get = (p) => fetch(`${API}${p}`).then((r) => r.json());
 function saveLocal(key, v) { localStorage.setItem(key, JSON.stringify(v)); }
 function loadLocal(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } }
 
+// --- Nivåbeskrivningar ---
+const levelDescriptions = {
+  1: "Romantisk: känslor & stämning. Inga kroppsliga detaljer, inga könsord.",
+  2: "Antydande sensuell: beröring & metaforer. Inga könsord.",
+  3: "Sensuell+: mild explicit. Vaga anatomiska ord, ej grova uttryck.",
+  4: "Het: explicit men stilrent. Detaljer tillåtna, undviker grövsta fraser.",
+  5: "Explicit: raka ord & tydliga beskrivningar (inom regler & lag)."
+};
+
 // --- State ---
 let SESSION = null;
 let CHARACTER = null;
 let ARC = null;
+let LEVEL = 2; // default
 
 // --- Init ---
 (async function init() {
@@ -41,7 +51,29 @@ let ARC = null;
   // Förifyll
   $("charName").value = "Nadja";
   $("arcTitle").value = "Första mötet";
+
+  // Init nivåknappar
+  setupLevelButtons();
+  renderLevelDesc();
 })();
+
+// --- Nivå UI ---
+function setupLevelButtons() {
+  const container = $("levels");
+  container.querySelectorAll(".lvl-btn").forEach(btn => {
+    const n = Number(btn.dataset.level);
+    btn.dataset.active = (n === LEVEL) ? "true" : "false";
+    btn.onclick = () => {
+      LEVEL = n;
+      container.querySelectorAll(".lvl-btn").forEach(b => b.dataset.active = "false");
+      btn.dataset.active = "true";
+      renderLevelDesc();
+    };
+  });
+}
+function renderLevelDesc() {
+  $("lvlDesc").textContent = `${LEVEL} – ${levelDescriptions[LEVEL]}`;
+}
 
 // --- UI actions ---
 $("btnCreateChar").onclick = async () => {
@@ -85,7 +117,7 @@ $("btnGenerate").onclick = async () => {
       character_id: CHARACTER.character_id,
       arc_id: ARC.arc_id,
       prompt: $("prompt").value,
-      level: Number($("level").value),
+      level: LEVEL,                       // <-- nivå från knappar
       lang: $("lang").value,
       words: Number($("words").value),
       make_audio: false,
@@ -97,7 +129,7 @@ $("btnGenerate").onclick = async () => {
     $("summary").textContent = res.summary || "";
     $("memory").textContent = res.memory_summary || "";
 
-    await listEpisodes(); // uppdatera listan direkt
+    await listEpisodes();
   } catch (e) {
     console.error(e);
     alert("Kunde inte generera");
@@ -127,3 +159,22 @@ async function listEpisodes() {
     ul.appendChild(li);
   });
 }
+
+// --- Feedback (oförändrad från tidigare) ---
+$("btnFeedback").onclick = async () => {
+  try {
+    const topic = prompt("Ämne (valfritt):", "");
+    if (topic === null) return;
+    const message = prompt("Beskriv problemet eller skriv din fråga (krävs):", "");
+    if (message === null) return;
+    if (!message.trim()) return alert("Meddelande krävs.");
+    const email = prompt("Din e-post (valfritt):", "");
+    const user_id = (SESSION && SESSION.user_id) ? SESSION.user_id : null;
+    const res = await post("/feedback/submit", { user_id, email, topic, message });
+    if (res && res.ok) alert("Tack! Din feedback är mottagen.");
+    else alert("Kunde inte spara feedback just nu.");
+  } catch (e) {
+    console.error(e);
+    alert("Något gick fel när feedback skulle skickas.");
+  }
+};
