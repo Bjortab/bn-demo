@@ -25,6 +25,12 @@
     .pill{padding:2px 8px;border:1px solid #383845;border-radius:999px;font-size:12px}
     .muted{opacity:.75}
     .list li{padding:10px;border-bottom:1px solid #24242b}
+
+    /* Nivåväljare */
+    .levels{display:flex;gap:8px;flex-wrap:wrap}
+    .lvl-btn{background:#1a1a22;border:1px solid #343446;color:#d9d9e3;border-radius:10px;padding:8px 12px;cursor:pointer}
+    .lvl-btn[data-active="true"]{background:#e9426f;border-color:#e9426f;color:#fff}
+    .lvl-desc{margin-top:8px;font-size:13px;opacity:.9}
   </style>
 </head>
 <body>
@@ -34,6 +40,11 @@
     <div class="card" id="statusCard">
       <div><b>Status</b></div>
       <div class="status" id="statusText">Init…</div>
+    </div>
+
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center">
+      <a href="./faq.html" class="pill" style="text-decoration:none">FAQ</a>
+      <button id="btnFeedback" class="secondary">Skicka feedback</button>
     </div>
 
     <div class="card">
@@ -63,8 +74,15 @@
 
       <div class="row3" style="margin-top:12px">
         <div>
-          <label>Nivå (1–5)</label>
-          <input type="range" min="1" max="5" step="1" value="2" id="level" />
+          <label>Nivå (klicka 1–5)</label>
+          <div class="levels" id="levels">
+            <button class="lvl-btn" data-level="1">1</button>
+            <button class="lvl-btn" data-level="2">2</button>
+            <button class="lvl-btn" data-level="3">3</button>
+            <button class="lvl-btn" data-level="4">4</button>
+            <button class="lvl-btn" data-level="5">5</button>
+          </div>
+          <div class="lvl-desc" id="lvlDesc"></div>
         </div>
         <div>
           <label>Språk</label>
