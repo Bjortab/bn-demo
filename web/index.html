@@ -2,79 +2,111 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BN 0.4 – Demo</title>
   <link rel="stylesheet" href="./styles.css" />
+  <style>
+    body{background:#0b0b0e;color:#eaeaea;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,sans-serif}
+    .wrap{max-width:900px;margin:32px auto;padding:0 16px}
+    h1{font-weight:700;font-size:24px;margin:0 0 16px}
+    .card{background:#14141a;border:1px solid #24242b;border-radius:12px;padding:16px;margin-bottom:16px}
+    label{display:block;font-size:13px;opacity:.85;margin-bottom:6px}
+    input,select,textarea{width:100%;background:#0f0f14;border:1px solid #2a2a33;border-radius:10px;color:#eaeaea;padding:10px 12px}
+    textarea{min-height:90px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    button{background:#e9426f;border:none;color:white;padding:10px 14px;border-radius:10px;cursor:pointer}
+    button.secondary{background:#2b2b33}
+    .status{font-size:12px;opacity:.8}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;white-space:pre-wrap}
+    .story{white-space:pre-wrap;line-height:1.5}
+    .kbar{display:flex;gap:8px;align-items:center}
+    .kbar > * {flex:1}
+    .pill{padding:2px 8px;border:1px solid #383845;border-radius:999px;font-size:12px}
+    .muted{opacity:.75}
+    .list li{padding:10px;border-bottom:1px solid #24242b}
+  </style>
 </head>
 <body>
-  <header class="topbar">
-    <h1>BN 0.4</h1>
-    <div id="status">Status: …</div>
-  </header>
+  <div class="wrap">
+    <h1>BN 0.4 – Demo</h1>
 
-  <main>
-    <section class="card">
-      <h2>Konto & Credits</h2>
-      <div id="authRow">
-        <button id="btnAuth">Skapa anonym session</button>
-      </div>
-      <div id="balRow" class="hide">
-        <div>Saldo: <strong id="balance">0</strong> credits (Reserverat: <span id="holds">0</span>)</div>
-        <button id="btnRefresh">Uppdatera saldo</button>
-        <button id="btnTopup">Lägg till (demo +500)</button>
-      </div>
-    </section>
+    <div class="card" id="statusCard">
+      <div><b>Status</b></div>
+      <div class="status" id="statusText">Init…</div>
+    </div>
 
-    <section class="card">
-      <h2>Skapa berättelse</h2>
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Karaktärsnamn</label>
+          <div class="kbar">
+            <input id="charName" placeholder="t.ex. Nadja" />
+            <button id="btnCreateChar">Skapa karaktär</button>
+          </div>
+          <div class="muted" id="charInfo"></div>
+        </div>
+        <div>
+          <label>Story-arc</label>
+          <div class="kbar">
+            <input id="arcTitle" placeholder="t.ex. Första mötet" />
+            <button id="btnStartArc">Starta arc</button>
+          </div>
+          <div class="muted" id="arcInfo"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
       <label>Prompt</label>
-      <textarea id="prompt" rows="4" placeholder="Ex: min heta granne förförde mig"></textarea>
+      <textarea id="prompt" placeholder="Ex: vi möts på tåget …"></textarea>
 
-      <div class="row">
-        <label>Nivå (1–5)</label>
-        <input type="range" id="level" min="1" max="5" value="4" />
-        <span id="levelVal">4</span>
+      <div class="row3" style="margin-top:12px">
+        <div>
+          <label>Nivå (1–5)</label>
+          <input type="range" min="1" max="5" step="1" value="2" id="level" />
+        </div>
+        <div>
+          <label>Språk</label>
+          <select id="lang">
+            <option value="sv">Svenska</option>
+            <option value="en">Engelska</option>
+          </select>
+        </div>
+        <div>
+          <label>Ord (ungefär)</label>
+          <input id="words" type="number" value="180" />
+        </div>
       </div>
 
-      <div class="row">
-        <label>Röst</label>
-        <select id="voice">
-          <option value="elevenlabs:charlotte">EL Charlotte (kvinnlig)</option>
-          <option value="elevenlabs:male">EL Male</option>
-          <option value="basic:female">Basic Female (billigare)</option>
-        </select>
-        <label class="inline"><input type="checkbox" id="tts" checked /> Skapa ljud</label>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button id="btnGenerate">Generera</button>
+        <button class="secondary" id="btnList">Lista avsnitt</button>
+        <span class="pill" id="providerPill">worker v1.4 (mock)</span>
       </div>
+      <div class="muted" id="costHint"></div>
+    </div>
 
+    <div class="card" id="resultCard" style="display:none">
       <div class="row">
-        <label>Karaktär (valfritt)</label>
-        <select id="character"></select>
-        <button id="btnSaveChar">Spara som karaktär</button>
+        <div>
+          <div><b>Resultat</b></div>
+          <div class="story" id="story"></div>
+        </div>
+        <div>
+          <div><b>Sammanfattning</b></div>
+          <div class="mono" id="summary"></div>
+          <div style="margin-top:8px"><b>Minne (karaktär)</b></div>
+          <div class="mono" id="memory"></div>
+        </div>
       </div>
+    </div>
 
-      <div id="quoteBox" class="muted">Kostnad: –</div>
-      <div class="row">
-        <button id="btnQuote">Beräkna kostnad</button>
-        <button id="btnGenerate" disabled>Generera</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Resultat</h2>
-      <div id="result" class="result"></div>
-      <audio id="player" controls class="hide"></audio>
-    </section>
-
-    <section class="card">
-      <h2>Mina karaktärer</h2>
-      <ul id="chars" class="list"></ul>
-    </section>
-
-    <section class="card">
-      <h2>Mina episoder</h2>
-      <ul id="eps" class="list"></ul>
-    </section>
-  </main>
+    <div class="card">
+      <div><b>Mina avsnitt</b></div>
+      <ul class="list" id="list"></ul>
+    </div>
+  </div>
 
   <script src="./app.js"></script>
 </body>
