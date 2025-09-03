@@ -1,145 +1,257 @@
-// BN web/app.js v1.5.3 (live-ready, server-driven, TTS-knapp)
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
+(() => {
+  // ====== KONFIG ======
+  // Byt vid behov till din worker-url (utan trailing slash)
+  const API_BASE = 'https://bn-worker.bjorta-bb.workers.dev';
+  const API = `${API_BASE}/api/v1`;
 
-// Helpers
-const $ = (id) => document.getElementById(id);
-const post = (p, d = {}) =>
-  fetch(`${API}${p}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(d) })
-    .then(async r => ({ ok: r.ok, status: r.status, json: await r.json() }));
-const get = (p) => fetch(`${API}${p}`).then(r => r.json());
-const save = (k,v)=>localStorage.setItem(k,JSON.stringify(v));
-const load = (k)=>{ try{return JSON.parse(localStorage.getItem(k))}catch{return null}};
+  // Hjälpfunktion: fetcha JSON med standardheaders
+  async function jfetch(path, opts = {}) {
+    const res = await fetch(`${API}${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || res.statusText || 'Request failed';
+      throw new Error(`${res.status} ${msg}`);
+    }
+    return data;
+  }
 
-// Nivåbeskrivningar
-const levelDescriptions = {
-  1: "Romantisk: känslor & stämning. Inga kroppsliga detaljer, inga könsord.",
-  2: "Antydande sensuell: beröring & metaforer. Inga könsord.",
-  3: "Sensuell+: mild explicit. Vaga anatomiska ord, ej grova uttryck.",
-  4: "Het: explicit men stilrent. Detaljer tillåtna, undviker grövsta fraser.",
-  5: "Explicit: raka ord & tydliga beskrivningar (inom regler & lag)."
-};
+  // ====== STATE ======
+  const state = {
+    session: null,     // { user_id, token, created }
+    character: null,   // { character_id, name }
+    arc: null,         // { arc_id, name, next_step }
+    lastEpisode: null, // { ... }
+    status: null       // /status payload
+  };
 
-// State
-let SESSION=null, CHARACTER=null, ARC=null, LEVEL=2;
+  // ====== API WRAPPERS ======
+  async function getStatus() {
+    const s = await jfetch('/status');
+    state.status = s;
+    return s;
+  }
 
-// Init
-(async function init(){
-  $("statusText").textContent="Hämtar status…";
-  try{
-    const s = await get("/status");
-    $("statusText").textContent = `Version: ${s.version}, mock: ${s.flags?.MOCK ? "ON" : "OFF"}`;
-    $("providerPill").textContent = `worker v${s.version}${s.flags?.MOCK ? " (mock)" : ""}`;
-  }catch{ $("statusText").textContent="Kunde inte läsa status"; }
+  async function createSession() {
+    const s = await jfetch('/session', { method: 'POST' });
+    state.session = s;
+    return s;
+  }
 
-  SESSION = load("bn:session") || await get("/session"); save("bn:session", SESSION);
-  $("statusText").textContent += ` | user: ${SESSION.user_id.slice(0,8)}…`;
+  async function createCharacter(name = 'Nadja') {
+    ensureSession();
+    const out = await jfetch('/characters/create', {
+      method: 'POST',
+      body: { user_id: state.session.user_id, name }
+    });
+    state.character = out;
+    return out;
+  }
 
-  $("charName").value = "Nadja";
-  $("arcTitle").value = "Första mötet";
-  setupLevels();
-  renderLevel();
-})();
+  async function startArc(title = 'Första mötet') {
+    ensureSession();
+    ensureCharacter();
+    const out = await jfetch('/arcs/start', {
+      method: 'POST',
+      body: {
+        user_id: state.session.user_id,
+        character_id: state.character.character_id,
+        title
+      }
+    });
+    state.arc = out;
+    return out;
+  }
 
-function setupLevels(){
-  $("levels").querySelectorAll(".lvl-btn").forEach(btn=>{
-    const n = Number(btn.dataset.level);
-    btn.dataset.active = (n===LEVEL) ? "true":"false";
-    btn.onclick=()=>{ LEVEL=n; $("levels").querySelectorAll(".lvl-btn").forEach(b=>b.dataset.active="false"); btn.dataset.active="true"; renderLevel(); };
-  });
-}
-function renderLevel(){ $("lvlDesc").textContent = `${LEVEL} – ${levelDescriptions[LEVEL]}`; }
+  async function generateEpisode({ prompt, level, lang, words, make_audio = false }) {
+    ensureSession();
+    ensureCharacter();
+    ensureArc();
 
-// UI actions
-$("btnCreateChar").onclick = async ()=>{
-  if(!SESSION) return alert("Ingen session");
-  const name = $("charName").value.trim(); if(!name) return alert("Ange namn");
-  const {json} = await post("/characters/create", { user_id: SESSION.user_id, name });
-  CHARACTER=json; save("bn:character", CHARACTER);
-  $("charInfo").textContent = `id: ${json.character_id}`;
-};
-
-$("btnStartArc").onclick = async ()=>{
-  if(!SESSION) return alert("Ingen session");
-  CHARACTER = CHARACTER || load("bn:character"); if(!CHARACTER) return alert("Skapa karaktär först");
-  const title = $("arcTitle").value.trim(); if(!title) return alert("Ange titel");
-  const {json} = await post("/arcs/start", { user_id: SESSION.user_id, character_id: CHARACTER.character_id, title, level_min:1, level_max:5 });
-  ARC=json; save("bn:arc", ARC);
-  $("arcInfo").textContent = `arc_id: ${json.arc_id}`;
-};
-
-$("btnGenerate").onclick = async ()=>{
-  try{
-    if(!SESSION) return alert("Ingen session");
-    CHARACTER = CHARACTER || load("bn:character"); if(!CHARACTER) return alert("Skapa karaktär först");
-    ARC = ARC || load("bn:arc"); if(!ARC) return alert("Starta en arc först");
-
-    $("resultCard").style.display="block";
-    $("story").textContent="Skapar berättelse…";
-    $("summary").textContent=""; $("memory").textContent="";
-
-    const payload = {
-      user_id: SESSION.user_id,
-      character_id: CHARACTER.character_id,
-      arc_id: ARC.arc_id,
-      prompt: $("prompt").value,
-      level: LEVEL,
-      lang: $("lang").value,
-      words: Number($("words").value),
-      make_audio: false
+    const body = {
+      user_id: state.session.user_id,
+      character_id: state.character.character_id,
+      arc_id: state.arc.arc_id,
+      prompt,
+      level: Number(level) || 2,
+      lang: (lang || 'sv').toLowerCase(),
+      words: Number(words) || 180,
+      make_audio: !!make_audio
     };
 
-    const {ok,status,json} = await post("/episodes/generate", payload);
-    if(!ok){
-      console.error("GEN FAIL",status,json);
-      $("story").textContent = json?.error ? `${json.error}: ${json.details||""}` : "Kunde inte generera (serverfel).";
-      return;
+    const ep = await jfetch('/episodes/generate', { method: 'POST', body });
+    state.lastEpisode = ep;
+    return ep;
+  }
+
+  async function listEpisodes(limit = 20) {
+    ensureSession();
+    ensureCharacter();
+    const out = await jfetch('/episodes/by-character', {
+      method: 'POST',
+      body: { user_id: state.session.user_id, character_id: state.character.character_id, limit: Number(limit) }
+    });
+    return out;
+  }
+
+  // ====== GUARD HELPERS ======
+  function ensureSession() {
+    if (!state.session?.user_id) throw new Error('Ingen session. Klicka "Skapa anonym session" först.');
+  }
+  function ensureCharacter() {
+    if (!state.character?.character_id) throw new Error('Ingen karaktär. Klicka "Skapa karaktär" först.');
+  }
+  function ensureArc() {
+    if (!state.arc?.arc_id) throw new Error('Ingen story-arc. Klicka "Starta arc" först.');
+  }
+
+  // ====== UI BINDINGS (robust mot olika html) ======
+  function q(id) { return document.getElementById(id); }
+  function text(el, t) { if (el) el.textContent = t; }
+
+  function bindButton(id, handler) {
+    const el = q(id);
+    if (!el) return;
+    el.addEventListener('click', async () => {
+      try {
+        el.disabled = true;
+        await handler(el);
+      } catch (err) {
+        alert(err.message || String(err));
+        console.error(err);
+      } finally {
+        el.disabled = false;
+      }
+    });
+  }
+
+  function currentLevel() {
+    // Stöd både <input type=range id="level"> och radios [name="level"]
+    const range = q('level');
+    if (range && range.value) return Number(range.value);
+    const picked = document.querySelector('input[name="level"]:checked');
+    return picked ? Number(picked.value) : 2;
+  }
+
+  function currentLang() {
+    const sel = q('lang');
+    return sel && sel.value ? sel.value : 'sv';
+  }
+
+  function currentWords() {
+    const sel = q('words');
+    if (sel && sel.value) return Number(sel.value);
+    // fallback: input number
+    const num = q('wordsNum');
+    return num && num.value ? Number(num.value) : 180;
+  }
+
+  function currentPrompt() {
+    const ta = q('prompt');
+    return (ta && ta.value.trim()) || '';
+  }
+
+  function setBadge(status) {
+    const el = q('statusBadge');
+    if (!el) return;
+    const v = status?.version || 'v?';
+    const m = status?.flags?.MOCK ? 'mock' : 'live';
+    const prov = status?.flags?.PROVIDER || '—';
+    text(el, `worker ${v} (${m}, ${prov})`);
+  }
+
+  function showEpisode(ep) {
+    // Försök skriva in i element med id "result" + "summary" om de finns
+    const resBox = q('result');
+    const sumBox = q('summary');
+    if (resBox) {
+      const body = ep?.story || ep?.body || ep?.episode?.story || '(tomt)';
+      resBox.textContent = body;
+    }
+    if (sumBox) {
+      const sum = ep?.summary || ep?.episode?.summary || '';
+      sumBox.textContent = sum;
+    }
+  }
+
+  function showEpisodesList(list) {
+    const listBox = q('episodesList');
+    if (!listBox) return;
+    const items = Array.isArray(list?.items) ? list.items : [];
+    listBox.innerHTML = items.map((it, i) => {
+      const t = (it?.story || '').slice(0, 120).replace(/\n/g, ' ');
+      return `<li>#${i + 1}: ${t}${t.length >= 120 ? '…' : ''}</li>`;
+    }).join('') || '<li>(inga avsnitt ännu)</li>';
+  }
+
+  // ====== INIT ======
+  document.addEventListener('DOMContentLoaded', async () => {
+    // Visa status-badge
+    try {
+      const s = await getStatus();
+      setBadge(s);
+      console.log('STATUS:', s);
+    } catch (err) {
+      console.warn('Kunde inte läsa /status:', err);
     }
 
-    $("story").textContent   = json?.story || "(ingen story mottagen)";
-    $("summary").textContent = json?.summary || "";
-    $("memory").textContent  = json?.memory_summary || "";
+    // Bind knappar om de finns i din HTML
+    bindButton('btnSession', async () => {
+      const s = await createSession();
+      alert('Anonym session skapad.');
+      console.log('SESSION:', s);
+    });
 
-    await listEpisodes();
-  }catch(e){ console.error(e); alert("Kunde inte generera"); }
-};
+    bindButton('btnCreateChar', async () => {
+      const nameEl = q('charName');
+      const name = (nameEl && nameEl.value.trim()) || 'Nadja';
+      const out = await createCharacter(name);
+      alert(`Karaktär skapad: ${out?.name || name}`);
+      console.log('CHAR:', out);
+    });
 
-$("btnList").onclick = listEpisodes;
-async function listEpisodes(){
-  if(!SESSION) return;
-  CHARACTER = CHARACTER || load("bn:character"); if(!CHARACTER) return;
-  const {json} = await post("/episodes/by-character", { user_id: SESSION.user_id, character_id: CHARACTER.character_id, limit:50 });
-  const ul = $("list"); ul.innerHTML="";
-  (json.items||[]).forEach(it=>{
-    const li=document.createElement("li");
-    li.innerHTML = `
-      <div><b>${new Date(it.created_at||Date.now()).toLocaleString()}</b></div>
-      <div class="muted">nivå ${it.level} • steg ${it.arc_step} • ${it.lang||"sv"}</div>
-      <div class="mono">${(it.episode_summary||"").slice(0,220)}</div>`;
-    ul.appendChild(li);
+    bindButton('btnStartArc', async () => {
+      const titleEl = q('arcTitle');
+      const title = (titleEl && titleEl.value.trim()) || 'Första mötet';
+      const out = await startArc(title);
+      alert(`Arc startad: ${out?.name || title}`);
+      console.log('ARC:', out);
+    });
+
+    bindButton('btnGenerate', async () => {
+      const ep = await generateEpisode({
+        prompt: currentPrompt(),
+        level: currentLevel(),
+        lang: currentLang(),
+        words: currentWords(),
+        make_audio: !!(q('makeAudio') && q('makeAudio').checked),
+      });
+      console.log('NEW EPISODE:', ep);
+      showEpisode(ep);
+
+      // uppdatera lista (om knapp/box finns)
+      try {
+        const list = await listEpisodes(20);
+        showEpisodesList(list);
+      } catch (e) { /* no-op */ }
+    });
+
+    bindButton('btnList', async () => {
+      const list = await listEpisodes(20);
+      console.log('ALL EPISODES:', list);
+      showEpisodesList(list);
+    });
+
+    // Exponera i devtools för snabbtest
+    window.bn = {
+      API_BASE, API, state,
+      getStatus, createSession, createCharacter, startArc, generateEpisode, listEpisodes
+    };
+    console.log('bn ready → window.bn', window.bn);
   });
-}
-
-// Inbyggd browser-TTS (provlyssning)
-$("btnListen").onclick = ()=>{
-  try{
-    window.speechSynthesis.cancel();
-    const text = $("story")?.innerText?.trim() || "";
-    if(!text) return alert("Ingen text att läsa upp.");
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = ($("lang").value === "en") ? "en-US" : "sv-SE";
-    u.rate = 1.0; u.pitch = 1.0;
-    speechSynthesis.speak(u);
-  }catch(e){ console.error(e); alert("TTS stöds inte i denna webbläsare."); }
-};
-
-// Feedback → worker sparar i D1
-$("btnFeedback").onclick = async ()=>{
-  try{
-    const topic = prompt("Ämne (valfritt):",""); if(topic===null) return;
-    const message = prompt("Beskriv problemet eller skriv din fråga (krävs):",""); if(message===null) return;
-    if(!message.trim()) return alert("Meddelande krävs.");
-    const email = prompt("Din e-post (valfritt):","");
-    const {json} = await post("/feedback/submit",{ user_id: SESSION?.user_id || null, email, topic, message });
-    alert(json?.ok ? "Tack! Din feedback är mottagen." : "Kunde inte spara feedback just nu.");
-  }catch(e){ console.error(e); alert("Fel när feedback skickades."); }
-};
+})();
