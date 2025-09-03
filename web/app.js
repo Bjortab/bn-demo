@@ -1,6 +1,6 @@
 // --- Konfig ---
 const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
-console.log("BN web/app.js v1.5.1");
+console.log("BN web/app.js v1.5.1 live-ready");
 
 // --- Hjälpare ---
 const $ = (id) => document.getElementById(id);
@@ -35,8 +35,8 @@ let LEVEL = 2; // default
   $("statusText").textContent = "Hämtar status…";
   try {
     const s = await get("/status");
-    $("statusText").textContent = `Version: ${s.version}, mock: ${s.mock ? "ON" : "OFF"}`;
-    $("providerPill").textContent = `worker ${s.version}${s.mock ? " (mock)" : ""}`;
+    $("statusText").textContent = `Version: ${s.version}, mock: ${s.flags?.MOCK ? "ON" : "OFF"}`;
+    $("providerPill").textContent = `worker ${s.version}${s.flags?.MOCK ? " (mock)" : ""}`;
   } catch {
     $("statusText").textContent = "Kunde inte läsa status";
   }
@@ -58,7 +58,7 @@ let LEVEL = 2; // default
   renderLevelDesc();
 })();
 
-// --- Nivå UI (skriver endast i #lvlDesc, aldrig i #story) ---
+// --- Nivå UI ---
 function setupLevelButtons() {
   const container = $("levels");
   container.querySelectorAll(".lvl-btn").forEach(btn => {
@@ -69,7 +69,6 @@ function setupLevelButtons() {
       container.querySelectorAll(".lvl-btn").forEach(b => b.dataset.active = "false");
       btn.dataset.active = "true";
       renderLevelDesc();
-      // rör inte #story här
     };
   });
 }
@@ -115,7 +114,7 @@ $("btnGenerate").onclick = async () => {
     ARC = ARC || loadLocal("bn:arc");
     if (!ARC) return alert("Starta en arc först");
 
-    // rensa tidigare resultat (för att se tydligt att nytt kommer)
+    // rensa tidigare resultat
     $("resultCard").style.display = "block";
     $("story").textContent = "Skapar berättelse…";
     $("summary").textContent = "";
@@ -133,7 +132,6 @@ $("btnGenerate").onclick = async () => {
     };
 
     const res = await post("/episodes/generate", payload);
-    // Skriv ALDRIG nivåbeskrivning i #story
     $("story").textContent = res && res.story ? res.story : "(ingen story mottagen)";
     $("summary").textContent = res && res.summary ? res.summary : "";
     $("memory").textContent = res && res.memory_summary ? res.memory_summary : "";
