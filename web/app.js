@@ -1,257 +1,149 @@
 (() => {
-  // ====== KONFIG ======
-  // Byt vid behov till din worker-url (utan trailing slash)
-  const API_BASE = 'https://bn-worker.bjorta-bb.workers.dev';
-  const API = `${API_BASE}/api/v1`;
+  "use strict";
 
-  // Hjälpfunktion: fetcha JSON med standardheaders
-  async function jfetch(path, opts = {}) {
-    const res = await fetch(`${API}${path}`, {
-      method: opts.method || 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = data?.error?.message || res.statusText || 'Request failed';
-      throw new Error(`${res.status} ${msg}`);
-    }
-    return data;
-  }
+  // ----- KONFIG -----
+  // Pekar frontend mot workerns API
+  const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 
-  // ====== STATE ======
-  const state = {
-    session: null,     // { user_id, token, created }
-    character: null,   // { character_id, name }
-    arc: null,         // { arc_id, name, next_step }
-    lastEpisode: null, // { ... }
-    status: null       // /status payload
+  // Nivå-beskrivningar (visas under knapparna)
+  const LEVEL_TEXT = {
+    1: "1 – Romantiskt, bara stämning.",
+    2: "2 – Antydande sensuellt, beröring & metaforer. Inga könsord.",
+    3: "3 – Sensuellt, lite mer kropp, försiktig vokabulär.",
+    4: "4 – Explicit men utan grova ord.",
+    5: "5 – Explicit & direkt inom lagens ramar.",
   };
 
-  // ====== API WRAPPERS ======
-  async function getStatus() {
-    const s = await jfetch('/status');
-    state.status = s;
-    return s;
+  // ----- DOM -----
+  const el = (id) => document.getElementById(id);
+  const statusEl = el("status");
+  const lvlInfo = el("lvlInfo");
+  const out = el("out");
+  const meta = el("meta");
+
+  // ----- State -----
+  let SESSION = null;
+  let CHARACTER_ID = null;
+  let ARC_ID = null;
+
+  // ----- Utils -----
+  function getLevel() {
+    const n = document.querySelector('input[name="lvl"]:checked');
+    return n ? Number(n.value) : 2;
   }
 
-  async function createSession() {
-    const s = await jfetch('/session', { method: 'POST' });
-    state.session = s;
-    return s;
+  function show(o) {
+    out.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 2);
   }
 
-  async function createCharacter(name = 'Nadja') {
-    ensureSession();
-    const out = await jfetch('/characters/create', {
-      method: 'POST',
-      body: { user_id: state.session.user_id, name }
+  async function post(path, body) {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
     });
-    state.character = out;
-    return out;
-  }
-
-  async function startArc(title = 'Första mötet') {
-    ensureSession();
-    ensureCharacter();
-    const out = await jfetch('/arcs/start', {
-      method: 'POST',
-      body: {
-        user_id: state.session.user_id,
-        character_id: state.character.character_id,
-        title
-      }
-    });
-    state.arc = out;
-    return out;
-  }
-
-  async function generateEpisode({ prompt, level, lang, words, make_audio = false }) {
-    ensureSession();
-    ensureCharacter();
-    ensureArc();
-
-    const body = {
-      user_id: state.session.user_id,
-      character_id: state.character.character_id,
-      arc_id: state.arc.arc_id,
-      prompt,
-      level: Number(level) || 2,
-      lang: (lang || 'sv').toLowerCase(),
-      words: Number(words) || 180,
-      make_audio: !!make_audio
-    };
-
-    const ep = await jfetch('/episodes/generate', { method: 'POST', body });
-    state.lastEpisode = ep;
-    return ep;
-  }
-
-  async function listEpisodes(limit = 20) {
-    ensureSession();
-    ensureCharacter();
-    const out = await jfetch('/episodes/by-character', {
-      method: 'POST',
-      body: { user_id: state.session.user_id, character_id: state.character.character_id, limit: Number(limit) }
-    });
-    return out;
-  }
-
-  // ====== GUARD HELPERS ======
-  function ensureSession() {
-    if (!state.session?.user_id) throw new Error('Ingen session. Klicka "Skapa anonym session" först.');
-  }
-  function ensureCharacter() {
-    if (!state.character?.character_id) throw new Error('Ingen karaktär. Klicka "Skapa karaktär" först.');
-  }
-  function ensureArc() {
-    if (!state.arc?.arc_id) throw new Error('Ingen story-arc. Klicka "Starta arc" först.');
-  }
-
-  // ====== UI BINDINGS (robust mot olika html) ======
-  function q(id) { return document.getElementById(id); }
-  function text(el, t) { if (el) el.textContent = t; }
-
-  function bindButton(id, handler) {
-    const el = q(id);
-    if (!el) return;
-    el.addEventListener('click', async () => {
-      try {
-        el.disabled = true;
-        await handler(el);
-      } catch (err) {
-        alert(err.message || String(err));
-        console.error(err);
-      } finally {
-        el.disabled = false;
-      }
-    });
-  }
-
-  function currentLevel() {
-    // Stöd både <input type=range id="level"> och radios [name="level"]
-    const range = q('level');
-    if (range && range.value) return Number(range.value);
-    const picked = document.querySelector('input[name="level"]:checked');
-    return picked ? Number(picked.value) : 2;
-  }
-
-  function currentLang() {
-    const sel = q('lang');
-    return sel && sel.value ? sel.value : 'sv';
-  }
-
-  function currentWords() {
-    const sel = q('words');
-    if (sel && sel.value) return Number(sel.value);
-    // fallback: input number
-    const num = q('wordsNum');
-    return num && num.value ? Number(num.value) : 180;
-  }
-
-  function currentPrompt() {
-    const ta = q('prompt');
-    return (ta && ta.value.trim()) || '';
-  }
-
-  function setBadge(status) {
-    const el = q('statusBadge');
-    if (!el) return;
-    const v = status?.version || 'v?';
-    const m = status?.flags?.MOCK ? 'mock' : 'live';
-    const prov = status?.flags?.PROVIDER || '—';
-    text(el, `worker ${v} (${m}, ${prov})`);
-  }
-
-  function showEpisode(ep) {
-    // Försök skriva in i element med id "result" + "summary" om de finns
-    const resBox = q('result');
-    const sumBox = q('summary');
-    if (resBox) {
-      const body = ep?.story || ep?.body || ep?.episode?.story || '(tomt)';
-      resBox.textContent = body;
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${res.statusText} – ${txt}`);
     }
-    if (sumBox) {
-      const sum = ep?.summary || ep?.episode?.summary || '';
-      sumBox.textContent = sum;
-    }
+    return res.json();
   }
 
-  function showEpisodesList(list) {
-    const listBox = q('episodesList');
-    if (!listBox) return;
-    const items = Array.isArray(list?.items) ? list.items : [];
-    listBox.innerHTML = items.map((it, i) => {
-      const t = (it?.story || '').slice(0, 120).replace(/\n/g, ' ');
-      return `<li>#${i + 1}: ${t}${t.length >= 120 ? '…' : ''}</li>`;
-    }).join('') || '<li>(inga avsnitt ännu)</li>';
-  }
-
-  // ====== INIT ======
-  document.addEventListener('DOMContentLoaded', async () => {
-    // Visa status-badge
+  // ----- Init status -----
+  async function initStatus() {
     try {
-      const s = await getStatus();
-      setBadge(s);
-      console.log('STATUS:', s);
-    } catch (err) {
-      console.warn('Kunde inte läsa /status:', err);
+      const r = await fetch(`${API_BASE}/status`);
+      const js = await r.json();
+      statusEl.textContent = `worker v${js.version} • provider: ${js.provider} • mock: ${js.mock ? "ON" : "OFF"}`;
+      meta.textContent = `API: ${API_BASE}`;
+    } catch (e) {
+      statusEl.textContent = "status: (kunde inte läsa)";
     }
+  }
 
-    // Bind knappar om de finns i din HTML
-    bindButton('btnSession', async () => {
-      const s = await createSession();
-      alert('Anonym session skapad.');
-      console.log('SESSION:', s);
-    });
-
-    bindButton('btnCreateChar', async () => {
-      const nameEl = q('charName');
-      const name = (nameEl && nameEl.value.trim()) || 'Nadja';
-      const out = await createCharacter(name);
-      alert(`Karaktär skapad: ${out?.name || name}`);
-      console.log('CHAR:', out);
-    });
-
-    bindButton('btnStartArc', async () => {
-      const titleEl = q('arcTitle');
-      const title = (titleEl && titleEl.value.trim()) || 'Första mötet';
-      const out = await startArc(title);
-      alert(`Arc startad: ${out?.name || title}`);
-      console.log('ARC:', out);
-    });
-
-    bindButton('btnGenerate', async () => {
-      const ep = await generateEpisode({
-        prompt: currentPrompt(),
-        level: currentLevel(),
-        lang: currentLang(),
-        words: currentWords(),
-        make_audio: !!(q('makeAudio') && q('makeAudio').checked),
-      });
-      console.log('NEW EPISODE:', ep);
-      showEpisode(ep);
-
-      // uppdatera lista (om knapp/box finns)
-      try {
-        const list = await listEpisodes(20);
-        showEpisodesList(list);
-      } catch (e) { /* no-op */ }
-    });
-
-    bindButton('btnList', async () => {
-      const list = await listEpisodes(20);
-      console.log('ALL EPISODES:', list);
-      showEpisodesList(list);
-    });
-
-    // Exponera i devtools för snabbtest
-    window.bn = {
-      API_BASE, API, state,
-      getStatus, createSession, createCharacter, startArc, generateEpisode, listEpisodes
-    };
-    console.log('bn ready → window.bn', window.bn);
+  // ----- Level hint -----
+  document.getElementById("levels").addEventListener("change", () => {
+    lvlInfo.textContent = LEVEL_TEXT[getLevel()];
   });
+
+  // ----- Buttons -----
+  el("btnSession").addEventListener("click", async () => {
+    try {
+      const s = await post("/session", {});
+      SESSION = s;
+      show(s);
+      alert("Anonym session skapad.");
+    } catch (e) {
+      show(String(e));
+    }
+  });
+
+  el("btnChar").addEventListener("click", async () => {
+    try {
+      const name = el("charName").value.trim() || "Mia";
+      const c = await post("/characters/create", { user_id: SESSION?.user_id, name });
+      CHARACTER_ID = c.character_id;
+      show(c);
+    } catch (e) {
+      show(String(e));
+    }
+  });
+
+  el("btnArc").addEventListener("click", async () => {
+    try {
+      const title = el("arcTitle").value.trim() || "Första mötet";
+      const a = await post("/arcs/start", {
+        user_id: SESSION?.user_id,
+        character_id: CHARACTER_ID,
+        title,
+      });
+      ARC_ID = a.arc_id;
+      show(a);
+    } catch (e) {
+      show(String(e));
+    }
+  });
+
+  el("btnGen").addEventListener("click", async () => {
+    try {
+      const level = getLevel();
+      const prompt = el("prompt").value.trim() || "vi möttes på tåget…";
+      const lang = el("lang").value || "sv";
+      const words = Number(el("words").value || 180);
+
+      const ep = await post("/episodes/generate", {
+        user_id: SESSION?.user_id,
+        character_id: CHARACTER_ID,
+        arc_id: ARC_ID,
+        level,
+        lang,
+        words,
+        prompt,
+      });
+
+      show(ep);
+    } catch (e) {
+      show(String(e));
+    }
+  });
+
+  el("btnList").addEventListener("click", async () => {
+    try {
+      const list = await post("/episodes/by-character", {
+        user_id: SESSION?.user_id,
+        character_id: CHARACTER_ID,
+        limit: 10,
+      });
+      show(list);
+    } catch (e) {
+      show(String(e));
+    }
+  });
+
+  el("btnSend").addEventListener("click", () => {
+    alert("Tack! (mock)");
+  });
+
+  // ----- Go -----
+  initStatus();
 })();
