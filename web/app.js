@@ -1,186 +1,144 @@
-// app.js v1.5.4 – stabil klient som pratar med worker v1.5+
-// Endpoints i worker: /api/v1/status, /session (POST), /characters/create, /arcs/start, /episodes/generate, /episodes/by-character
+// web/app.js — BN front v1.5.4 (golden)
+// Robust init, inga dubbletter av variabler, enkel UI-tråd mot worker.
 
-const API = 'https://bn-worker.bjorta-bb.workers.dev/api/v1';
+(() => {
+  const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 
-const state = {
-  user_id: null,
-  token: null,
-  character_id: null,
-  arc_id: null,
-  level: 2,
-  provider: '…',
-  mock: true,
-  version: '…',
-};
+  // DOM refs
+  const $sessionBtn = qs("#btnSession");
+  const $charName = qs("#charName");
+  const $charBtn = qs("#btnCreateChar");
+  const $arcBtn = qs("#btnStartArc");
+  const $levelRadios = qsa('input[name="level"]');
+  const $langSel = qs("#lang");
+  const $wordsSel = qs("#words");
+  const $prompt = qs("#prompt");
+  const $genBtn = qs("#btnGenerate");
+  const $listBtn = qs("#btnList");
+  const $out = qs("#out");
+  const $badge = qs("#badge");
 
-const LEVEL_TEXT = {
-  1: 'Romantisk, bara stämning.',
-  2: 'Antydande, sensuellt, beröring & metaforer. Inga könsord.',
-  3: 'Sensuellt, lite mer kropp, försiktigt vokabulär.',
-  4: 'Explicit men inom gränserna.',
-  5: 'Direkt & rakt, tillåter grova fraser inom lagens ramar.'
-};
+  let state = {
+    user_id: null,
+    token: null,
+    character_id: null,
+    arc_id: null,
+    provider: "MOCK",
+    mock: true,
+    version: "v?",
+  };
 
-// ---------- helpers ----------
-const $ = (id) => document.getElementById(id);
-
-function setError(msg) {
-  $('err').textContent = msg || '';
-}
-function setResult(obj) {
-  $('result').value = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
-}
-function setEpisodes(list) {
-  if (!list?.items?.length) {
-    $('episodes').textContent = '— inga avsnitt —';
-    return;
+  // ---------- helpers ----------
+  function qs(s) { return document.querySelector(s); }
+  function qsa(s) { return [...document.querySelectorAll(s)]; }
+  function getLevel() {
+    const r = $levelRadios.find(x => x.checked);
+    return r ? Number(r.value) : 2;
   }
-  const lines = list.items.map((e, i) => {
-    const t = (e.created_at || '').toString().replace('T',' ').replace('Z','');
-    return `#${i+1} • ${t}\n${e.story}\n[SLUT]\n`;
-  }).join('\n');
-  $('episodes').textContent = lines;
-}
+  function say(x) {
+    $out.value = (typeof x === "string") ? x : JSON.stringify(x, null, 2);
+  }
 
-async function safeFetch(url, init = {}) {
-  setError('');
-  try {
-    const res = await fetch(url, init);
-    const text = await res.text();
-    let json = null;
-    try { json = text ? JSON.parse(text) : null; } catch { /* keep as text */ }
+  async function api(path, body) {
+    const resp = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data?.error || `${resp.status} ${resp.statusText}`);
+    return data;
+  }
 
-    if (!res.ok) {
-      // worker returnerar {error:"..."} vid 404 mm
-      const msg = json?.error || `${res.status} ${res.statusText}`;
-      throw new Error(msg);
+  // ---------- init badge ----------
+  (async () => {
+    try {
+      const r = await fetch(`${API}/status`);
+      const s = await r.json();
+      state.version = s?.version || "v?";
+      state.mock = !!s?.flags?.MOCK;
+      state.provider = s?.provider || (state.mock ? "MOCK" : "MISTRAL");
+      $badge.textContent = `worker ${state.version} • provider: ${state.provider} • mock: ${state.mock ? "ON" : "OFF"}`;
+    } catch {
+      $badge.textContent = `worker ? • (status ej nåddes)`;
     }
-    return json ?? {};
-  } catch (err) {
-    setError(`Error: ${err.message}`);
-    throw err;
-  }
-}
+  })();
 
-function setLevelUI(lvl) {
-  state.level = lvl;
-  const wrap = $('levels');
-  wrap.innerHTML = '';
-  [1,2,3,4,5].forEach(n => {
-    const b = document.createElement('button');
-    b.className = 'level-btn' + (n===lvl ? ' active':'');
-    b.textContent = String(n);
-    b.onclick = () => setLevelUI(n);
-    wrap.appendChild(b);
+  // ---------- events ----------
+  $sessionBtn?.addEventListener("click", async () => {
+    try {
+      const s = await api("/session", {});
+      state.user_id = s.user_id;
+      state.token = s.token;
+      say({ ok: true, session: s });
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
   });
-  $('levelHint').textContent = `${lvl} – ${LEVEL_TEXT[lvl]}`;
-}
 
-function updateChips() {
-  $('chip-worker').textContent = `worker v${state.version || '?'}`;
-  $('chip-prov').textContent = `provider ${state.provider}`;
-  $('chip-mock').textContent = `mock: ${state.mock ? 'ON' : 'OFF'}`;
-  $('chip-session').textContent = state.user_id ? `session: ${state.user_id.slice(0,8)}…` : 'ingen session';
-  $('apiLabel').textContent = API;
-}
+  $charBtn?.addEventListener("click", async () => {
+    try {
+      guardSession();
+      const name = ($charName.value || "").trim() || "Mia";
+      const r = await api("/characters/create", { user_id: state.user_id, name });
+      state.character_id = r.character_id;
+      say(r);
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
+  });
 
-// ---------- boot ----------
-(async function boot(){
-  setLevelUI(2);
-  updateChips();
+  $arcBtn?.addEventListener("click", async () => {
+    try {
+      guardSession(true);
+      const r = await api("/arcs/start", {
+        user_id: state.user_id,
+        character_id: state.character_id,
+        title: "Första mötet",
+      });
+      state.arc_id = r.arc_id;
+      say(r);
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
+  });
 
-  // Hämta status
-  try {
-    const status = await safeFetch(`${API}/status`, { method: 'GET' });
-    state.version  = status?.version || state.version;
-    state.mock     = !!status?.flags?.MOCK;
-    // försök hitta vald provider
-    const prov = (status?.lm || []).find(p => p.healthy !== undefined);
-    state.provider = status?.provider || prov?.name || state.provider;
-  } catch {/* visad redan */}
-  updateChips();
-})();
-
-// ---------- UI handlers ----------
-$('btnSession').onclick = async () => {
-  try {
-    const data = await safeFetch(`${API}/session`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({}) // anonym
-    });
-    state.user_id = data.user_id;
-    state.token = data.token;
-    updateChips();
-    setResult({ ok:true, session:data });
-  } catch {/* fel visas av safeFetch */}
-};
-
-$('btnCreateChar').onclick = async () => {
-  if (!state.user_id) { setError('Skapa session först.'); return; }
-  const name = $('charName').value.trim() || 'Mia';
-  try {
-    const data = await safeFetch(`${API}/characters/create`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ user_id: state.user_id, name })
-    });
-    state.character_id = data.character_id;
-    setResult({ ok:true, character:data });
-  } catch {}
-};
-
-$('btnStartArc').onclick = async () => {
-  if (!state.user_id || !state.character_id) { setError('Skapa session och karaktär först.'); return; }
-  const title = $('arcTitle').value.trim() || 'Första mötet';
-  try {
-    const data = await safeFetch(`${API}/arcs/start`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ user_id: state.user_id, character_id: state.character_id, title })
-    });
-    state.arc_id = data.arc_id;
-    setResult({ ok:true, arc:data });
-  } catch {}
-};
-
-$('btnGenerate').onclick = async () => {
-  if (!state.user_id || !state.character_id || !state.arc_id) {
-    setError('Skapa session, karaktär och starta arc först.');
-    return;
-  }
-  const prompt = $('prompt').value.trim() || 'vi möttes på tåget…';
-  const lang = $('lang').value || 'sv';
-  const words = parseInt($('words').value || '180', 10);
-
-  try {
-    const ep = await safeFetch(`${API}/episodes/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({
+  $genBtn?.addEventListener("click", async () => {
+    try {
+      guardSession(true, true);
+      const payload = {
         user_id: state.user_id,
         character_id: state.character_id,
         arc_id: state.arc_id,
-        prompt, level: state.level, lang, words
-      })
-    });
-    setResult(ep);
-  } catch {}
-};
+        prompt: ($prompt.value || "").trim(),
+        level: getLevel(),
+        lang: $langSel.value,
+        words: Number($wordsSel.value || 180),
+      };
+      const ep = await api("/episodes/generate", payload);
+      say(ep);
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
+  });
 
-$('btnList').onclick = async () => {
-  if (!state.user_id || !state.character_id) { setError('Skapa session och karaktär först.'); return; }
-  try {
-    const list = await safeFetch(`${API}/episodes/by-character`, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ user_id: state.user_id, character_id: state.character_id, limit: 10 })
-    });
-    setEpisodes(list);
-  } catch {}
-};
+  $listBtn?.addEventListener("click", async () => {
+    try {
+      guardSession(true, true);
+      const items = await api("/episodes/by-character", {
+        user_id: state.user_id,
+        character_id: state.character_id,
+        limit: 10,
+      });
+      say(items);
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
+  });
 
-$('btnFeedback').onclick = () => {
-  alert('Tack! Feedbackknappen är plats­hållare i demot.');
-};
+  function guardSession(needChar = false, needArc = false) {
+    if (!state.user_id) throw new Error("Ingen session – klicka 'Skapa anonym session' först.");
+    if (needChar && !state.character_id) throw new Error("Ingen karaktär – klicka 'Skapa karaktär' först.");
+    if (needArc && !state.arc_id) throw new Error("Ingen story-arc – klicka 'Starta arc' först.");
+  }
+})();
