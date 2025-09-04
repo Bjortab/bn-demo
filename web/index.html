@@ -1,124 +1,82 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BN 0.4 – Demo</title>
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="UTF-8">
+  <title>Blush Narratives – Demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    body{background:#0f0f12;color:#eee;font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial}
-    .wrap{max-width:980px;margin:40px auto;padding:0 16px}
-    h1{font-weight:700;margin:0 0 8px}
-    .muted{opacity:.7}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .card{background:#17171c;border:1px solid #2a2a2f;border-radius:10px;padding:16px}
-    .stack{display:flex;gap:10px;flex-wrap:wrap}
-    input,select,textarea,button{background:#121218;border:1px solid #2a2a2f;color:#eee;border-radius:8px;padding:10px 12px}
-    textarea{min-height:84px;width:100%}
-    button{cursor:pointer}
-    .lvl .lvl-btn{padding:8px 10px;border-radius:8px;border:1px solid #2a2a2f;background:#121218}
-    .lvl .lvl-btn[data-active="true"]{background:#2a2f57;border-color:#4652c4}
-    .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;white-space:pre-wrap}
-    .pill{display:inline-block;font-size:12px;padding:4px 8px;border:1px solid #2a2a2f;border-radius:999px;background:#121218}
-    .list{list-style:none;padding:0;margin:0}
-    .list li{padding:10px 0;border-top:1px solid #26262b}
-    .actions{display:flex;gap:10px;flex-wrap:wrap}
-    .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; margin: 0; padding: 2rem; }
+    h1 { color: #f48; }
+    button { margin: 0.5rem 0; padding: 0.5rem 1rem; font-size: 1rem; }
+    textarea { width: 100%; min-height: 100px; margin: 0.5rem 0; }
+    input, select { margin: 0.3rem 0; padding: 0.3rem; }
+    .badge { background: #333; color: #0f0; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.9rem; }
+    .box { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #333; border-radius: 6px; background: #1a1a1a; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 0.3rem 0; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>BlushNarratives <span class="pill" id="providerPill">…</span></h1>
-    <div class="muted" id="statusText">Init…</div>
+  <h1>Blush Narratives – Demo</h1>
+  <div>Status: <span id="statusBadge" class="badge">init…</span></div>
 
-    <div class="card" style="margin-top:16px">
-      <div class="grid3">
-        <div>
-          <label>Karaktärsnamn</label>
-          <input id="charName" placeholder="ex. Nadja" />
-          <div class="actions" style="margin-top:8px">
-            <button id="btnCreateChar">Skapa karaktär</button>
-            <div class="muted" id="charInfo"></div>
-          </div>
-        </div>
-        <div>
-          <label>Story-arc</label>
-          <input id="arcTitle" placeholder="ex. Första mötet" />
-          <div class="actions" style="margin-top:8px">
-            <button id="btnStartArc">Starta arc</button>
-            <div class="muted" id="arcInfo"></div>
-          </div>
-        </div>
-        <div>
-          <label>Nivå (1–5)</label>
-          <div id="levels" class="lvl stack" style="margin-top:6px">
-            <button class="lvl-btn" data-level="1">1</button>
-            <button class="lvl-btn" data-level="2">2</button>
-            <button class="lvl-btn" data-level="3">3</button>
-            <button class="lvl-btn" data-level="4">4</button>
-            <button class="lvl-btn" data-level="5">5</button>
-          </div>
-          <div class="muted" id="lvlDesc" style="margin-top:6px"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card two">
-      <div>
-        <label>Prompt</label>
-        <textarea id="prompt" placeholder="ex: vi möttes på tåget…"></textarea>
-
-        <div class="row">
-          <div>
-            <label>Språk</label>
-            <select id="lang">
-              <option value="sv" selected>Svenska</option>
-              <option value="en">Engelska</option>
-            </select>
-          </div>
-          <div>
-            <label>Ord (ungefär)</label>
-            <select id="words">
-              <option>120</option>
-              <option selected>180</option>
-              <option>260</option>
-              <option>340</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="actions" style="margin-top:10px">
-          <button id="btnGenerate">Generera</button>
-          <button id="btnListen">Lyssna</button>
-          <button id="btnList">Lista avsnitt</button>
-          <button id="btnFeedback">Skicka feedback</button>
-        </div>
-      </div>
-
-      <div id="resultCard" style="display:none">
-        <div class="card">
-          <b>Resultat</b>
-          <div class="mono" id="story" style="margin-top:8px"></div>
-        </div>
-        <div class="card" style="margin-top:8px">
-          <b>Sammanfattning</b>
-          <div class="mono" id="summary" style="margin-top:8px"></div>
-        </div>
-        <div class="card" style="margin-top:8px">
-          <b>Minne (karaktär)</b>
-          <div class="mono" id="memory" style="margin-top:8px"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <b>Mina avsnitt</b>
-      <ul id="list" class="list" style="margin-top:8px"></ul>
-    </div>
+  <div class="box">
+    <h2>Konto & Session</h2>
+    <button id="btnSession">Skapa anonym session</button>
   </div>
 
-  <!-- CACHE-BUST bumpa siffran vid behov -->
-  <script src="./app.js?v=154"></script>
+  <div class="box">
+    <h2>Skapa karaktär</h2>
+    <input type="text" id="charName" placeholder="Karaktärens namn (t.ex. Nadja)">
+    <button id="btnCreateChar">Skapa karaktär</button>
+  </div>
+
+  <div class="box">
+    <h2>Story arc</h2>
+    <input type="text" id="arcTitle" placeholder="Arc titel (t.ex. Första mötet)">
+    <button id="btnStartArc">Starta arc</button>
+  </div>
+
+  <div class="box">
+    <h2>Skapa berättelse</h2>
+    <textarea id="prompt" placeholder="Ex: vi möttes på tåget…"></textarea>
+    
+    <label>Nivå:</label><br>
+    <label><input type="radio" name="level" value="1"> 1 – Romantisk, bara stämning</label><br>
+    <label><input type="radio" name="level" value="2" checked> 2 – Antydande, sensuellt, inga könsord</label><br>
+    <label><input type="radio" name="level" value="3"> 3 – Sensuellt, kropp, försiktig vokabulär</label><br>
+    <label><input type="radio" name="level" value="4"> 4 – Explicit men ej grövst</label><br>
+    <label><input type="radio" name="level" value="5"> 5 – Explicit & direkt, inom lagens ramar</label><br><br>
+
+    <label for="lang">Språk:</label>
+    <select id="lang">
+      <option value="sv" selected>Svenska</option>
+      <option value="en">Engelska</option>
+    </select>
+
+    <label for="words">Ord (ungefär):</label>
+    <input type="number" id="words" value="180" min="50" max="2000">
+
+    <div>
+      <label><input type="checkbox" id="makeAudio"> Skapa ljud</label>
+    </div>
+
+    <button id="btnGenerate">Generera</button>
+  </div>
+
+  <div class="box">
+    <h2>Resultat</h2>
+    <pre id="result">(Här visas berättelsen)</pre>
+    <h3>Sammanfattning</h3>
+    <pre id="summary">(Här visas sammanfattning)</pre>
+  </div>
+
+  <div class="box">
+    <h2>Mina avsnitt</h2>
+    <button id="btnList">Lista avsnitt</button>
+    <ul id="episodesList"></ul>
+  </div>
+
+  <script src="./app.js?v=160"></script>
 </body>
 </html>
