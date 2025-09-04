@@ -1,149 +1,145 @@
-(() => {
-  "use strict";
+// web/app.js v1.5.4 – BN Demo
 
-  // ----- KONFIG -----
-  // Pekar frontend mot workerns API
-  const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 
-  // Nivå-beskrivningar (visas under knapparna)
-  const LEVEL_TEXT = {
-    1: "1 – Romantiskt, bara stämning.",
-    2: "2 – Antydande sensuellt, beröring & metaforer. Inga könsord.",
-    3: "3 – Sensuellt, lite mer kropp, försiktig vokabulär.",
-    4: "4 – Explicit men utan grova ord.",
-    5: "5 – Explicit & direkt inom lagens ramar.",
-  };
-
-  // ----- DOM -----
-  const el = (id) => document.getElementById(id);
-  const statusEl = el("status");
-  const lvlInfo = el("lvlInfo");
-  const out = el("out");
-  const meta = el("meta");
-
-  // ----- State -----
-  let SESSION = null;
-  let CHARACTER_ID = null;
-  let ARC_ID = null;
-
-  // ----- Utils -----
-  function getLevel() {
-    const n = document.querySelector('input[name="lvl"]:checked');
-    return n ? Number(n.value) : 2;
+// Hjälpfunktion för att visa resultat i UI
+function showResult(msg) {
+  const el = document.getElementById("result");
+  if (el) {
+    el.textContent = msg;
+  } else {
+    console.log("RESULT:", msg);
   }
+}
 
-  function show(o) {
-    out.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 2);
+// --- SKAPA SESSION ---
+async function createSession() {
+  try {
+    const res = await fetch(`${API}/session`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Misslyckades skapa session");
+    window.bnSession = data;
+    showResult("Session skapad ✅");
+    console.log("SESSION:", data);
+  } catch (err) {
+    showResult(`Error: ${err.message}`);
   }
+}
 
-  async function post(path, body) {
-    const res = await fetch(`${API_BASE}${path}`, {
+// --- SKAPA KARAKTÄR ---
+async function createCharacter() {
+  try {
+    if (!window.bnSession) throw new Error("Saknar session – skapa först.");
+    const name = document.getElementById("charname")?.value || "Okänd";
+    const res = await fetch(`${API}/characters/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
+      body: JSON.stringify({
+        user_id: window.bnSession.user_id,
+        name,
+      }),
     });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} ${res.statusText} – ${txt}`);
-    }
-    return res.json();
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Misslyckades skapa karaktär");
+    window.bnCharacterId = data.character_id;
+    showResult(`Karaktär skapad: ${name} ✅`);
+    console.log("CHARACTER:", data);
+  } catch (err) {
+    showResult(`Error: ${err.message}`);
   }
+}
 
-  // ----- Init status -----
-  async function initStatus() {
-    try {
-      const r = await fetch(`${API_BASE}/status`);
-      const js = await r.json();
-      statusEl.textContent = `worker v${js.version} • provider: ${js.provider} • mock: ${js.mock ? "ON" : "OFF"}`;
-      meta.textContent = `API: ${API_BASE}`;
-    } catch (e) {
-      statusEl.textContent = "status: (kunde inte läsa)";
-    }
-  }
-
-  // ----- Level hint -----
-  document.getElementById("levels").addEventListener("change", () => {
-    lvlInfo.textContent = LEVEL_TEXT[getLevel()];
-  });
-
-  // ----- Buttons -----
-  el("btnSession").addEventListener("click", async () => {
-    try {
-      const s = await post("/session", {});
-      SESSION = s;
-      show(s);
-      alert("Anonym session skapad.");
-    } catch (e) {
-      show(String(e));
-    }
-  });
-
-  el("btnChar").addEventListener("click", async () => {
-    try {
-      const name = el("charName").value.trim() || "Mia";
-      const c = await post("/characters/create", { user_id: SESSION?.user_id, name });
-      CHARACTER_ID = c.character_id;
-      show(c);
-    } catch (e) {
-      show(String(e));
-    }
-  });
-
-  el("btnArc").addEventListener("click", async () => {
-    try {
-      const title = el("arcTitle").value.trim() || "Första mötet";
-      const a = await post("/arcs/start", {
-        user_id: SESSION?.user_id,
-        character_id: CHARACTER_ID,
+// --- STARTA ARC ---
+async function startArc() {
+  try {
+    if (!window.bnSession || !window.bnCharacterId)
+      throw new Error("Saknar session/karaktär.");
+    const title = document.getElementById("arcname")?.value || "Första mötet";
+    const res = await fetch(`${API}/arcs/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: window.bnSession.user_id,
+        character_id: window.bnCharacterId,
         title,
-      });
-      ARC_ID = a.arc_id;
-      show(a);
-    } catch (e) {
-      show(String(e));
-    }
-  });
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Misslyckades starta arc");
+    window.bnArcId = data.arc_id;
+    showResult(`Arc startad: ${title} ✅`);
+    console.log("ARC:", data);
+  } catch (err) {
+    showResult(`Error: ${err.message}`);
+  }
+}
 
-  el("btnGen").addEventListener("click", async () => {
-    try {
-      const level = getLevel();
-      const prompt = el("prompt").value.trim() || "vi möttes på tåget…";
-      const lang = el("lang").value || "sv";
-      const words = Number(el("words").value || 180);
+// --- GENERERA BERÄTTELSE ---
+async function generate() {
+  try {
+    if (!window.bnSession) throw new Error("Saknar session – skapa först.");
+    if (!window.bnCharacterId) throw new Error("Saknar karaktär.");
+    if (!window.bnArcId) throw new Error("Saknar arc.");
 
-      const ep = await post("/episodes/generate", {
-        user_id: SESSION?.user_id,
-        character_id: CHARACTER_ID,
-        arc_id: ARC_ID,
+    const level = Number(
+      document.querySelector('input[name="level"]:checked')?.value || 2
+    );
+    const lang = document.getElementById("lang")?.value || "sv";
+    const words = Number(document.getElementById("words")?.value || 180);
+    const prompt = (document.getElementById("prompt")?.value || "").trim();
+
+    const res = await fetch(`${API}/episodes/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: window.bnSession.user_id,
+        character_id: window.bnCharacterId,
+        arc_id: window.bnArcId,
+        prompt,
         level,
         lang,
         words,
-        prompt,
-      });
+      }),
+    });
 
-      show(ep);
-    } catch (e) {
-      show(String(e));
+    const data = await res.json();
+
+    if (!res.ok) {
+      showResult(`Error: ${res.status} ${res.statusText}\n${JSON.stringify(data)}`);
+      return;
     }
-  });
 
-  el("btnList").addEventListener("click", async () => {
-    try {
-      const list = await post("/episodes/by-character", {
-        user_id: SESSION?.user_id,
-        character_id: CHARACTER_ID,
+    // 🔹 Visa bara berättelsetexten, plus ev. systemheader
+    const header = data?.system ? data.system + "\n\n" : "";
+    const text = data?.text || "(tomt svar)";
+    showResult(header + text);
+
+    window.bnLastEpisode = data;
+    console.log("EPISODE:", data);
+  } catch (err) {
+    showResult(`Error: ${err.message}`);
+  }
+}
+
+// --- LISTA AVSNITT ---
+async function listEpisodes() {
+  try {
+    if (!window.bnSession || !window.bnCharacterId)
+      throw new Error("Saknar session/karaktär.");
+    const res = await fetch(`${API}/episodes/by-character`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: window.bnSession.user_id,
+        character_id: window.bnCharacterId,
         limit: 10,
-      });
-      show(list);
-    } catch (e) {
-      show(String(e));
-    }
-  });
-
-  el("btnSend").addEventListener("click", () => {
-    alert("Tack! (mock)");
-  });
-
-  // ----- Go -----
-  initStatus();
-})();
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Misslyckades lista avsnitt");
+    showResult(JSON.stringify(data.items || [], null, 2));
+    console.log("EPISODES:", data);
+  } catch (err) {
+    showResult(`Error: ${err.message}`);
+  }
+}
