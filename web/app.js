@@ -1,144 +1,129 @@
-// web/app.js — BN front v1.5.4 (golden)
-// Robust init, inga dubbletter av variabler, enkel UI-tråd mot worker.
+// app.js – GC v1.6.0
 
-(() => {
-  const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
+let session = null;
+let character = null;
+let arc = null;
 
-  // DOM refs
-  const $sessionBtn = qs("#btnSession");
-  const $charName = qs("#charName");
-  const $charBtn = qs("#btnCreateChar");
-  const $arcBtn = qs("#btnStartArc");
-  const $levelRadios = qsa('input[name="level"]');
-  const $langSel = qs("#lang");
-  const $wordsSel = qs("#words");
-  const $prompt = qs("#prompt");
-  const $genBtn = qs("#btnGenerate");
-  const $listBtn = qs("#btnList");
-  const $out = qs("#out");
-  const $badge = qs("#badge");
+// Säkra DOM-sättare
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setHtml(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = val;
+}
 
-  let state = {
-    user_id: null,
-    token: null,
-    character_id: null,
-    arc_id: null,
-    provider: "MOCK",
-    mock: true,
-    version: "v?",
-  };
-
-  // ---------- helpers ----------
-  function qs(s) { return document.querySelector(s); }
-  function qsa(s) { return [...document.querySelectorAll(s)]; }
-  function getLevel() {
-    const r = $levelRadios.find(x => x.checked);
-    return r ? Number(r.value) : 2;
+// Initiera statusfältet
+async function initStatus() {
+  try {
+    const res = await fetch(`${API}/status`);
+    const data = await res.json();
+    setText("status-worker", data.version || "–");
+    setText("status-provider", data.provider || "–");
+    setText("status-mock", data.flags?.MOCK ? "ON" : "OFF");
+  } catch (err) {
+    console.error("status error", err);
   }
-  function say(x) {
-    $out.value = (typeof x === "string") ? x : JSON.stringify(x, null, 2);
-  }
+  setText("status-session", session ? "ok" : "ingen");
+}
+initStatus();
 
-  async function api(path, body) {
-    const resp = await fetch(`${API}${path}`, {
+// Anonym session
+document.getElementById("btn-session").onclick = async () => {
+  try {
+    const res = await fetch(`${API}/session`, { method: "POST" });
+    session = await res.json();
+    setText("status-session", "ok");
+    setHtml("result", JSON.stringify(session, null, 2));
+  } catch (err) {
+    console.error(err);
+    setHtml("result", "Error: " + err.message);
+  }
+};
+
+// Skapa karaktär
+document.getElementById("btn-character").onclick = async () => {
+  if (!session) return setHtml("result", "Skapa först en anonym session!");
+  const name = document.getElementById("char-name").value.trim();
+  if (!name) return setHtml("result", "Skriv in ett namn!");
+  try {
+    const res = await fetch(`${API}/characters/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
+      body: JSON.stringify({ user_id: session.user_id, name })
     });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(data?.error || `${resp.status} ${resp.statusText}`);
-    return data;
+    character = await res.json();
+    setHtml("result", JSON.stringify(character, null, 2));
+  } catch (err) {
+    console.error(err);
+    setHtml("result", "Error: " + err.message);
   }
+};
 
-  // ---------- init badge ----------
-  (async () => {
-    try {
-      const r = await fetch(`${API}/status`);
-      const s = await r.json();
-      state.version = s?.version || "v?";
-      state.mock = !!s?.flags?.MOCK;
-      state.provider = s?.provider || (state.mock ? "MOCK" : "MISTRAL");
-      $badge.textContent = `worker ${state.version} • provider: ${state.provider} • mock: ${state.mock ? "ON" : "OFF"}`;
-    } catch {
-      $badge.textContent = `worker ? • (status ej nåddes)`;
-    }
-  })();
-
-  // ---------- events ----------
-  $sessionBtn?.addEventListener("click", async () => {
-    try {
-      const s = await api("/session", {});
-      state.user_id = s.user_id;
-      state.token = s.token;
-      say({ ok: true, session: s });
-    } catch (e) {
-      say(`Error: ${e.message}`);
-    }
-  });
-
-  $charBtn?.addEventListener("click", async () => {
-    try {
-      guardSession();
-      const name = ($charName.value || "").trim() || "Mia";
-      const r = await api("/characters/create", { user_id: state.user_id, name });
-      state.character_id = r.character_id;
-      say(r);
-    } catch (e) {
-      say(`Error: ${e.message}`);
-    }
-  });
-
-  $arcBtn?.addEventListener("click", async () => {
-    try {
-      guardSession(true);
-      const r = await api("/arcs/start", {
-        user_id: state.user_id,
-        character_id: state.character_id,
-        title: "Första mötet",
-      });
-      state.arc_id = r.arc_id;
-      say(r);
-    } catch (e) {
-      say(`Error: ${e.message}`);
-    }
-  });
-
-  $genBtn?.addEventListener("click", async () => {
-    try {
-      guardSession(true, true);
-      const payload = {
-        user_id: state.user_id,
-        character_id: state.character_id,
-        arc_id: state.arc_id,
-        prompt: ($prompt.value || "").trim(),
-        level: getLevel(),
-        lang: $langSel.value,
-        words: Number($wordsSel.value || 180),
-      };
-      const ep = await api("/episodes/generate", payload);
-      say(ep);
-    } catch (e) {
-      say(`Error: ${e.message}`);
-    }
-  });
-
-  $listBtn?.addEventListener("click", async () => {
-    try {
-      guardSession(true, true);
-      const items = await api("/episodes/by-character", {
-        user_id: state.user_id,
-        character_id: state.character_id,
-        limit: 10,
-      });
-      say(items);
-    } catch (e) {
-      say(`Error: ${e.message}`);
-    }
-  });
-
-  function guardSession(needChar = false, needArc = false) {
-    if (!state.user_id) throw new Error("Ingen session – klicka 'Skapa anonym session' först.");
-    if (needChar && !state.character_id) throw new Error("Ingen karaktär – klicka 'Skapa karaktär' först.");
-    if (needArc && !state.arc_id) throw new Error("Ingen story-arc – klicka 'Starta arc' först.");
+// Skapa arc
+document.getElementById("btn-arc").onclick = async () => {
+  if (!session || !character) return setHtml("result", "Skapa session och karaktär först!");
+  const title = document.getElementById("arc-title").value.trim();
+  if (!title) return setHtml("result", "Skriv in en titel för arc!");
+  try {
+    const res = await fetch(`${API}/arcs/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: session.user_id, character_id: character.id, title })
+    });
+    arc = await res.json();
+    setHtml("result", JSON.stringify(arc, null, 2));
+  } catch (err) {
+    console.error(err);
+    setHtml("result", "Error: " + err.message);
   }
-})();
+};
+
+// Generera berättelse
+document.getElementById("btn-generate").onclick = async () => {
+  if (!session || !character || !arc) return setHtml("result", "Skapa session, karaktär och arc först!");
+  const prompt = document.getElementById("prompt").value.trim();
+  const level = document.querySelector("input[name='level']:checked").value;
+  const lang = document.getElementById("lang").value;
+  const words = parseInt(document.getElementById("words").value, 10);
+  try {
+    const res = await fetch(`${API}/episodes/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: session.user_id,
+        character_id: character.id,
+        arc_id: arc.id,
+        prompt,
+        level,
+        lang,
+        words
+      })
+    });
+    const story = await res.json();
+    setHtml("result", JSON.stringify(story, null, 2));
+  } catch (err) {
+    console.error(err);
+    setHtml("result", "Error: " + err.message);
+  }
+};
+
+// Lista avsnitt
+document.getElementById("btn-list").onclick = async () => {
+  if (!session || !character) return setHtml("result", "Skapa session och karaktär först!");
+  try {
+    const res = await fetch(`${API}/episodes/by-character?user_id=${session.user_id}&character_id=${character.id}`);
+    const list = await res.json();
+    setHtml("result", JSON.stringify(list, null, 2));
+  } catch (err) {
+    console.error(err);
+    setHtml("result", "Error: " + err.message);
+  }
+};
+
+// Feedback (mockad)
+document.getElementById("btn-feedback").onclick = () => {
+  setHtml("result", "Feedback mottagen (mock). Tack!");
+};
