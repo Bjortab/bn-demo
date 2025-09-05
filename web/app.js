@@ -1,129 +1,75 @@
-// app.js – GC v1.6.0
+// ====== KONFIG ======
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra vid behov
 
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
-let session = null;
-let character = null;
-let arc = null;
+// Hjälpare
+const $ = (sel) => document.querySelector(sel);
+const log = (msg, obj) => {
+  const el = $("#log");
+  const time = new Date().toLocaleTimeString();
+  let line = `[${time}] ${msg}`;
+  if (obj !== undefined) {
+    try { line += " " + JSON.stringify(obj, null, 2); }
+    catch { line += " " + String(obj); }
+  }
+  el.textContent = line + "\n" + el.textContent;
+};
 
-// Säkra DOM-sättare
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
+function setButtons(enabled) {
+  $("#btnPing").disabled = !enabled;
+  $("#btnWho").disabled = !enabled;
 }
-function setHtml(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = val;
-}
 
-// Initiera statusfältet
-async function initStatus() {
+// Skriv ut API-bas i UI
+$("#apiBaseHint").textContent = API_BASE;
+
+// ====== Event wiring ======
+window.addEventListener("DOMContentLoaded", () => {
+  $("#btnSession")?.addEventListener("click", onCreateSession);
+  $("#btnPing")?.addEventListener("click", onPing);
+  $("#btnWho")?.addEventListener("click", onWho);
+  log("UI redo.");
+});
+
+// ====== Actions ======
+async function onCreateSession() {
+  log("Skapar anonym session…");
   try {
-    const res = await fetch(`${API}/status`);
+    const res = await fetch(`${API_BASE}/session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const txt = await safeText(res);
+      throw new Error(`HTTP ${res.status} ${res.statusText} – ${txt}`);
+    }
     const data = await res.json();
-    setText("status-worker", data.version || "–");
-    setText("status-provider", data.provider || "–");
-    setText("status-mock", data.flags?.MOCK ? "ON" : "OFF");
+    window.BN_SESSION = data; // spara globalt
+    $("#sessionOut").textContent = JSON.stringify(data, null, 2);
+    setButtons(true);
+    log("Session skapad ✅", data);
   } catch (err) {
-    console.error("status error", err);
+    log("Fel vid skapande av session ❌", String(err));
   }
-  setText("status-session", session ? "ok" : "ingen");
 }
-initStatus();
 
-// Anonym session
-document.getElementById("btn-session").onclick = async () => {
+async function onPing() {
   try {
-    const res = await fetch(`${API}/session`, { method: "POST" });
-    session = await res.json();
-    setText("status-session", "ok");
-    setHtml("result", JSON.stringify(session, null, 2));
-  } catch (err) {
-    console.error(err);
-    setHtml("result", "Error: " + err.message);
-  }
-};
+    const res = await fetch(`${API_BASE}/status`);
+    const data = await res.json().catch(()=> ({}));
+    log("Status:", data);
+  } catch (e) { log("Status-fel:", String(e)); }
+}
 
-// Skapa karaktär
-document.getElementById("btn-character").onclick = async () => {
-  if (!session) return setHtml("result", "Skapa först en anonym session!");
-  const name = document.getElementById("char-name").value.trim();
-  if (!name) return setHtml("result", "Skriv in ett namn!");
+async function onWho() {
   try {
-    const res = await fetch(`${API}/characters/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: session.user_id, name })
-    });
-    character = await res.json();
-    setHtml("result", JSON.stringify(character, null, 2));
-  } catch (err) {
-    console.error(err);
-    setHtml("result", "Error: " + err.message);
-  }
-};
+    const res = await fetch(`${API_BASE}/session`, { method: "GET" });
+    const data = await res.json().catch(()=> ({}));
+    log("Session (GET):", data);
+  } catch (e) { log("GET /session fel:", String(e)); }
+}
 
-// Skapa arc
-document.getElementById("btn-arc").onclick = async () => {
-  if (!session || !character) return setHtml("result", "Skapa session och karaktär först!");
-  const title = document.getElementById("arc-title").value.trim();
-  if (!title) return setHtml("result", "Skriv in en titel för arc!");
-  try {
-    const res = await fetch(`${API}/arcs/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: session.user_id, character_id: character.id, title })
-    });
-    arc = await res.json();
-    setHtml("result", JSON.stringify(arc, null, 2));
-  } catch (err) {
-    console.error(err);
-    setHtml("result", "Error: " + err.message);
-  }
-};
-
-// Generera berättelse
-document.getElementById("btn-generate").onclick = async () => {
-  if (!session || !character || !arc) return setHtml("result", "Skapa session, karaktär och arc först!");
-  const prompt = document.getElementById("prompt").value.trim();
-  const level = document.querySelector("input[name='level']:checked").value;
-  const lang = document.getElementById("lang").value;
-  const words = parseInt(document.getElementById("words").value, 10);
-  try {
-    const res = await fetch(`${API}/episodes/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: session.user_id,
-        character_id: character.id,
-        arc_id: arc.id,
-        prompt,
-        level,
-        lang,
-        words
-      })
-    });
-    const story = await res.json();
-    setHtml("result", JSON.stringify(story, null, 2));
-  } catch (err) {
-    console.error(err);
-    setHtml("result", "Error: " + err.message);
-  }
-};
-
-// Lista avsnitt
-document.getElementById("btn-list").onclick = async () => {
-  if (!session || !character) return setHtml("result", "Skapa session och karaktär först!");
-  try {
-    const res = await fetch(`${API}/episodes/by-character?user_id=${session.user_id}&character_id=${character.id}`);
-    const list = await res.json();
-    setHtml("result", JSON.stringify(list, null, 2));
-  } catch (err) {
-    console.error(err);
-    setHtml("result", "Error: " + err.message);
-  }
-};
-
-// Feedback (mockad)
-document.getElementById("btn-feedback").onclick = () => {
-  setHtml("result", "Feedback mottagen (mock). Tack!");
-};
+// Säker text-läsning från Response
+async function safeText(res){
+  try { return await res.text(); } catch { return ""; }
+}
