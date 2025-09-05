@@ -1,75 +1,97 @@
-// ====== KONFIG ======
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra vid behov
+// ===== GC test-app v201 =====
 
-// Hjälpare
+// 1) Konfigurera API-bas
+// Ändra denna rad om du har annat worker-namn/domän.
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
+
+// 2) Hjälp-funktioner
 const $ = (sel) => document.querySelector(sel);
-const log = (msg, obj) => {
-  const el = $("#log");
-  const time = new Date().toLocaleTimeString();
-  let line = `[${time}] ${msg}`;
-  if (obj !== undefined) {
-    try { line += " " + JSON.stringify(obj, null, 2); }
-    catch { line += " " + String(obj); }
+const log = (msg) => {
+  const box = $("#log");
+  const now = new Date().toISOString().slice(11,19);
+  if (typeof msg === "object") {
+    box.textContent = `[${now}] ${JSON.stringify(msg, null, 2)}\n`;
+  } else {
+    box.textContent = `[${now}] ${msg}\n` + (box.textContent || "");
   }
-  el.textContent = line + "\n" + el.textContent;
 };
 
-function setButtons(enabled) {
-  $("#btnPing").disabled = !enabled;
-  $("#btnWho").disabled = !enabled;
+function setTag(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
 
-// Skriv ut API-bas i UI
-$("#apiBaseHint").textContent = API_BASE;
-
-// ====== Event wiring ======
+// 3) Event-wiring när DOM finns
 window.addEventListener("DOMContentLoaded", () => {
-  $("#btnSession")?.addEventListener("click", onCreateSession);
-  $("#btnPing")?.addEventListener("click", onPing);
-  $("#btnWho")?.addEventListener("click", onWho);
-  log("UI redo.");
+  // visa API-länk
+  const link = document.getElementById("apiLink");
+  if (link) { link.textContent = API_BASE; link.href = API_BASE.replace(/\/api\/v1$/, "/api/v1/status"); }
+
+  // knappar
+  const btnSession = document.getElementById("btnSession");
+  const btnPing    = document.getElementById("btnPing");
+  const btnWho     = document.getElementById("btnWho");
+
+  if (!btnSession || !btnPing || !btnWho) {
+    log("Kritiskt: knappar hittades inte i DOM. Kontrollera index.html-id:n.");
+    return;
+  }
+
+  btnSession.addEventListener("click", onCreateSession);
+  btnPing.addEventListener("click", onPing);
+  btnWho.addEventListener("click", onWho);
+
+  log("APP READY – klicka en knapp.");
+  // Hämta status direkt för att fylla taggarna
+  onPing();
 });
 
-// ====== Actions ======
-async function onCreateSession() {
-  log("Skapar anonym session…");
+// 4) API-anrop
+async function onPing() {
   try {
-    const res = await fetch(`${API_BASE}/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    if (!res.ok) {
-      const txt = await safeText(res);
-      throw new Error(`HTTP ${res.status} ${res.statusText} – ${txt}`);
-    }
-    const data = await res.json();
-    window.BN_SESSION = data; // spara globalt
-    $("#sessionOut").textContent = JSON.stringify(data, null, 2);
-    setButtons(true);
-    log("Session skapad ✅", data);
-  } catch (err) {
-    log("Fel vid skapande av session ❌", String(err));
+    const url = `${API_BASE}/status`;
+    const r = await fetch(url, { method: "GET" });
+    const data = await r.json();
+    setTag("tag-worker",  `worker: v${data?.version || "?"}`);
+    setTag("tag-provider",`provider: ${data?.provider || "?"}`);
+    setTag("tag-mock",    `mock: ${data?.flags?.MOCK ? "ON" : "OFF"}`);
+    log({ok:true, from:"/status", data});
+  } catch (e) {
+    log(`Fel i /status: ${e}`);
+    console.error(e);
   }
 }
 
-async function onPing() {
+async function onCreateSession() {
   try {
-    const res = await fetch(`${API_BASE}/status`);
-    const data = await res.json().catch(()=> ({}));
-    log("Status:", data);
-  } catch (e) { log("Status-fel:", String(e)); }
+    const url = `${API_BASE}/session`;
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({})
+    });
+    const data = await r.json();
+    if (r.ok && data?.user_id) {
+      sessionStorage.setItem("bn_user_id", data.user_id);
+      setTag("tag-session", `session: ${data.user_id.slice(0,8)}…`);
+    }
+    log({ok:r.ok, from:"/session", data});
+  } catch (e) {
+    log(`Fel i /session: ${e}`);
+    console.error(e);
+  }
 }
 
 async function onWho() {
   try {
-    const res = await fetch(`${API_BASE}/session`, { method: "GET" });
-    const data = await res.json().catch(()=> ({}));
-    log("Session (GET):", data);
-  } catch (e) { log("GET /session fel:", String(e)); }
-}
-
-// Säker text-läsning från Response
-async function safeText(res){
-  try { return await res.text(); } catch { return ""; }
+    const user_id = sessionStorage.getItem("bn_user_id");
+    if (!user_id) { log("Ingen session – skapa först."); return; }
+    const url = `${API_BASE}/whoami?user_id=${encodeURIComponent(user_id)}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    log({ok:r.ok, from:"/whoami", data});
+  } catch (e) {
+    log(`Fel i /whoami: ${e}`);
+    console.error(e);
+  }
 }
