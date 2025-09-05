@@ -2,38 +2,45 @@
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BlushNarratives – Demo</title>
   <style>
-    body{background:#121212;color:#eee;font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:24px}
-    .row{display:flex;gap:12px;align-items:center;margin:8px 0}
-    button{background:#e33;color:#fff;border:0;border-radius:6px;padding:10px 14px;font-weight:600;cursor:pointer}
-    button:disabled{opacity:.55;cursor:not-allowed}
-    code,pre{background:#1b1b1b;border-radius:6px;padding:10px;display:block;white-space:pre-wrap;word-break:break-word}
-    .hint{opacity:.7;font-size:.9rem}
+    body{background:#111;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Calibri,sans-serif;margin:0}
+    header{padding:16px 20px;font-weight:700}
+    .wrap{padding:8px 20px 24px;max-width:1100px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
+    button{background:#d33;color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
+    .tag{display:inline-block;background:#333;color:#aaa;border-radius:6px;padding:6px 8px;margin-right:8px;font-size:12px}
+    pre{background:#0b0b0b;border:1px solid #222;border-radius:8px;padding:12px;white-space:pre-wrap;word-break:break-word;min-height:160px}
+    small{color:#aaa}
   </style>
 </head>
 <body>
-  <h1>BlushNarratives – Demo</h1>
+  <header>BlushNarratives – Demo</header>
 
-  <div class="row">
-    <button id="btnSession">Skapa anonym session</button>
-    <div class="hint">API: <span id="apiBaseHint"></span></div>
+  <div class="wrap">
+    <div class="row">
+      <span class="tag" id="tag-worker">worker: …</span>
+      <span class="tag" id="tag-provider">provider: …</span>
+      <span class="tag" id="tag-mock">mock: …</span>
+      <span class="tag" id="tag-session">session: ingen</span>
+    </div>
+
+    <div class="row">
+      <button id="btnSession">Skapa anonym session</button>
+      <small>API: <a id="apiLink" href="#" target="_blank" rel="noreferrer">?</a></small>
+    </div>
+
+    <div class="row">
+      <button id="btnPing">Ping /status</button>
+      <button id="btnWho">Visa vem jag är (session)</button>
+    </div>
+
+    <pre id="log">Init…</pre>
   </div>
 
-  <div class="row">
-    <div>Session:</div>
-    <code id="sessionOut">ingen</code>
-  </div>
-
-  <div class="row">
-    <button id="btnPing" disabled>Ping /status</button>
-    <button id="btnWho" disabled>Visa vem jag är (/session)</button>
-  </div>
-
-  <pre id="log"></pre>
-
-  <!-- Ladda JS (bumpa query så du får senaste filen) -->
-  <script src="./app.js?v=200"></script>
+  <!-- OBS! Bumpa v-parametern när du byter app.js -->
+  <script src="./app.js?v=201"></script>
 </body>
 </html>
