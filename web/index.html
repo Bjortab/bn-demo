@@ -1,123 +1,39 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BlushNarratives – Demo</title>
   <style>
-    body {
-      background: #111;
-      color: #eee;
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 1rem;
-    }
-    h1 {
-      color: #f66;
-    }
-    label {
-      display: block;
-      margin-top: 1rem;
-    }
-    input, select, textarea, button {
-      margin-top: .25rem;
-      padding: .5rem;
-      border-radius: 4px;
-      border: 1px solid #444;
-      width: 100%;
-      background: #222;
-      color: #eee;
-    }
-    button {
-      cursor: pointer;
-      background: #f44;
-      border: none;
-    }
-    button:hover {
-      background: #f66;
-    }
-    #status {
-      display: flex;
-      gap: .75rem;
-      align-items: center;
-      margin-bottom: 1rem;
-      flex-wrap: wrap;
-    }
-    #status code {
-      background: #222;
-      padding: .2rem .4rem;
-      border-radius: 4px;
-    }
-    #result {
-      background: #222;
-      border: 1px solid #444;
-      padding: .5rem;
-      min-height: 3rem;
-      white-space: pre-wrap;
-      margin-top: 1rem;
-    }
+    body{background:#121212;color:#eee;font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:24px}
+    .row{display:flex;gap:12px;align-items:center;margin:8px 0}
+    button{background:#e33;color:#fff;border:0;border-radius:6px;padding:10px 14px;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    code,pre{background:#1b1b1b;border-radius:6px;padding:10px;display:block;white-space:pre-wrap;word-break:break-word}
+    .hint{opacity:.7;font-size:.9rem}
   </style>
 </head>
 <body>
   <h1>BlushNarratives – Demo</h1>
 
-  <!-- STATUS-BADGES -->
-  <div id="status">
-    <span>worker:</span> <code id="status-worker">–</code>
-    <span>provider:</span> <code id="status-provider">–</code>
-    <span>mock:</span> <code id="status-mock">–</code>
-    <span>session:</span> <code id="status-session">ingen</code>
+  <div class="row">
+    <button id="btnSession">Skapa anonym session</button>
+    <div class="hint">API: <span id="apiBaseHint"></span></div>
   </div>
 
-  <button id="btn-session">Skapa anonym session</button>
-
-  <label>
-    Karaktärsnamn
-    <input type="text" id="char-name" placeholder="ex. Mia" />
-  </label>
-  <button id="btn-character">Skapa karaktär</button>
-
-  <label>
-    Story-arc
-    <input type="text" id="arc-title" placeholder="ex. Första mötet" />
-  </label>
-  <button id="btn-arc">Starta arc</button>
-
-  <label>
-    Nivå (1–5)
-  </label>
-  <div>
-    <label><input type="radio" name="level" value="1" checked /> 1 – Romantisk, bara stämning</label>
-    <label><input type="radio" name="level" value="2" /> 2 – Antydande, sensuellt, beröring & metaforer, inga könsord</label>
-    <label><input type="radio" name="level" value="3" /> 3 – Sensuellt, lite mer kropp, försiktigt språk</label>
-    <label><input type="radio" name="level" value="4" /> 4 – Explicit men inom gränserna</label>
-    <label><input type="radio" name="level" value="5" /> 5 – Direkt & rått, grova fraser inom lagens ramar</label>
+  <div class="row">
+    <div>Session:</div>
+    <code id="sessionOut">ingen</code>
   </div>
 
-  <label>
-    Prompt
-    <textarea id="prompt" rows="3" placeholder="ex: vi möttes på tåget..."></textarea>
-  </label>
+  <div class="row">
+    <button id="btnPing" disabled>Ping /status</button>
+    <button id="btnWho" disabled>Visa vem jag är (/session)</button>
+  </div>
 
-  <label>
-    Språk
-    <select id="lang">
-      <option value="sv">Svenska</option>
-      <option value="en">Engelska</option>
-    </select>
-  </label>
+  <pre id="log"></pre>
 
-  <label>
-    Ord (ungefär)
-    <input type="number" id="words" value="180" />
-  </label>
-
-  <button id="btn-generate">Generera</button>
-  <button id="btn-list">Lista avsnitt</button>
-  <button id="btn-feedback">Skicka feedback</button>
-
-  <div id="result"></div>
-
-  <script src="./app.js?v=160" defer></script>
+  <!-- Ladda JS (bumpa query så du får senaste filen) -->
+  <script src="./app.js?v=200"></script>
 </body>
 </html>
