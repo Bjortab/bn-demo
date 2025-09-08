@@ -1,115 +1,91 @@
 <!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BlushNarratives — Core</title>
   <style>
-    :root{--bg:#0f0f10;--panel:#17181a;--ink:#f1f1f1;--muted:#a7a7a7;--line:#2a2b2e;--accent:#ff4d4f}
-    *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial}
-    body{margin:0;background:var(--bg);color:var(--ink)}
-    .wrap{max-width:980px;margin:36px auto;padding:0 16px}
-    h1{font-size:22px;margin:0 0 8px}
-    .badge{font-size:12px;color:var(--muted)}
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
-    label{font-size:13px;color:var(--muted);display:block;margin:6px 0}
-    textarea{width:100%;min-height:120px;border:1px solid var(--line);background:#0c0d0f;color:var(--ink);
-             border-radius:10px;padding:10px;resize:vertical;line-height:1.45}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
-    select,input{width:100%;border:1px solid var(--line);background:#0c0d0f;color:var(--ink);
-                 border-radius:10px;padding:8px}
-    button{background:var(--accent);border:0;color:#fff;padding:10px 14px;border-radius:10px;
-           cursor:pointer;font-weight:700}
-    button.secondary{background:#2c2d31}
-    button:disabled{opacity:.6;cursor:not-allowed}
-    .story{min-height:160px;background:#0c0d0f;border:1px solid var(--line);border-radius:10px;padding:16px}
-    .story p{margin:0 0 12px;line-height:1.65}
-    audio{width:100%;margin-top:10px}
-    .api{font-size:12px;color:var(--muted);margin-top:8px}
-    .api.ok{color:#86ffb0}.api.err{color:#ffb3b3}
+    :root { --bg:#0f0f10; --panel:#1a1b1e; --accent:#ff3158; --muted:#9aa0a6; --text:#e9eaee; }
+    html,body{height:100%;background:var(--bg);color:var(--text);margin:0;font:16px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial;}
+    .wrap{max-width:920px;margin:28px auto;padding:0 16px;}
+    h1{font-size:20px;margin:0 0 16px;}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0;}
+    label{font-size:13px;color:var(--muted);margin-right:6px;}
+    input[type="text"], textarea, select{
+      background:var(--panel); color:var(--text); border:1px solid #2a2d31; border-radius:8px;
+      padding:10px 12px; outline:none; width:100%;
+    }
+    textarea{min-height:96px; resize:vertical;}
+    .controls{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin:8px 0;}
+    .btn{background:var(--accent); color:#fff; border:0; border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:600;}
+    .btn.secondary{background:#2b2f34;}
+    .btn:disabled{opacity:.6;cursor:not-allowed;}
+    .story{
+      background:var(--panel); border:1px solid #2a2d31; border-radius:12px; padding:14px 16px; margin-top:14px;
+      white-space:pre-wrap; /* <- radbrytningar */
+      line-height:1.7;
+    }
+    .meta{font-size:12px;color:var(--muted);margin-top:6px}
+    audio{width:100%; margin-top:10px;}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>BlushNarratives — Core <span id="status" class="badge"></span></h1>
+    <h1>BlushNarratives — Core</h1>
 
-    <div class="card">
+    <div class="row">
       <label for="prompt">Din prompt</label>
-      <textarea id="prompt" placeholder="Ex: vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
+      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig..."></textarea>
+    </div>
 
-      <div class="grid" style="margin-top:8px">
-        <div>
-          <label for="level">Nivå (1–5)</label>
-          <select id="level">
-            <option value="1">1 – mjuk romantik</option>
-            <option value="2" selected>2 – antydande</option>
-            <option value="3">3 – sensuellt</option>
-            <option value="4">4 – explicit (inom ramarna)</option>
-            <option value="5">5 – hårdare (lagligt)</option>
-          </select>
-        </div>
-        <div>
-          <label for="minutes">Längd (minuter)</label>
-          <select id="minutes">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="5" selected>5</option>
-            <option value="7">7</option>
-            <option value="10">10</option>
-            <option value="15">15</option>
-          </select>
-          <div id="wordsHint" class="api"></div>
-        </div>
-        <div>
-          <label for="ttsMode">Röstmotor</label>
-          <select id="ttsMode">
-            <option value="browser" selected>Webbläsarröst (sv-SE)</option>
-            <option value="none">Ingen (text bara)</option>
-          </select>
-        </div>
-        <div>
-          <label for="gender">Röst</label>
-          <select id="gender">
-            <option value="female" selected>Kvinnlig</option>
-            <option value="male">Manlig</option>
-          </select>
-        </div>
+    <div class="controls">
+      <div>
+        <label for="level">Nivå (1–5)</label>
+        <select id="level">
+          <option value="1">1 – mjukt</option>
+          <option value="2" selected>2 – antydande</option>
+          <option value="3">3 – sensuellt</option>
+          <option value="4">4 – explicit</option>
+          <option value="5">5 – hårdare</option>
+        </select>
       </div>
-
-      <div class="grid" style="margin-top:6px">
-        <div>
-          <label for="rate">Hastighet</label>
-          <input id="rate" type="range" min="0.7" max="1.3" step="0.05" value="1.0" />
-          <div class="api"><span id="rateVal">1.00</span>x</div>
-        </div>
-        <div>
-          <label for="pitch">Tonhöjd</label>
-          <input id="pitch" type="range" min="0.7" max="1.4" step="0.05" value="1.05" />
-          <div class="api"><span id="pitchVal">1.05</span>x</div>
-        </div>
-        <div>
-          <label for="vol">Volym</label>
-          <input id="vol" type="range" min="0" max="1" step="0.05" value="1" />
-          <div class="api"><span id="volVal">1.00</span></div>
-        </div>
+      <div>
+        <label for="minutes">Längd (minuter)</label>
+        <select id="minutes">
+          <option value="1">1 min</option>
+          <option value="3">3 min</option>
+          <option value="5" selected>5 min</option>
+          <option value="8">8 min</option>
+          <option value="10">10 min</option>
+        </select>
       </div>
-
-      <div class="grid" style="margin-top:12px">
-        <button id="go">Generera & lyssna</button>
-        <button id="stop" class="secondary" disabled>Stoppa röst</button>
+      <div>
+        <label for="lang">Språk</label>
+        <select id="lang">
+          <option value="sv" selected>Svenska</option>
+          <option value="en">Engelska</option>
+        </select>
       </div>
-
-      <audio id="player" controls style="display:none"></audio>
-
-      <div class="card" style="margin-top:12px">
-        <label>Berättelse</label>
-        <div id="out" class="story"></div>
-        <div id="msg" class="api"></div>
-        <div class="api">API: <span id="api-url"></span></div>
+      <div>
+        <label for="voice">Röst</label>
+        <select id="voice"></select>
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <div style="display:flex;gap:8px">
+          <button id="go" class="btn">Generera & lyssna</button>
+          <button id="stop" class="btn secondary">Stoppa röst</button>
+        </div>
       </div>
     </div>
+
+    <div id="story" class="story" aria-live="polite"></div>
+    <audio id="player" controls></audio>
+    <div class="meta" id="meta"></div>
+
+    <div class="meta">API: <span id="apiUrl"></span></div>
   </div>
 
-  <script src="./app.js?v=core-030"></script>
+  <script src="./app.js?v=core-2025-09-05-1"></script>
 </body>
 </html>
