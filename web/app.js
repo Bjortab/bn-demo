@@ -1,204 +1,144 @@
-// ======= KONFIG =======
+// ===== KONFIG =====
 const API_BASE = 'https://bn-worker.bjorta-bb.workers.dev/api/v1';
+const WPM = 150; // svensk rimlig högläsning
 
-// ======= DOM =======
-const $ = (id) => document.getElementById(id);
-const $prompt = $('prompt');
-const $level  = $('level');
-const $words  = $('words');
-const $lang   = $('lang');
-const $ttsMode= $('ttsMode');
-const $gender = $('gender');
-const $rate   = $('rate');
-const $pitch  = $('pitch');
-const $vol    = $('vol');
-const $rateVal= $('rateVal');
-const $pitchVal=$('pitchVal');
-const $volVal = $('volVal');
-
-const $go     = $('go');
-const $stop   = $('stop');
-const $player = $('player');
-const $out    = $('out');
-const $msg    = $('msg');
-const $status = $('status');
-const $apiUrl = $('api-url');
-
+// ===== DOM =====
+const $ = (id)=>document.getElementById(id);
+const $prompt=$('prompt'), $level=$('level'), $minutes=$('minutes');
+const $ttsMode=$('ttsMode'), $gender=$('gender'), $rate=$('rate'), $pitch=$('pitch'), $vol=$('vol');
+const $rateVal=$('rateVal'), $pitchVal=$('pitchVal'), $volVal=$('volVal');
+const $go=$('go'), $stop=$('stop'), $player=$('player'), $out=$('out'), $msg=$('msg');
+const $apiUrl=$('api-url'), $status=$('status'), $wordsHint=$('wordsHint');
 $apiUrl.textContent = API_BASE;
+
+// uppdatera hint
+function updateWordsHint(){
+  const mins = Number($minutes.value||5);
+  $wordsHint.textContent = `≈ ${Math.round(mins*WPM)} ord mål`;
+}
+updateWordsHint();
+$minutes.addEventListener('change', updateWordsHint);
+
+// sliders
 $rate.addEventListener('input', ()=> $rateVal.textContent = Number($rate.value).toFixed(2));
 $pitch.addEventListener('input',()=> $pitchVal.textContent= Number($pitch.value).toFixed(2));
 $vol.addEventListener('input',  ()=> $volVal.textContent  = Number($vol.value).toFixed(2));
 
-// ======= HJÄLPARE =======
-function setBusy(on) {
+// ===== Utils =====
+function setBusy(on){
   $go.disabled = on;
-  $stop.disabled = on ? true : (speechSynthesis.speaking || !!$player.src);
+  $stop.disabled = on ? true : (speechSynthesis.speaking || !$player.paused);
   $msg.textContent = on ? 'Jobbar…' : '';
-  $msg.className = 'api';
+  $msg.className='api';
 }
 function ok(t){ $msg.textContent=t; $msg.className='api ok'; }
 function err(t){ $msg.textContent=t; $msg.className='api err'; }
 
-function sentences(text) {
-  // grov men praktisk split för svenska
+function sentences(text){
   return text
     .replace(/\s+/g,' ')
     .split(/(?<=[.!?…])\s+(?=[^\s])/u)
-    .map(s=>s.trim())
-    .filter(Boolean);
+    .map(s=>s.trim()).filter(Boolean);
 }
-
-function dedupeAndTidy(text) {
-  // ta bort triviala upprepningar (”vi möttes … vi möttes …”)
-  const parts = sentences(text);
-  const seen = new Set();
-  const cleaned = [];
-  for (const s of parts) {
-    const key = s.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    // säkerställ avslutning
-    const fixed = /[.!?…]$/.test(s) ? s : s + '.';
-    // inled med versal
-    cleaned.push(fixed.charAt(0).toUpperCase() + fixed.slice(1));
+function tidy(text){
+  const s = sentences(text);
+  const seen = new Set(); const keep=[];
+  for (const x of s){
+    const k = x.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    keep.push(/[.!?…]$/.test(x)?x:x+'.');
   }
-  // gruppera 2–3 meningar per stycke
-  const paras = [];
-  for (let i=0;i<cleaned.length;i+=3) {
-    paras.push(cleaned.slice(i, i+3).join(' '));
-  }
+  const paras=[];
+  for (let i=0;i<keep.length;i+=3) paras.push( keep.slice(i,i+3).join(' ') );
   return paras;
 }
-
-function renderStory(text) {
-  const paras = dedupeAndTidy(text);
-  $out.innerHTML = paras.map(p=>`<p>${p}</p>`).join('');
+function render(text){
+  const paras = tidy(text||'');
+  $out.innerHTML = paras.length ? paras.map(p=>`<p>${p}</p>`).join('') : '';
 }
 
-// ======= INIT /status =======
-(async function init(){
+// ===== Init /status =====
+(async function(){
   try{
     const r = await fetch(`${API_BASE}/status`);
     const j = await r.json().catch(()=> ({}));
-    if (j?.ok) {
-      $status.textContent = `ok: worker=${j.worker} • v=${j.v} • tts=${(j.tts?.elevenlabs?'elevenlabs':'browser') || 'none'}`;
-      ok('API klart.');
-    } else {
-      $status.textContent = 'status: fel';
-      err('Kunde inte läsa status från API.');
-    }
-  }catch{
-    $status.textContent = 'status: fel';
-    err('Kunde inte nå API (status).');
-  }
+    if (j?.ok) { $status.textContent = `ok: ${j.worker} • v=${j.v} • Mistral`; ok('API klart.'); }
+    else { $status.textContent='status: fel'; err('Kunde inte läsa status.'); }
+  }catch{ $status.textContent='status: fel'; err('Kunde inte nå API.'); }
 })();
 
-// ======= WEBBLÄSAR-RÖST =======
+// ===== TTS (browser) =====
 let voices = [];
-function loadVoices() {
-  voices = speechSynthesis.getVoices();
+function loadVoices(){ voices = speechSynthesis.getVoices(); }
+if ('speechSynthesis' in window){
+  loadVoices(); speechSynthesis.onvoiceschanged = loadVoices;
 }
-loadVoices();
-if (typeof speechSynthesis !== 'undefined'){
-  speechSynthesis.onvoiceschanged = loadVoices;
-}
-function pickSwedishVoice(gender='female'){
+function pickVoice(gender='female'){
   const sv = voices.filter(v => (v.lang||'').toLowerCase().startsWith('sv'));
   if (!sv.length) return null;
-  // prioritera "Natural" & könsnamn i titeln om möjligt
-  const pref = sv.find(v => /natural/i.test(v.name) && (gender==='female' ? /female|anna|helena|astrid/i.test(v.name) : /male|erik|gustav|matt/i.test(v.name)))
-            || sv.find(v => gender==='female' ? /female|anna|helena|astrid/i.test(v.name) : /male|erik|gustav|matt/i.test(v.name))
-            || sv[0];
+  const pref = sv.find(v => gender==='female' ? /female|anna|helena|astrid/i.test(v.name) : /male|erik|gustav|matt/i.test(v.name))
+           || sv[0];
   return pref;
 }
-function speakBrowser(text, gender) {
-  if (!('speechSynthesis' in window)) { err('Webbläsarröst saknas i denna miljö.'); return; }
+let currentUtterance = null;
+function speakBrowser(text, gender){
+  if (!('speechSynthesis' in window)) { err('Webbläsarröst saknas.'); return; }
+  // avbryt ev. pågående
   speechSynthesis.cancel();
-  const v = pickSwedishVoice(gender);
-  const u = new SpeechSynthesisUtterance(text);
-  if (v) u.voice = v;
-  u.lang = 'sv-SE';
-  u.rate = Number($rate.value);
-  u.pitch = Number($pitch.value);
-  u.volume = Number($vol.value);
-  u.onend = ()=> { $stop.disabled = true; };
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  const v = pickVoice(gender); if (v) currentUtterance.voice = v;
+  currentUtterance.lang='sv-SE';
+  currentUtterance.rate = Number($rate.value);
+  currentUtterance.pitch= Number($pitch.value);
+  currentUtterance.volume=Number($vol.value);
+  currentUtterance.onend = ()=>{ $stop.disabled = true; };
   $stop.disabled = false;
-  speechSynthesis.speak(u);
+  speechSynthesis.speak(currentUtterance);
 }
+function stopAll(){
+  try{ speechSynthesis?.cancel?.(); }catch{}
+  try{ if (!$player.paused) { $player.pause(); $player.currentTime=0; } }catch{}
+  $stop.disabled = true;
+}
+$stop.addEventListener('click', stopAll);
 
-// ======= GENERERA =======
-$go.addEventListener('click', async () => {
+// ===== Generate =====
+$go.addEventListener('click', async ()=>{
   const prompt = ($prompt.value||'').trim();
-  if (!prompt) { err('Skriv en prompt först.'); $prompt.focus(); return; }
+  if (!prompt){ err('Skriv en prompt först.'); $prompt.focus(); return; }
+
+  setBusy(true);
+  stopAll();
+  $out.innerHTML='';
 
   const payload = {
     prompt,
-    level : Number($level.value||2),
-    lang  : $lang.value || 'sv',
-    words : Number($words.value||220),
-    // stilkrav för Workern – håller sig inom dina riktlinjer
-    style : {
-      temperature: 0.8,
-      avoid_cliches: true,
-      avoid_repetition: true,
-      tone_female: "sensuell, mjuk men självsäker",
-      tone_male:   "maskulin, varm och respektfull",
-      swedish: true,
-      paragraphing: true
-    },
-    voice : $gender.value // om Workern använder server-TTS
+    minutes: Number($minutes.value||5),
+    level: Number($level.value||2),
+    lang: 'sv',
+    temperature: 0.8
   };
 
-  // rensa UI
-  setBusy(true);
-  $out.innerHTML = '';
-  $player.pause(); $player.removeAttribute('src'); $player.style.display='none';
-  speechSynthesis?.cancel?.();
-
   try{
-    const res = await fetch(`${API_BASE}/episodes/generate`, {
+    const r = await fetch(`${API_BASE}/episodes/generate`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
+      body: JSON.stringify(payload)
     });
+    const j = await r.json().catch(()=> ({}));
+    if (!r.ok || !j?.ok) throw new Error(j?.error || `${r.status} ${r.statusText}`);
 
-    let data = null;
-    try { data = await res.json(); } catch { data = null; }
+    render(j.text);
+    ok(`Klar: ~${j.words} ord (${j.minutes} min)`);
 
-    if (!res.ok) {
-      throw new Error(data?.error || `${res.status} ${res.statusText}`);
-    }
-    if (!data?.ok) throw new Error(data?.error || 'Okänt fel från API.');
-
-    // TEXT
-    const text = (data.text||'').trim();
-    renderStory(text || '(tomt svar)');
-    ok('Klar!');
-
-    // TTS
-    const mode = $ttsMode.value;
-    if (mode === 'browser') {
-      // Läs upp *den rensade texten* (paragrafer → plain)
+    if ($ttsMode.value==='browser') {
       const plain = Array.from($out.querySelectorAll('p')).map(p=>p.textContent).join(' ');
       speakBrowser(plain, $gender.value);
-    } else if (data.audio_url) {
-      $player.src = data.audio_url;
-      $player.style.display = 'block';
-      try { await $player.play(); } catch {}
-    } else {
-      $stop.disabled = true;
     }
-
   }catch(e){
-    err(e.message || String(e));
+    err(e.message||String(e));
   }finally{
     setBusy(false);
   }
-});
-
-$stop.addEventListener('click', () => {
-  speechSynthesis?.cancel?.();
-  $player.pause();
-  $player.currentTime = 0;
-  $stop.disabled = true;
 });
