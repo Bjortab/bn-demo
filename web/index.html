@@ -1,31 +1,39 @@
 <!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BN Core – Demo</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BlushNarratives — Core</title>
   <style>
-    body { font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#0f0f12; color:#eaeef2; margin:0; }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 24px; }
-    .card { background:#14161a; border:1px solid #23262c; border-radius:14px; padding:16px; margin-bottom:16px; }
-    label { display:block; margin:10px 0 6px; color:#9aa4b2; font-size:.9rem; }
-    input,select,textarea,button { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #2c3139; background:#0f1114; color:#eaeef2; }
-    textarea { min-height: 180px; }
-    .row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
-    .btnrow { display:flex; gap:10px; }
-    .muted { color:#8b95a6; font-size:.9rem; }
+    :root { --bg:#111; --card:#1a1a1a; --fg:#eee; --muted:#aaa; --accent:#ff3b3b; }
+    html,body { height:100%; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .wrap { max-width:880px; margin:24px auto 80px; padding:0 16px; }
+    h1 { font-size:22px; margin:0 0 8px; }
+    .meta { color:var(--muted); font-size:13px; margin-bottom:16px; }
+    .card { background:var(--card); border-radius:10px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+    label { font-weight:600; font-size:13px; color:#ddd; display:block; margin:12px 0 6px; }
+    textarea { width:100%; min-height:110px; resize:vertical; background:#0f0f0f; color:var(--fg); border:1px solid #2a2a2a; border-radius:8px; padding:10px; }
+    select,input[type="number"] { background:#0f0f0f; color:var(--fg); border:1px solid #2a2a2a; border-radius:8px; padding:8px 10px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row > * { flex:1 1 180px; }
+    .buttons { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button { background:#262626; color:#fff; border:1px solid #333; padding:10px 14px; border-radius:8px; cursor:pointer; }
+    button.primary { background:var(--accent); border-color:#aa2525; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:8px; padding:10px; min-height:100px; }
+    .api { color:var(--muted); font-size:12px; margin-top:8px; }
+    .pill { display:inline-block; background:#222; border:1px solid #333; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:6px; }
+    .audio { margin-top:12px; width:100%; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <h2 style="margin:0 0 8px">BlushNarratives — Core</h2>
-      <div class="muted" id="outStatus">Init…</div>
-    </div>
+    <h1>BlushNarratives — Core</h1>
+    <div class="meta" id="meta">Init…</div>
 
-    <form id="form" class="card">
+    <div class="card">
       <label for="prompt">Din prompt</label>
-      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
+      <textarea id="prompt" placeholder="Ex: vi möttes på tåget, hennes blick fastnade på mig.">vi möttes på tåget</textarea>
 
       <div class="row">
         <div>
@@ -33,41 +41,48 @@
           <select id="level">
             <option value="1">1 – romantisk</option>
             <option value="2" selected>2 – antydande</option>
-            <option value="3">3 – sensuell+</option>
-            <option value="4">4 – het</option>
-            <option value="5">5 – explicit</option>
+            <option value="3">3 – sensuell</option>
+            <option value="4">4 – explicit inom gränserna</option>
+            <option value="5">5 – direkt & rå</option>
           </select>
         </div>
         <div>
-          <label for="words">Ord (riktmärke)</label>
-          <input id="words" type="number" min="120" max="1200" value="220">
+          <label for="words">Ord (ca)</label>
+          <input id="words" type="number" min="80" max="600" step="10" value="220" />
         </div>
         <div>
           <label for="voice">Röst</label>
           <select id="voice">
             <option value="female" selected>Kvinnlig</option>
             <option value="male">Manlig</option>
+            <option value="neutral">Neutral</option>
           </select>
+        </div>
+        <div>
+          <label for="name">Karaktär (namn)</label>
+          <input id="name" type="text" value="Mia" />
         </div>
       </div>
 
-      <div class="btnrow" style="margin-top:12px">
-        <button type="submit">Generera & lyssna</button>
-        <button type="button" id="play">Spela upp igen</button>
-        <button type="button" id="stop">Stoppa</button>
+      <div class="buttons">
+        <button id="btnRun" class="primary">Generera & lyssna</button>
+        <button id="btnStop">Stoppa röst</button>
+        <button id="btnAgain">Spela upp igen</button>
+        <span class="pill" id="sessionPill">session: –</span>
+        <span class="pill" id="workerPill">worker: …</span>
       </div>
-    </form>
 
-    <div class="card">
-      <label for="outText">Berättelse (text)</label>
-      <textarea id="outText" readonly></textarea>
-    </div>
+      <audio id="player" class="audio" controls></audio>
 
-    <div class="card">
-      <audio id="audio" controls style="width:100%"></audio>
+      <label>Berättelse (text)</label>
+      <div id="out" class="log"></div>
+
+      <div class="api">API: <span id="api"></span></div>
     </div>
   </div>
 
-  <script src="./app.js?v=170"></script>
+  <!-- VIKTIGT: cache-busta JS vid uppdatering -->
+  <script>window.APP_VERSION = 'core-1.60';</script>
+  <script src="./app.js?v=core-1.60"></script>
 </body>
 </html>
