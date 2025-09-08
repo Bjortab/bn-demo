@@ -1,134 +1,122 @@
-// === Konfiguration ===
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // din worker
+// === Konfig ===
+const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 const TEMPERATURE = 0.8;
+const $ = (sel)=>document.querySelector(sel);
 
-// === Hjälp ===
-const $ = (sel) => document.querySelector(sel);
-const storyEl = $("#story");
-const metaEl  = $("#meta");
-const audioEl = $("#player");
-$("#apiUrl").textContent = API;
+// === DOM ===
+const statusEl=$("#status"), promptEl=$("#prompt"), levelEl=$("#level"), minutesEl=$("#minutes");
+const voiceSel=$("#voice"), goBtn=$("#go"), stopBtn=$("#stop"), storyEl=$("#story"), metaEl=$("#meta");
+const audioEl=$("#player"); $("#apiUrl").textContent = API;
 
-// Mappa minuter -> ungefärliga ord (för 150–180 ord/min läsning).
-function minutesToWords(min) {
-  const wpm = 160; // konservativt
-  return Math.max(120, Math.round(min * wpm));
-}
-
-function paragraphize(text) {
-  // Säkerställ stycken även om modellen skickar allt i ett block
-  return text
-    .replace(/\r\n/g, "\n")
-    .split(/\n\s*\n/)
-    .map(p => p.trim())
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-// === Röst (Web Speech API: bra “browser fallback”) ===
-let voices = [];
-function loadVoices() {
+// === Röster ===
+let voices=[];
+function loadVoices(){
   voices = speechSynthesis.getVoices();
-  const sel = $("#voice");
-  sel.innerHTML = "";
-  // Prioritera svenska
-  const sv = voices.filter(v => /sv|swedish/i.test(v.lang));
+  voiceSel.innerHTML="";
+  const sv = voices.filter(v => (v.lang||"").toLowerCase().startsWith("sv"));
   const list = sv.length ? sv : voices;
-  list.forEach(v => {
-    const opt = document.createElement("option");
-    opt.value = v.name;
-    opt.textContent = `${v.name} (${v.lang})`;
-    sel.appendChild(opt);
+  list.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v.name; opt.textContent=`${v.name} (${v.lang})`;
+    voiceSel.appendChild(opt);
   });
 }
-if ("speechSynthesis" in window) {
-  speechSynthesis.onvoiceschanged = loadVoices;
-  loadVoices();
+if ("speechSynthesis" in window){ speechSynthesis.onvoiceschanged=loadVoices; loadVoices(); }
+
+// === Hjälp ===
+function minutesToWords(min){ return Math.max(120, Math.round(min * 160)); }
+function tidyParagraphs(text){
+  return String(text||"")
+    .replace(/\r\n/g,"\n")
+    .split(/\n{2,}/).map(p=>p.trim()).filter(Boolean)
+    .join("\n\n");
+}
+function sentences(text){
+  return String(text||"")
+    .replace(/\s+/g," ")
+    .split(/(?<=[.!?…])\s+(?=[^\s])/u)
+    .map(s=>s.trim()).filter(Boolean);
 }
 
-function speak(text) {
-  try {
-    speechSynthesis.cancel(); // avbryt ev. pågående
-    const sel = $("#voice");
-    const name = sel.value;
-    const voice = speechSynthesis.getVoices().find(v => v.name === name);
-    const u = new SpeechSynthesisUtterance(text);
-    if (voice) u.voice = voice;
-    u.lang = voice?.lang || ($("#lang").value === "sv" ? "sv-SE" : "en-US");
-    // lite mjukare inställningar
-    u.rate = 0.95;
-    u.pitch = /female|woman|kvinna|siri/i.test((voice?.name||"")) ? 1.05 : 1.0;
+// Läs mening-för-mening (bättre pauser än ett stort block)
+let abortSpeak=false;
+async function speakBySentence(text){
+  abortSpeak=false;
+  if (!("speechSynthesis" in window)) return;
+
+  const sents = sentences(text);
+  speechSynthesis.cancel();
+
+  const pick = speechSynthesis.getVoices().find(v=>v.name===voiceSel.value);
+  for (const s of sents){
+    if (abortSpeak) break;
+    const u = new SpeechSynthesisUtterance(s);
+    if (pick) u.voice = pick;
+    u.lang = pick?.lang || "sv-SE";
+    u.rate = 0.95; u.pitch = /female|anna|helena|astrid/i.test(pick?.name||"") ? 1.05 : 1.0;
     speechSynthesis.speak(u);
-  } catch (e) {
-    console.warn("TTS fail (browser)", e);
+
+    // vänta tills meningen lästs (poll enklast cross-browser)
+    await new Promise(res=>{
+      const chk = setInterval(()=>{
+        if (abortSpeak || !speechSynthesis.speaking) { clearInterval(chk); res(); }
+      }, 80);
+    });
+
+    // liten paus mellan meningar
+    if (!abortSpeak) await new Promise(r=>setTimeout(r, 90));
   }
 }
 
-$("#stop").addEventListener("click", () => {
-  speechSynthesis.cancel();
-  audioEl.pause();
-  audioEl.currentTime = 0;
+stopBtn.addEventListener("click", ()=>{
+  abortSpeak=true;
+  try{ speechSynthesis.cancel(); }catch{}
+  try{ audioEl.pause(); audioEl.currentTime=0; }catch{}
 });
 
+// === Init status ===
+(async ()=>{
+  try{
+    const r = await fetch(`${API}/status`); const j = await r.json().catch(()=> ({}));
+    statusEl.textContent = j?.ok ? `ok • v${j.v} • ${j.provider}/${j.model}` : "offline";
+  }catch{ statusEl.textContent="offline"; }
+})();
+
 // === Generera ===
-$("#go").addEventListener("click", async () => {
-  const prompt = ($("#prompt").value || "").trim();
-  const level  = Number($("#level").value);
-  const minutes= Number($("#minutes").value);
-  const lang   = $("#lang").value || "sv";
-  const words  = minutesToWords(minutes);
+goBtn.addEventListener("click", async ()=>{
+  const prompt = (promptEl.value||"").trim();
+  const level  = Number(levelEl.value||2);
+  const minutes= Number(minutesEl.value||5);
+  if (!prompt){ alert("Skriv en prompt."); return; }
 
-  if (!prompt) { alert("Skriv en kort startprompt."); return; }
+  goBtn.disabled=true; stopBtn.disabled=false; storyEl.textContent="Skapar berättelse…"; metaEl.textContent="";
+  abortSpeak=true; speechSynthesis.cancel(); audioEl.pause(); audioEl.removeAttribute("src"); audioEl.style.display="none";
 
-  // UI state
-  $("#go").disabled = true;
-  storyEl.textContent = "Skapar berättelse …";
-  metaEl.textContent  = `target ≈ ${words} ord • nivå ${level} • temp ${TEMPERATURE}`;
-
-  try {
-    // (A) Skapa eller återanvänd demo-session (backend kan ignorera om ej behövs)
-    const user_id = "demo";
-    const char_id = "demo-char";
-    const arc_id  = "demo-arc";
-
-    // (B) Kalla worker: generate
+  try{
     const res = await fetch(`${API}/episodes/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id, character_id: char_id, arc_id,
-        level, lang, words, prompt,
-        temperature: TEMPERATURE
-      })
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ prompt, minutes, level, lang:"sv", temperature:TEMPERATURE })
     });
+    const data = await res.json().catch(()=> ({}));
+    if (!res.ok || !data?.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`);
 
-    if (!res.ok) {
-      const err = await res.text().catch(()=>res.statusText);
-      throw new Error(`HTTP ${res.status}: ${err}`);
-    }
-    const data = await res.json();
+    const text = tidyParagraphs(data.text);
+    storyEl.textContent = text;
+    metaEl.textContent  = `≈ ${data.words} ord • ${data.minutes} min • nivå ${data.level}`;
 
-    const text = paragraphize(String(data.text || data.story || ""));
-    storyEl.textContent = text || "(tomt svar)";
+    // Läs upp mening-för-mening
+    await speakBySentence(text);
 
-    // (C) Spela upp (browser-röst fallback)
-    speak(text);
-
-    // (D) Om worker ger TTS-URL (t.ex. data.audio_url) så använd den istället:
+    // (Om backend i framtiden ger audio_url → spela den)
     if (data.audio_url) {
-      try {
-        speechSynthesis.cancel();
-        audioEl.src = data.audio_url;
-        await audioEl.play();
-      } catch (e) {
-        console.warn("Kunde inte spela upp audio_url, faller tillbaka till browser TTS.", e);
-      }
+      speechSynthesis.cancel();
+      audioEl.src = data.audio_url; audioEl.style.display="block"; await audioEl.play().catch(()=>{});
     }
-  } catch (e) {
-    console.error(e);
-    alert(`Fel: ${e.message}`);
-    storyEl.textContent = `Fel: ${e.message}`;
-  } finally {
-    $("#go").disabled = false;
+
+  }catch(e){
+    storyEl.textContent = `Fel: ${e.message||e}`;
+  }finally{
+    goBtn.disabled=false;
   }
 });
