@@ -1,36 +1,117 @@
 <!doctype html>
 <html lang="sv">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>BlushNarratives — Core</title>
-<style>
-  body{background:#111;color:#eee;font-family:system-ui,Segoe UI,Roboto,sans-serif;margin:0;padding:24px}
-  .row{margin:12px 0}
-  textarea{width:100%;height:140px;background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:8px;padding:12px}
-  button{background:#e33;color:#fff;border:0;padding:10px 16px;border-radius:8px;cursor:pointer}
-  select,input{background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:6px;padding:8px}
-  #out{white-space:pre-wrap;background:#0f0f0f;border:1px solid #222;border-radius:8px;padding:12px;min-height:120px}
-</style>
-<div class="row"><h2>BlushNarratives — Core</h2><small id="status">init…</small></div>
-<div class="row"><textarea id="prompt" placeholder="ex: vi möttes på tåget…"></textarea></div>
-<div class="row">
-  <label>Nivå</label>
-  <select id="level">
-    <option value="2">2 – antydande</option>
-    <option value="1">1 – romantisk</option>
-    <option value="3">3 – sensuellt</option>
-    <option value="4">4 – explicit</option>
-    <option value="5">5 – direkt</option>
-  </select>
-  <label style="margin-left:12px">Ord (ca)</label>
-  <input id="words" type="number" value="220" min="60" max="1200" />
-  <label style="margin-left:12px">Språk</label>
-  <select id="lang"><option value="sv">Svenska</option><option value="en">English</option></select>
-</div>
-<div class="row">
-  <button id="go">Generera & lyssna</button>
-  <button id="stop" style="margin-left:8px;background:#444">Stoppa röst</button>
-</div>
-<div class="row"><div id="out"></div></div>
-<script src="./app.js?v=core-001"></script>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BlushNarratives — Core</title>
+  <style>
+    :root { --bg:#101010; --panel:#1a1a1a; --ink:#eee; --muted:#a7a7a7; --accent:#ff4d4f; --line:#2a2a2a; }
+    *{box-sizing:border-box;font-family:system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial}
+    body{margin:0;background:var(--bg);color:var(--ink)}
+    .wrap{max-width:980px;margin:40px auto;padding:0 16px}
+    h1{font-size:22px;margin:0 0 8px}
+    .badge{font-size:12px;color:var(--muted)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+    label{font-size:13px;color:var(--muted);display:block;margin:6px 0}
+    textarea{width:100%;min-height:120px;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);
+             border-radius:10px;padding:10px;resize:vertical;line-height:1.4}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .row > *{flex:1}
+    input,select{width:100%;border:1px solid var(--line);background:#0f0f0f;color:var(--ink);
+                 border-radius:10px;padding:8px}
+    button{background:var(--accent);border:0;color:#fff;padding:10px 14px;border-radius:10px;
+           cursor:pointer;font-weight:700}
+    button.secondary{background:#2d2d2d}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .out{min-height:160px;background:#0f0f0f;border:1px solid var(--line);border-radius:10px;padding:16px}
+    .story p{margin:0 0 12px;line-height:1.6}
+    .api{font-size:12px;color:var(--muted);margin-top:8px}
+    .api.ok{color:#86ffb0}
+    .api.err{color:#ffb3b3}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+    audio{width:100%}
+    .tiny{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>BlushNarratives — Core <span id="status" class="badge"></span></h1>
+
+    <div class="card">
+      <label for="prompt">Din prompt</label>
+      <textarea id="prompt" placeholder="Ex: vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
+
+      <div class="grid" style="margin-top:8px">
+        <div>
+          <label for="level">Nivå (1–5)</label>
+          <select id="level">
+            <option value="1">1 – romantisk</option>
+            <option value="2" selected>2 – antydande</option>
+            <option value="3">3 – sensuellt</option>
+            <option value="4">4 – explicit inom gränserna</option>
+            <option value="5">5 – rakt & rått (lagligt)</option>
+          </select>
+        </div>
+        <div>
+          <label for="words">Ord (ca)</label>
+          <input id="words" type="number" min="80" max="1200" step="20" value="220" />
+        </div>
+        <div>
+          <label for="lang">Språk</label>
+          <select id="lang">
+            <option value="sv" selected>Svenska</option>
+          </select>
+        </div>
+        <div>
+          <label for="ttsMode">Röstmotor</label>
+          <select id="ttsMode">
+            <option value="none">Ingen (text bara)</option>
+            <option value="browser" selected>Webbläsarröst (sv-SE)</option>
+          </select>
+        </div>
+        <div>
+          <label for="gender">Röst</label>
+          <select id="gender">
+            <option value="female" selected>Kvinnlig</option>
+            <option value="male">Manlig</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:6px">
+        <div>
+          <label for="rate">Hastighet</label>
+          <input id="rate" type="range" min="0.7" max="1.3" step="0.05" value="1.0" />
+          <div class="tiny"><span id="rateVal">1.0</span>x</div>
+        </div>
+        <div>
+          <label for="pitch">Tonhöjd</label>
+          <input id="pitch" type="range" min="0.7" max="1.4" step="0.05" value="1.05" />
+          <div class="tiny"><span id="pitchVal">1.05</span>x</div>
+        </div>
+        <div>
+          <label for="vol">Volym</label>
+          <input id="vol" type="range" min="0" max="1" step="0.05" value="1" />
+          <div class="tiny"><span id="volVal">1.00</span></div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <button id="go">Generera & lyssna</button>
+        <button id="stop" class="secondary" disabled>Stoppa röst</button>
+      </div>
+
+      <audio id="player" controls style="margin-top:10px;display:none"></audio>
+
+      <div class="card" style="margin-top:12px">
+        <label>Berättelse</label>
+        <div id="out" class="out story"></div>
+        <div id="msg" class="api"></div>
+        <div class="api">API: <span id="api-url"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js?v=core-022"></script>
+</body>
 </html>
