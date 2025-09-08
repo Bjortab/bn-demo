@@ -1,74 +1,178 @@
-// web/app.js — BN Core UI (prompt -> story -> TTS)
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra om din workers-url skiljer
+// ======= Konfig =======
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";  // <- din worker
+const LANG = "sv";
+const TEMPERATURE = 0.8; // alltid 0.8 enligt ditt önskemål
 
-// els
-const form = document.getElementById("form");
-const promptEl = document.getElementById("prompt");
-const levelEl = document.getElementById("level");
-const wordsEl = document.getElementById("words");
-const voiceEl = document.getElementById("voice");
-const outText = document.getElementById("outText");
-const outStatus = document.getElementById("outStatus");
-const playBtn = document.getElementById("play");
-const stopBtn = document.getElementById("stop");
-const audioEl = document.getElementById("audio");
+// ======= UI-hjälp =======
+const $ = (sel) => document.querySelector(sel);
+const out = $("#out");
+const meta = $("#meta");
+const sessionPill = $("#sessionPill");
+const workerPill = $("#workerPill");
+const apiSpan = $("#api");
+const btnRun = $("#btnRun");
+const btnStop = $("#btnStop");
+const btnAgain = $("#btnAgain");
+const player = $("#player");
 
-async function api(path, body) {
+apiSpan.textContent = API_BASE;
+
+// Web Speech
+let lastUtter = null;
+function speak(text, gender = "female") {
+  try {
+    if (!window.speechSynthesis) {
+      console.warn("Ingen speechSynthesis tillgänglig.");
+      return;
+    }
+    stopSpeak();
+
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "sv-SE";
+    // enkel heuristik för röstval
+    const voices = speechSynthesis.getVoices();
+    const pick = (want) => {
+      const v = voices.find(v => v.lang?.toLowerCase().startsWith("sv") && v.name.toLowerCase().includes(want));
+      return v || voices.find(v => v.lang?.toLowerCase().startsWith("sv")) || voices[0];
+    };
+    if (gender === "male") u.voice = pick("male");
+    else if (gender === "female") u.voice = pick("female");
+    else u.voice = pick(""); // första svenska
+
+    u.rate = 1.0;
+    u.pitch = gender === "male" ? 0.9 : gender === "female" ? 1.1 : 1.0;
+    speechSynthesis.speak(u);
+    lastUtter = u;
+  } catch(e) { console.error(e); }
+}
+function stopSpeak() {
+  try {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    lastUtter = null;
+  } catch(_) {}
+}
+
+// ======= API helpers =======
+async function api(path, opts = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
+    method: opts.method || "GET",
     headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : "{}",
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  const txt = await res.text();
-  let data;
-  try { data = JSON.parse(txt); } catch { data = { raw: txt }; }
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} :: ${JSON.stringify(data)}`);
-  return data;
+  if (!res.ok) {
+    const t = await res.text().catch(()=> "");
+    throw new Error(`HTTP ${res.status} ${res.statusText} — ${t}`);
+  }
+  return res.json();
 }
 
-async function ensureStatus() {
-  const res = await fetch(`${API_BASE}/status`);
-  const data = await res.json().catch(()=>({}));
-  outStatus.textContent = `LM: ${data?.lm?.provider || "?"} / ${(data?.lm?.model)||"?"} @ temp=${data?.lm?.temperature ?? "?"}; TTS:${data?.tts?.elevenlabs ? "on" : "off"}`;
+function setBusy(b) { btnRun.disabled = b; }
+
+function setMeta(info) {
+  meta.textContent = info;
 }
 
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  outText.value = "";
-  audioEl.src = "";
+function show(o) {
+  out.textContent = typeof o === "string" ? o : JSON.stringify(o, null, 2);
+}
 
-  const prompt = promptEl.value.trim();
-  const level = Number(levelEl.value || 2);
-  const words = Number(wordsEl.value || 220);
-  const voice = voiceEl.value || "female";
+// ======= Huvudflöde =======
+let lastText = "";
 
-  if (!prompt) return alert("Skriv vad du vill höra.");
+async function run() {
+  setBusy(true);
+  stopSpeak();
+  show("…");
 
   try {
-    // 1) generera text
-    const gen = await api("/episodes/generate", { prompt, level, lang: "sv", words });
-    outText.value = gen.text || "";
+    setMeta("Kollar workerstatus…");
+    const st = await api("/status");
+    workerPill.textContent = `worker: ${st.worker} v${st.v}`;
+    setMeta("Skapar session…");
 
-    // 2) TTS
-    const ttsRes = await fetch(`${API_BASE}/tts`, {
+    const s = await api("/session", { method:"POST" });
+    const USER_ID = s.user_id; // från worker
+    sessionPill.textContent = `session: ${USER_ID.slice(0, 8)}…`;
+
+    setMeta("Skapar karaktär…");
+    const name = $("#name").value.trim() || "Mia";
+    const c = await api("/characters/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: gen.text, voice }),
+      body: { user_id: USER_ID, name }
     });
-    if (!ttsRes.ok) {
-      const t = await ttsRes.text();
-      throw new Error(`TTS ${ttsRes.status} ${ttsRes.statusText} :: ${t}`);
+    const CHAR_ID = c.character_id;
+
+    setMeta("Startar arc…");
+    const title = "Första mötet";
+    const a = await api("/arcs/start", {
+      method: "POST",
+      body: { user_id: USER_ID, character_id: CHAR_ID, title }
+    });
+    const ARC_ID = a.arc_id;
+
+    setMeta("Genererar avsnitt…");
+    const level = Number($("#level").value);
+    const words = Number($("#words").value);
+    const prompt = $("#prompt").value.trim();
+    const gender = $("#voice").value;
+
+    const g = await api("/episodes/generate", {
+      method: "POST",
+      body: {
+        user_id: USER_ID,
+        character_id: CHAR_ID,
+        arc_id: ARC_ID,
+        level,
+        lang: LANG,
+        words,
+        prompt,
+        temperature: TEMPERATURE
+      }
+    });
+
+    lastText = g.text || "";
+    show({
+      ok: g.ok,
+      episode_id: g.episode_id,
+      level: g.level,
+      words: g.words,
+      text: g.text,
+      summary: g.summary,
+      created_at: g.created_at
+    });
+
+    // Läs upp via web speech
+    if (lastText) {
+      speak(lastText, gender);
     }
-    const blob = await ttsRes.blob();
-    audioEl.src = URL.createObjectURL(blob);
-    audioEl.play().catch(()=>{});
+    setMeta("Klar ✅");
+
   } catch (err) {
-    alert("Fel: " + String(err));
     console.error(err);
+    alert(`Fel: ${err.message}`);
+    show(String(err.message || err));
+    setMeta("Fel ❌ (se utskrift)");
+  } finally {
+    setBusy(false);
   }
+}
+
+// ======= Event hooks =======
+btnRun.addEventListener("click", run);
+btnStop.addEventListener("click", stopSpeak);
+btnAgain.addEventListener("click", () => {
+  const gender = $("#voice").value;
+  if (lastText) speak(lastText, gender);
 });
 
-playBtn.addEventListener("click", ()=>{ if (audioEl.src) audioEl.play().catch(()=>{}); });
-stopBtn.addEventListener("click", ()=>{ try { audioEl.pause(); audioEl.currentTime = 0; } catch {} });
-
-ensureStatus().catch(()=>{});
+// hint i UI
+window.addEventListener("load", async () => {
+  try {
+    const st = await api("/status");
+    workerPill.textContent = `worker: ${st.worker} v${st.v}`;
+    sessionPill.textContent = "session: –";
+    setMeta("Redo.");
+  } catch {
+    setMeta("Worker onåbar – kontrollera CORS/URL.");
+  }
+});
