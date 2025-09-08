@@ -1,46 +1,73 @@
 <!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BlushNarratives – Demo</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BN Core – Demo</title>
   <style>
-    body{background:#111;color:#eee;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Calibri,sans-serif;margin:0}
-    header{padding:16px 20px;font-weight:700}
-    .wrap{padding:8px 20px 24px;max-width:1100px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    button{background:#d33;color:#fff;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .tag{display:inline-block;background:#333;color:#aaa;border-radius:6px;padding:6px 8px;margin-right:8px;font-size:12px}
-    pre{background:#0b0b0b;border:1px solid #222;border-radius:8px;padding:12px;white-space:pre-wrap;word-break:break-word;min-height:160px}
-    small{color:#aaa}
+    body { font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial; background:#0f0f12; color:#eaeef2; margin:0; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 24px; }
+    .card { background:#14161a; border:1px solid #23262c; border-radius:14px; padding:16px; margin-bottom:16px; }
+    label { display:block; margin:10px 0 6px; color:#9aa4b2; font-size:.9rem; }
+    input,select,textarea,button { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #2c3139; background:#0f1114; color:#eaeef2; }
+    textarea { min-height: 180px; }
+    .row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+    .btnrow { display:flex; gap:10px; }
+    .muted { color:#8b95a6; font-size:.9rem; }
   </style>
 </head>
 <body>
-  <header>BlushNarratives – Demo</header>
-
   <div class="wrap">
-    <div class="row">
-      <span class="tag" id="tag-worker">worker: …</span>
-      <span class="tag" id="tag-provider">provider: …</span>
-      <span class="tag" id="tag-mock">mock: …</span>
-      <span class="tag" id="tag-session">session: ingen</span>
+    <div class="card">
+      <h2 style="margin:0 0 8px">BlushNarratives — Core</h2>
+      <div class="muted" id="outStatus">Init…</div>
     </div>
 
-    <div class="row">
-      <button id="btnSession">Skapa anonym session</button>
-      <small>API: <a id="apiLink" href="#" target="_blank" rel="noreferrer">?</a></small>
+    <form id="form" class="card">
+      <label for="prompt">Din prompt</label>
+      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="level">Nivå (1–5)</label>
+          <select id="level">
+            <option value="1">1 – romantisk</option>
+            <option value="2" selected>2 – antydande</option>
+            <option value="3">3 – sensuell+</option>
+            <option value="4">4 – het</option>
+            <option value="5">5 – explicit</option>
+          </select>
+        </div>
+        <div>
+          <label for="words">Ord (riktmärke)</label>
+          <input id="words" type="number" min="120" max="1200" value="220">
+        </div>
+        <div>
+          <label for="voice">Röst</label>
+          <select id="voice">
+            <option value="female" selected>Kvinnlig</option>
+            <option value="male">Manlig</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btnrow" style="margin-top:12px">
+        <button type="submit">Generera & lyssna</button>
+        <button type="button" id="play">Spela upp igen</button>
+        <button type="button" id="stop">Stoppa</button>
+      </div>
+    </form>
+
+    <div class="card">
+      <label for="outText">Berättelse (text)</label>
+      <textarea id="outText" readonly></textarea>
     </div>
 
-    <div class="row">
-      <button id="btnPing">Ping /status</button>
-      <button id="btnWho">Visa vem jag är (session)</button>
+    <div class="card">
+      <audio id="audio" controls style="width:100%"></audio>
     </div>
-
-    <pre id="log">Init…</pre>
   </div>
 
-  <!-- OBS! Bumpa v-parametern när du byter app.js -->
-  <script src="./app.js?v=201"></script>
+  <script src="./app.js?v=170"></script>
 </body>
 </html>
