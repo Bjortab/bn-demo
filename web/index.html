@@ -3,22 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BlushNarratives — Core</title>
+  <title>BN — Core</title>
   <style>
-    :root { --bg:#0f0f10; --panel:#1a1b1e; --accent:#ff3158; --muted:#9aa0a6; --text:#e9eaee; --line:#2a2d31; }
-    html,body{height:100%;background:var(--bg);color:var(--text);margin:0;font:16px/1.5 system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    body{background:#0e0f11;color:#eef; font:16px/1.55 system-ui,Segoe UI,Inter,Roboto,Arial;margin:0}
     .wrap{max-width:920px;margin:28px auto;padding:0 16px}
-    h1{font-size:20px;margin:0 0 16px}
-    label{font-size:13px;color:var(--muted);display:block;margin:6px 0}
-    textarea,select{width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
-    textarea{min-height:110px;resize:vertical}
+    h1{font-size:20px;margin:0 0 10px}
+    .card{background:#17191d;border:1px solid #2a2d31;border-radius:12px;padding:14px;margin-top:14px}
+    label{font-size:13px;color:#9aa0a6;display:block;margin:6px 0}
+    textarea,select,button{width:100%;border:1px solid #2a2d31;background:#0f1114;color:#eef;border-radius:10px;padding:10px}
+    textarea{min-height:120px;resize:vertical}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
-    .btn{background:var(--accent);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-    .btn.secondary{background:#2b2f34}
-    .btn:disabled{opacity:.6;cursor:not-allowed}
-    .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+    .btn{background:#ff3158;border-color:#ff3158;font-weight:700;cursor:pointer}
+    .btn.secondary{background:#2b2f34;border-color:#2b2f34}
     .story{white-space:pre-wrap;line-height:1.75}
-    .meta{font-size:12px;color:var(--muted);margin-top:6px}
+    .meta{font-size:12px;color:#9aa0a6;margin-top:6px}
     audio{width:100%;margin-top:10px}
   </style>
 </head>
@@ -26,7 +24,7 @@
   <div class="wrap">
     <h1>BlushNarratives — Core <span id="status" class="meta"></span></h1>
 
-    <div class="box">
+    <div class="card">
       <label for="prompt">Din prompt</label>
       <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig..."></textarea>
 
@@ -44,16 +42,9 @@
         <div>
           <label for="minutes">Längd (minuter)</label>
           <select id="minutes">
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="5" selected>5</option>
-            <option value="7">7</option>
-            <option value="10">10</option>
+            <option>2</option><option>3</option><option selected>5</option>
+            <option>7</option><option>10</option><option>12</option><option>15</option>
           </select>
-        </div>
-        <div>
-          <label for="voice">Röst (webbläsare)</label>
-          <select id="voice"></select>
         </div>
       </div>
 
@@ -64,7 +55,7 @@
 
       <audio id="player" controls style="display:none"></audio>
 
-      <div class="box" style="margin-top:12px">
+      <div class="card" style="margin-top:12px">
         <div id="story" class="story"></div>
         <div id="meta" class="meta"></div>
         <div class="meta">API: <span id="apiUrl"></span></div>
@@ -72,6 +63,6 @@
     </div>
   </div>
 
-  <script src="./app.js?v=core-036"></script>
+  <script src="./app.js?v=bn-core-210"></script>
 </body>
 </html>
