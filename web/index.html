@@ -3,66 +3,219 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BN — Core</title>
+  <title>BlushNarratives — Core (GC)</title>
   <style>
-    body{background:#0e0f11;color:#eef; font:16px/1.55 system-ui,Segoe UI,Inter,Roboto,Arial;margin:0}
-    .wrap{max-width:920px;margin:28px auto;padding:0 16px}
-    h1{font-size:20px;margin:0 0 10px}
-    .card{background:#17191d;border:1px solid #2a2d31;border-radius:12px;padding:14px;margin-top:14px}
-    label{font-size:13px;color:#9aa0a6;display:block;margin:6px 0}
-    textarea,select,button{width:100%;border:1px solid #2a2d31;background:#0f1114;color:#eef;border-radius:10px;padding:10px}
-    textarea{min-height:120px;resize:vertical}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
-    .btn{background:#ff3158;border-color:#ff3158;font-weight:700;cursor:pointer}
-    .btn.secondary{background:#2b2f34;border-color:#2b2f34}
-    .story{white-space:pre-wrap;line-height:1.75}
-    .meta{font-size:12px;color:#9aa0a6;margin-top:6px}
-    audio{width:100%;margin-top:10px}
+    :root {
+      --bg:#0d0f12; --panel:#151820; --muted:#9aa3b2; --text:#e8eef9; --accent:#e63946;
+      --ok:#20c997; --btn:#1f2532; --btnh:#263043; --border:#273043;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background:var(--bg); color:var(--text);
+      display:flex; justify-content:center; padding:24px;
+    }
+    .wrap { width:min(1100px, 100%); }
+    header { margin-bottom:16px; }
+    h1 { font-size:22px; margin:0 0 4px 0; }
+    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--muted); }
+
+    .card {
+      background:var(--panel); border:1px solid var(--border);
+      border-radius:12px; padding:16px; margin:16px 0;
+    }
+    label { display:block; font-weight:600; margin:10px 0 6px; }
+    textarea, select, input[type="number"], input[type="text"] {
+      width:100%; background:#0f1218; color:var(--text); border:1px solid var(--border);
+      border-radius:10px; padding:10px 12px; outline:none;
+    }
+    textarea { min-height:120px; resize:vertical; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row .col { flex:1 1 200px; }
+    .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+    button {
+      background:var(--btn); color:var(--text); border:1px solid var(--border);
+      border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:700;
+    }
+    button.primary { background:var(--accent); border-color:#00000020; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .status { color:var(--muted); font-size:13px; }
+    .ok { color:var(--ok); }
+    .err { color:#ff6b6b; white-space:pre-wrap; }
+    pre.out { white-space:pre-wrap; margin:0; }
+    .audioRow { display:flex; align-items:center; gap:12px; margin-top:10px; }
+    audio { width:100%; }
+    .apiHint { color:var(--muted); font-size:12px; margin-top:6px; }
+    .right { margin-left:auto; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>BlushNarratives — Core <span id="status" class="meta"></span></h1>
+<div class="wrap">
+  <header>
+    <h1>BlushNarratives — Core</h1>
+    <div id="status" class="status">Init…</div>
+  </header>
 
-    <div class="card">
-      <label for="prompt">Din prompt</label>
-      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig..."></textarea>
+  <section class="card">
+    <label for="prompt">Din prompt</label>
+    <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
 
-      <div class="grid" style="margin-top:8px">
-        <div>
-          <label for="level">Nivå (1–5)</label>
-          <select id="level">
-            <option value="1">1 – mjukt</option>
-            <option value="2" selected>2 – antydande</option>
-            <option value="3">3 – sensuellt</option>
-            <option value="4">4 – explicit</option>
-            <option value="5">5 – hårdare</option>
-          </select>
-        </div>
-        <div>
-          <label for="minutes">Längd (minuter)</label>
-          <select id="minutes">
-            <option>2</option><option>3</option><option selected>5</option>
-            <option>7</option><option>10</option><option>12</option><option>15</option>
-          </select>
-        </div>
+    <div class="row">
+      <div class="col">
+        <label for="level">Nivå (1–5)</label>
+        <select id="level">
+          <option value="1">1 — romantiskt/antydande</option>
+          <option value="2" selected>2 — antydande</option>
+          <option value="3">3 — sensuellt</option>
+          <option value="4">4 — explicit inom gränserna</option>
+          <option value="5">5 — direkt & rått (inom lagens ramar)</option>
+        </select>
       </div>
-
-      <div class="grid" style="margin-top:10px">
-        <button id="go" class="btn">Generera & lyssna</button>
-        <button id="stop" class="btn secondary">Stoppa röst</button>
+      <div class="col">
+        <label for="minutes">Längd (minuter)</label>
+        <input id="minutes" type="number" min="1" max="15" step="1" value="5" />
       </div>
-
-      <audio id="player" controls style="display:none"></audio>
-
-      <div class="card" style="margin-top:12px">
-        <div id="story" class="story"></div>
-        <div id="meta" class="meta"></div>
-        <div class="meta">API: <span id="apiUrl"></span></div>
+      <div class="col">
+        <label for="lang">Språk</label>
+        <select id="lang">
+          <option value="sv" selected>Svenska</option>
+          <option value="en">Engelska</option>
+        </select>
+      </div>
+      <div class="col">
+        <label for="voice">Röst (valfri, t.ex. “anneli”)</label>
+        <input id="voice" type="text" placeholder="anneli" />
       </div>
     </div>
-  </div>
 
-  <script src="./app.js?v=bn-core-210"></script>
+    <div class="actions">
+      <button id="go" class="primary">Generera & lyssna</button>
+      <button id="stop">Stoppa röst</button>
+      <button id="copy">Kopiera text</button>
+      <span id="busy" class="status"></span>
+      <span class="right apiHint">API: <span id="apiUrl"></span></span>
+    </div>
+
+    <div class="audioRow">
+      <audio id="player" controls preload="none"></audio>
+    </div>
+  </section>
+
+  <section class="card">
+    <label>Berättelse (text)</label>
+    <pre id="out" class="out"></pre>
+    <div id="err" class="err"></div>
+  </section>
+</div>
+
+<script>
+/** ======= KONFIG ======= **/
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // <-- BYT HÄR om din worker-URL är annan
+
+/** ======= HJÄLP ======= **/
+const $ = sel => document.querySelector(sel);
+const statusBox = $("#status");
+const out = $("#out");
+const errBox = $("#err");
+const player = $("#player");
+const busy = $("#busy");
+const apiUrlSpan = $("#apiUrl");
+apiUrlSpan.textContent = API_BASE;
+
+/** Avspelningskontroller */
+function stopAudio() {
+  try {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  } catch (_) {}
+}
+
+/** UI-busy */
+function setBusy(on, msg="") {
+  $("#go").disabled = !!on;
+  $("#stop").disabled = !!on && !player.src;
+  busy.textContent = on ? (msg || "Arbetar…") : "";
+}
+
+/** Snygg feltext */
+async function responseToError(r) {
+  let t = "";
+  try { t = await r.text(); } catch {}
+  return `HTTP ${r.status} ${r.statusText}\n${t}`;
+}
+
+/** ======= INIT ======= **/
+async function fetchStatus() {
+  try {
+    const r = await fetch(`${API_BASE}/status`);
+    if (!r.ok) throw new Error(await responseToError(r));
+    const j = await r.json();
+    statusBox.innerHTML = `OK · worker: <span class="ok">${j.worker}</span> · v ${j.v} · provider: ${j.provider} · tts: ${j.tts?.provider || "?"} · temp: ${j.temperature ?? "—"}`;
+  } catch (e) {
+    statusBox.innerHTML = `<span class="err">Statusfel: ${e.message}</span>`;
+  }
+}
+fetchStatus();
+
+/** ======= HANTERA KNAPPAR ======= **/
+$("#stop").addEventListener("click", stopAudio);
+
+$("#copy").addEventListener("click", async () => {
+  const t = out.textContent.trim();
+  if (!t) return;
+  try { await navigator.clipboard.writeText(t); busy.textContent = "Text kopierad ✓"; setTimeout(()=>busy.textContent="",1200);} catch(_){}
+});
+
+$("#go").addEventListener("click", async () => {
+  errBox.textContent = "";
+  out.textContent = "";
+  stopAudio();
+
+  const prompt = $("#prompt").value.trim();
+  const level = Number($("#level").value);
+  const minutes = Number($("#minutes").value);
+  const lang = $("#lang").value;
+  const voice_id = $("#voice").value.trim() || undefined;
+
+  if (!prompt) {
+    errBox.textContent = "Skriv en prompt först.";
+    return;
+  }
+
+  setBusy(true, "Skapar berättelse…");
+
+  try {
+    const r = await fetch(`${API_BASE}/episodes/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, level, minutes, lang, voice_id }),
+    });
+
+    if (!r.ok) {
+      throw new Error(await responseToError(r));
+    }
+
+    const j = await r.json();
+    if (!j?.ok) throw new Error(j?.error || "Okänt fel");
+
+    out.textContent = j.text || "";
+
+    // TTS om vi fick ljud
+    if (j.audio && typeof j.audio === "string" && j.audio.startsWith("data:audio")) {
+      player.src = j.audio;
+      await player.play().catch(()=>{});
+    } else {
+      // Ingen TTS (t.ex. provider=MOCK) – vi visar bara text
+      busy.textContent = "Ingen TTS i svaret (visar text).";
+      setTimeout(()=>busy.textContent="", 1500);
+    }
+  } catch (e) {
+    errBox.textContent = e.message || String(e);
+  } finally {
+    setBusy(false);
+  }
+});
+</script>
 </body>
 </html>
