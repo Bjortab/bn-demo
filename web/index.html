@@ -3,50 +3,36 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BlushNarratives — Core (GC)</title>
+  <title>BlushNarratives — Core (GC no-autoplay)</title>
   <style>
     :root {
       --bg:#0d0f12; --panel:#151820; --muted:#9aa3b2; --text:#e8eef9; --accent:#e63946;
-      --ok:#20c997; --btn:#1f2532; --btnh:#263043; --border:#273043;
+      --ok:#20c997; --warn:#ffd166; --err:#ff6b6b; --btn:#1f2532; --btnh:#263043; --border:#273043; --ready:#1db954;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin:0; font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background:var(--bg); color:var(--text);
-      display:flex; justify-content:center; padding:24px;
-    }
-    .wrap { width:min(1100px, 100%); }
-    header { margin-bottom:16px; }
-    h1 { font-size:22px; margin:0 0 4px 0; }
-    small.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color:var(--muted); }
-
-    .card {
-      background:var(--panel); border:1px solid var(--border);
-      border-radius:12px; padding:16px; margin:16px 0;
-    }
-    label { display:block; font-weight:600; margin:10px 0 6px; }
-    textarea, select, input[type="number"], input[type="text"] {
-      width:100%; background:#0f1218; color:var(--text); border:1px solid var(--border);
-      border-radius:10px; padding:10px 12px; outline:none;
-    }
-    textarea { min-height:120px; resize:vertical; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; }
-    .row .col { flex:1 1 200px; }
-    .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px; }
-    button {
-      background:var(--btn); color:var(--text); border:1px solid var(--border);
-      border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:700;
-    }
-    button.primary { background:var(--accent); border-color:#00000020; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    .status { color:var(--muted); font-size:13px; }
-    .ok { color:var(--ok); }
-    .err { color:#ff6b6b; white-space:pre-wrap; }
-    pre.out { white-space:pre-wrap; margin:0; }
-    .audioRow { display:flex; align-items:center; gap:12px; margin-top:10px; }
-    audio { width:100%; }
-    .apiHint { color:var(--muted); font-size:12px; margin-top:6px; }
-    .right { margin-left:auto; }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; display:flex; justify-content:center; padding:24px }
+    .wrap { width:min(1100px,100%) }
+    header { margin-bottom:16px }
+    h1 { font-size:22px; margin:0 0 4px }
+    .status { color:var(--muted); font-size:13px }
+    .ok { color:var(--ok) }
+    .err { color:var(--err); white-space:pre-wrap }
+    .warn { color:var(--warn) }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin:16px 0 }
+    label { display:block; font-weight:600; margin:10px 0 6px }
+    textarea, select, input[type="number"], input[type="text"] { width:100%; background:#0f1218; color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px 12px; outline:none }
+    textarea { min-height:120px; resize:vertical }
+    .row { display:flex; gap:12px; flex-wrap:wrap }
+    .row .col { flex:1 1 200px }
+    .actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px }
+    button { background:var(--btn); color:var(--text); border:1px solid var(--border); border-radius:10px; padding:10px 14px; cursor:pointer; font-weight:700 }
+    button.primary { background:var(--accent) }
+    button:disabled { opacity:.6; cursor:not-allowed }
+    .right { margin-left:auto; color:var(--muted); font-size:12px }
+    .audioRow { display:flex; align-items:center; gap:12px; margin-top:10px }
+    audio { width:100% }
+    .ready { background:var(--ready)!important; border-color:#0000!important }
+    pre.out { white-space:pre-wrap; margin:0 }
   </style>
 </head>
 <body>
@@ -89,11 +75,12 @@
     </div>
 
     <div class="actions">
-      <button id="go" class="primary">Generera & lyssna</button>
-      <button id="stop">Stoppa röst</button>
-      <button id="copy">Kopiera text</button>
+      <button id="go" class="primary">Generera</button>
+      <button id="prep">Hämta röst</button>
+      <button id="play" disabled>Spela upp</button>
+      <button id="stop">Stoppa</button>
       <span id="busy" class="status"></span>
-      <span class="right apiHint">API: <span id="apiUrl"></span></span>
+      <span class="right">API: <span id="apiUrl"></span></span>
     </div>
 
     <div class="audioRow">
@@ -110,7 +97,7 @@
 
 <script>
 /** ======= KONFIG ======= **/
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // <-- BYT HÄR om din worker-URL är annan
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1"; // ändra om din worker-URL skiljer sig
 
 /** ======= HJÄLP ======= **/
 const $ = sel => document.querySelector(sel);
@@ -120,21 +107,35 @@ const errBox = $("#err");
 const player = $("#player");
 const busy = $("#busy");
 const apiUrlSpan = $("#apiUrl");
+const btnGo = $("#go");
+const btnPrep = $("#prep");
+const btnPlay = $("#play");
+const btnStop = $("#stop");
 apiUrlSpan.textContent = API_BASE;
 
-/** Avspelningskontroller */
-function stopAudio() {
-  try {
-    player.pause();
-    player.removeAttribute("src");
-    player.load();
-  } catch (_) {}
+let lastResult = null; // sparar senaste { text, audio }
+
+/** Audio helpers */
+function clearAudio() {
+  try { player.pause(); } catch(_){}
+  player.removeAttribute("src");
+  player.load();
+  btnPlay.disabled = true;
+  btnPlay.classList.remove("ready");
+}
+function setAudio(dataUrl) {
+  clearAudio();
+  if (dataUrl && dataUrl.startsWith("data:audio")) {
+    player.src = dataUrl;             // vi AUTOSPELAR INTE
+    btnPlay.disabled = false;         // gör knappen aktiv
+    btnPlay.classList.add("ready");   // grön när klart
+  }
 }
 
 /** UI-busy */
 function setBusy(on, msg="") {
-  $("#go").disabled = !!on;
-  $("#stop").disabled = !!on && !player.src;
+  btnGo.disabled = !!on;
+  btnPrep.disabled = !!on;
   busy.textContent = on ? (msg || "Arbetar…") : "";
 }
 
@@ -151,26 +152,25 @@ async function fetchStatus() {
     const r = await fetch(`${API_BASE}/status`);
     if (!r.ok) throw new Error(await responseToError(r));
     const j = await r.json();
-    statusBox.innerHTML = `OK · worker: <span class="ok">${j.worker}</span> · v ${j.v} · provider: ${j.provider} · tts: ${j.tts?.provider || "?"} · temp: ${j.temperature ?? "—"}`;
+    const tts = j.tts?.provider || "?";
+    statusBox.innerHTML = `OK · worker: <span class="ok">${j.worker}</span> · v ${j.v || "?"} · model: ${j.model || "?"} · tts: ${tts}`;
   } catch (e) {
     statusBox.innerHTML = `<span class="err">Statusfel: ${e.message}</span>`;
   }
 }
 fetchStatus();
 
-/** ======= HANTERA KNAPPAR ======= **/
-$("#stop").addEventListener("click", stopAudio);
-
-$("#copy").addEventListener("click", async () => {
-  const t = out.textContent.trim();
-  if (!t) return;
-  try { await navigator.clipboard.writeText(t); busy.textContent = "Text kopierad ✓"; setTimeout(()=>busy.textContent="",1200);} catch(_){}
+/** ======= HANDLARE ======= **/
+btnStop.addEventListener("click", clearAudio);
+btnPlay.addEventListener("click", async () => {
+  try { await player.play(); } catch(_){}
 });
 
-$("#go").addEventListener("click", async () => {
+btnGo.addEventListener("click", async () => {
   errBox.textContent = "";
   out.textContent = "";
-  stopAudio();
+  clearAudio();
+  lastResult = null;
 
   const prompt = $("#prompt").value.trim();
   const level = Number($("#level").value);
@@ -178,42 +178,44 @@ $("#go").addEventListener("click", async () => {
   const lang = $("#lang").value;
   const voice_id = $("#voice").value.trim() || undefined;
 
-  if (!prompt) {
-    errBox.textContent = "Skriv en prompt först.";
-    return;
-  }
+  if (!prompt) { errBox.textContent = "Skriv en prompt först."; return; }
 
-  setBusy(true, "Skapar berättelse…");
+  setBusy(true, "Skapar text…");
 
   try {
     const r = await fetch(`${API_BASE}/episodes/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, level, minutes, lang, voice_id }),
+      body: JSON.stringify({ prompt, level, minutes, lang, voice_id })
     });
-
-    if (!r.ok) {
-      throw new Error(await responseToError(r));
-    }
-
+    if (!r.ok) throw new Error(await responseToError(r));
     const j = await r.json();
     if (!j?.ok) throw new Error(j?.error || "Okänt fel");
 
+    lastResult = j;
     out.textContent = j.text || "";
 
-    // TTS om vi fick ljud
-    if (j.audio && typeof j.audio === "string" && j.audio.startsWith("data:audio")) {
-      player.src = j.audio;
-      await player.play().catch(()=>{});
+    if (j.audio) {
+      // ljud kommer men vi autoplay:ar inte – låt “Hämta röst” hantera setAudio
+      busy.textContent = "Röstdata mottagen (klicka Hämta röst).";
+      setTimeout(()=>busy.textContent="",1500);
     } else {
-      // Ingen TTS (t.ex. provider=MOCK) – vi visar bara text
-      busy.textContent = "Ingen TTS i svaret (visar text).";
-      setTimeout(()=>busy.textContent="", 1500);
+      busy.textContent = "Ingen röst från servern (visar text).";
+      setTimeout(()=>busy.textContent="",1500);
     }
   } catch (e) {
     errBox.textContent = e.message || String(e);
   } finally {
     setBusy(false);
+  }
+});
+
+btnPrep.addEventListener("click", () => {
+  if (lastResult?.audio) {
+    setAudio(lastResult.audio); // laddar in och gör Play-knappen grön
+  } else {
+    busy.textContent = "Ingen röst att ladda (gör en generering först).";
+    setTimeout(()=>busy.textContent="",1500);
   }
 });
 </script>
