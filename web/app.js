@@ -1,97 +1,109 @@
-// ===== Konfig =====
-const API = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
-const $ = (s)=>document.querySelector(s);
+<script>
+(() => {
+  const API = (document.getElementById('apiBase')?.value || '').trim() ||
+              'https://bn-worker.bjorta-bb.workers.dev';
+  const btn = document.getElementById('btnRun');
+  const stopBtn = document.getElementById('btnStop');
+  const playBtn = document.getElementById('btnPlay');
+  const levelSel = document.getElementById('level');
+  const minSel = document.getElementById('minutes');
+  const langSel = document.getElementById('lang');
+  const promptEl = document.getElementById('prompt');
+  const outText = document.getElementById('story');
+  const logEl = document.getElementById('log');
+  const audio = document.getElementById('player');
 
-const statusEl=$("#status"), storyEl=$("#story"), metaEl=$("#meta"), audioEl=$("#player");
-const promptEl=$("#prompt"), levelEl=$("#level"), minutesEl=$("#minutes");
-const goBtn=$("#go"), stopBtn=$("#stop");
-$("#apiUrl").textContent = API;
+  let busy = false;
+  let lastAudioUrl = null;
 
-// ===== Hjälp =====
-function tidy(text){
-  return String(text||"").replace(/\r\n/g,"\n").split(/\n{2,}/).map(x=>x.trim()).filter(Boolean).join("\n\n");
-}
-function sentences(text){
-  return String(text||"").replace(/\s+/g," ").split(/(?<=[.!?…])\s+(?=[^\s])/u).map(s=>s.trim()).filter(Boolean);
-}
-
-// ===== Web Speech fallback (om ingen audio från API) =====
-let abortSpeak=false;
-async function speakBySentenceBrowser(text){
-  abortSpeak = false;
-  if (!("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
-  const sents = sentences(text);
-  for (const s of sents){
-    if (abortSpeak) break;
-    const u = new SpeechSynthesisUtterance(s);
-    u.lang = "sv-SE";
-    u.rate = 0.95;
-    u.pitch = 1.05;
-    speechSynthesis.speak(u);
-    await new Promise(res=>{
-      const t = setInterval(()=>{
-        if (abortSpeak || !speechSynthesis.speaking){ clearInterval(t); res(); }
-      }, 80);
-    });
-    if (!abortSpeak) await new Promise(r=>setTimeout(r,100));
+  function log(s) {
+    const t = new Date().toLocaleTimeString();
+    logEl.textContent += `[${t}] ${s}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
   }
-}
 
-// ===== Status =====
-(async()=>{
-  try{
-    const r = await fetch(`${API}/status`);
-    const j = await r.json().catch(()=> ({}));
-    if (j?.ok) statusEl.textContent = `ok • v${j.v} • ${j.provider}/${j.model} • TTS:${j.tts?.provider||'none'}`;
-    else statusEl.textContent="offline";
-  }catch{ statusEl.textContent="offline"; }
-})();
+  async function status() {
+    const r = await fetch(`${API}/api/v1/status`);
+    const j = await r.json();
+    log(`Status: ${JSON.stringify(j)}`);
+    return j;
+  }
 
-// ===== Stop =====
-stopBtn.addEventListener("click", ()=>{
-  abortSpeak = true;
-  try{ speechSynthesis?.cancel?.(); }catch{}
-  try{ audioEl.pause(); audioEl.currentTime=0; }catch{}
-});
+  async function run() {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    playBtn.disabled = true;
+    stop();
 
-// ===== Generate =====
-goBtn.addEventListener("click", async ()=>{
-  const prompt = (promptEl.value||"").trim();
-  const level  = Number(levelEl.value||2);
-  const minutes= Number(minutesEl.value||5);
-  if (!prompt){ alert("Skriv en prompt."); return; }
+    try {
+      const body = {
+        prompt: promptEl.value || '',
+        level: Number(levelSel.value || 2),
+        minutes: Number(minSel.value || 5),
+        lang: (langSel.value || 'sv').toLowerCase()
+      };
 
-  goBtn.disabled = true;
-  storyEl.textContent = "Skapar berättelse…";
-  metaEl.textContent = "";
-  stopBtn.disabled = false;
-  abortSpeak = true; speechSynthesis?.cancel?.(); audioEl.pause(); audioEl.style.display="none";
+      log(`POST /episodes/generate (${body.minutes} min, nivå ${body.level}, ${body.lang})`);
+      const r = await fetch(`${API}/api/v1/episodes/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
 
-  try{
-    const r = await fetch(`${API}/episodes/generate`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt, level, minutes, lang:"sv" })
-    });
-    const data = await r.json().catch(()=> ({}));
-    if (!r.ok || !data?.ok) throw new Error(data?.error || `${r.status} ${r.statusText}`);
+      if (!r.ok) {
+        const txt = await r.text().catch(()=>'');
+        throw new Error(`HTTP ${r.status} – ${txt.slice(0,200)}`);
+      }
 
-    const text = tidy(data.text);
-    storyEl.textContent = text;
-    metaEl.textContent  = `nivå ${data.level} • ${data.minutes} min`;
-
-    if (data.audio && data.audio.base64) {
-      const mime = data.audio.mime || "audio/mpeg";
-      audioEl.src = `data:${mime};base64,${data.audio.base64}`;
-      audioEl.style.display = 'block';
-      try { await audioEl.play(); } catch {}
-    } else {
-      await speakBySentenceBrowser(text);
+      const j = await r.json();
+      outText.textContent = j.text || '';
+      if (j?.audio?.base64) {
+        const src = `data:${j.audio.mime};base64,${j.audio.base64}`;
+        lastAudioUrl = src;
+        audio.src = src;
+        playBtn.disabled = false;
+        playBtn.textContent = "Spela upp (klar)";
+      } else {
+        lastAudioUrl = null;
+        audio.removeAttribute('src');
+        playBtn.disabled = true;
+        log('Ingen audio returnerades (TTS av eller fel).');
+      }
+    } catch (e) {
+      alert(`Fel: ${e.message}`);
+      log(`Fel: ${e.message}`);
+    } finally {
+      busy = false;
+      btn.disabled = false;
     }
-  } catch (e) {
-    storyEl.textContent = `Fel: ${e.message||e}`;
-  } finally {
-    goBtn.disabled = false;
   }
-});
+
+  function play() {
+    if (!lastAudioUrl) return;
+    audio.play().catch(e => log(`Audio play error: ${e.message}`));
+  }
+
+  function stop() {
+    try { audio.pause(); } catch {}
+    audio.currentTime = 0;
+  }
+
+  // Bind EN gång
+  if (!btn.dataset.bound) {
+    btn.addEventListener('click', run);
+    btn.dataset.bound = '1';
+  }
+  if (!playBtn.dataset.bound) {
+    playBtn.addEventListener('click', play);
+    playBtn.dataset.bound = '1';
+  }
+  if (!stopBtn.dataset.bound) {
+    stopBtn.addEventListener('click', stop);
+    stopBtn.dataset.bound = '1';
+  }
+
+  // Visa status vid start
+  status().catch(()=>{});
+})();
+</script>
