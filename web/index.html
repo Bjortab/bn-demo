@@ -1,184 +1,70 @@
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-  <meta charset="UTF-8" />
-  <title>BlushNarratives — Core</title>
-  <style>
-    body{background:#111;color:#eee;font-family:system-ui,Segoe UI,Roboto,sans-serif;padding:24px}
-    textarea{width:100%;height:90px;background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:6px;padding:10px}
-    .row{margin:10px 0}
-    select,button{padding:8px 12px;border-radius:6px;border:1px solid #333;background:#1b1b1b;color:#eee}
-    button.primary{background:#e23b3b;border-color:#e23b3b}
-    #story{margin-top:16px;white-space:pre-wrap;background:#191919;border:1px solid #333;border-radius:8px;padding:14px;min-height:60px}
-    #log{width:100%;height:160px;background:#000;color:#0f0;font-family:ui-monospace,monospace;border-radius:6px;border:1px solid #333;padding:8px}
-    #spinner{display:none;width:16px;height:16px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin-left:8px;vertical-align:middle}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .badge{display:inline-block;padding:2px 6px;border:1px solid #444;border-radius:10px;margin-left:6px;font-size:12px;color:#ccc}
-    .ok{color:#6cf}
-  </style>
-</head>
-<body>
-  <h1>BlushNarratives — Core <span id="badge" class="badge">offline</span></h1>
+// Frontend controller — GC v1.4.0
 
-  <div class="row">
-    <textarea id="prompt" placeholder="Skriv din prompt…"></textarea>
-  </div>
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev";  // Ändra om din worker har annan URL
 
-  <div class="row">
-    <label>Nivå:
-      <select id="level">
-        <option value="2">2 – antydande</option>
-        <option value="3" selected>3 – mellan</option>
-        <option value="5">5 – explicit</option>
-      </select>
-    </label>
-    <label style="margin-left:10px">Längd (min):
-      <select id="minutes">
-        <option>3</option><option selected>5</option><option>10</option>
-      </select>
-    </label>
-    <label style="margin-left:10px">Språk:
-      <select id="lang">
-        <option value="sv" selected>Svenska</option>
-        <option value="en">Engelska</option>
-      </select>
-    </label>
-  </div>
+const $ = (id) => document.getElementById(id);
+const log = (m) => { const d = new Date().toLocaleTimeString(); $("log").textContent += `[${d}] ${m}\n`; };
 
-  <div class="row">
-    <button id="btnGen" class="primary">Generera & lyssna</button>
-    <button id="btnStop">Stoppa röst</button>
-    <span id="spinner"></span>
-  </div>
+async function statusPing() {
+  try {
+    const r = await fetch(`${API_BASE}/api/v1/status`);
+    const j = await r.json();
+    log(`Status: ${JSON.stringify(j)}`);
+  } catch (e) {
+    log(`Status FEL: ${e}`);
+  }
+}
 
-  <div id="story"></div>
-  <audio id="audio" controls style="margin-top:10px;width:100%"></audio>
+async function generate() {
+  const prompt = $("prompt").value.trim();
+  const level = parseInt($("level").value,10);
+  const minutes = parseInt($("minutes").value,10);
+  const lang = $("lang").value;
 
-  <h3>Logg</h3>
-  <textarea id="log" readonly></textarea>
+  if (!prompt) { alert("Skriv en prompt."); return; }
 
-  <script>
-    // ======= STÄLL IN DIN WORKER-URL HÄR =======
-    const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
-    // ===========================================
+  $("go").disabled = true;
+  $("busy").innerHTML = `<span class="spinner"></span> genererar...`;
+  $("player").src = ""; $("player").load();
 
-    const qs = s => document.querySelector(s);
-    const promptEl = qs("#prompt");
-    const levelEl = qs("#level");
-    const minutesEl = qs("#minutes");
-    const langEl = qs("#lang");
-    const btnGen = qs("#btnGen");
-    const btnStop = qs("#btnStop");
-    const story = qs("#story");
-    const audio = qs("#audio");
-    const logBox = qs("#log");
-    const spinner = qs("#spinner");
-    const badge = qs("#badge");
-
-    function log(s){
-      const t = new Date().toLocaleTimeString();
-      logBox.value += `[${t}] ${s}\n`;
-      logBox.scrollTop = logBox.scrollHeight;
-    }
-    const spin = on => spinner.style.display = on ? "inline-block" : "none";
-
-    async function api(path, opts={}){
-      const res = await fetch(`${API_BASE}${path}`, {
-        method: "GET",
-        mode: "cors",
-        headers: { "Content-Type":"application/json", "Accept":"application/json" },
-        ...opts
-      });
-      return res;
-    }
-
-    async function checkStatus(){
-      try{
-        const r = await api("/status");
-        const j = await r.json();
-        if (j.ok){
-          badge.textContent = `OK v${j.v} • TTS: ${j.tts?.provider || "none"}`;
-          badge.classList.add("ok");
-        }
-        log(`Status: ${JSON.stringify(j)}`);
-        // snabb Speechify-ping
-        try{
-          const p = await api("/tts/ping");
-          const pj = await p.json();
-          log(`TTS ping: ${JSON.stringify(pj)}`);
-        }catch{}
-      }catch(e){
-        log(`Status FEL: ${e.message}`);
-      }
-    }
-
-    function speakBrowserFallback(text){
-      try{
-        const u = new SpeechSynthesisUtterance(text.slice(0, 700));
-        u.lang = (langEl.value || "sv");
-        speechSynthesis.cancel();
-        speechSynthesis.speak(u);
-        log("Spelar fallback (webbläsarröst) 🔊");
-      }catch(e){
-        log("Fallback misslyckades: " + e.message);
-      }
-    }
-
-    async function generate(){
-      const prompt = (promptEl.value||"").trim();
-      if(!prompt){ alert("Skriv en prompt."); return; }
-
-      const body = {
-        prompt,
-        level: Number(levelEl.value||3),
-        minutes: Number(minutesEl.value||5),
-        lang: (langEl.value||"sv").toLowerCase()
-      };
-
-      try{
-        btnGen.disabled = true; spin(true);
-        audio.pause(); audio.src = ""; story.textContent = "";
-
-        log(`POST /episodes/generate ${JSON.stringify({lvl:body.level,min:body.minutes,lang:body.lang})}`);
-        const r = await api("/episodes/generate", { method:"POST", body: JSON.stringify(body) });
-        const raw = await r.text();
-        if(!r.ok) throw new Error(`HTTP ${r.status} ${raw}`);
-
-        let j = {};
-        try { j = JSON.parse(raw); } catch { throw new Error("JSON parse error"); }
-        if(!j.ok) throw new Error(j.error?.code || "ok=false");
-
-        const txt = j.text || "";
-        story.textContent = txt;
-        log(`Text mottagen (length=${txt.length})`);
-
-        if (j.audio_url){
-          audio.src = j.audio_url;
-          await audio.play().catch(()=>{});
-          log("Ljud klart (url) ✅");
-        } else if (j.audio_b64){
-          audio.src = `data:audio/mpeg;base64,${j.audio_b64}`;
-          await audio.play().catch(()=>{});
-          log("Ljud klart (base64) ✅");
-        } else {
-          log("Ingen audio returnerades (TTS av eller fel). Kör fallback.");
-          speakBrowserFallback(txt);
-        }
-      }catch(e){
-        alert(`Fel: ${e.message}`);
-        log(`FEL: ${e.message}`);
-      }finally{
-        btnGen.disabled = false; spin(false);
-      }
-    }
-
-    btnGen.addEventListener("click", generate);
-    btnStop.addEventListener("click", ()=>{
-      try{ speechSynthesis.cancel(); }catch{}
-      audio.pause();
+  try {
+    log(`POST /episodes/generate (lvl ${level}, ${minutes} min, ${lang})`);
+    const r = await fetch(`${API_BASE}/api/v1/episodes/generate`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ prompt, level, minutes, lang })
     });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`HTTP ${r.status} ${txt}`);
+    }
+    const j = await r.json();
 
-    checkStatus();
-  </script>
-</body>
-</html>
+    // visa text
+    const header = (lang === "sv") ? `(sv) nivå ${level}` : `(en) level ${level}`;
+    $("prompt").value = `${header}\n\n${j.text}`;
+
+    if (j.audio) {
+      // gör knappen grön när ljudet är klart
+      $("go").classList.add("btn-green");
+      $("go").textContent = "Spela upp";
+      const b64 = j.audio;
+      $("player").src = `data:audio/mp3;base64,${b64}`;
+      $("player").load();
+    } else {
+      $("go").classList.remove("btn-green");
+      $("go").textContent = "Generera & lyssna";
+      log(`Ingen audio (tts_failed=${j.tts_failed ? "true" : "false"})`);
+    }
+  } catch (e) {
+    log(`FEL: ${e.message}`);
+    alert("Failed to fetch. Se loggen för detaljer.");
+  } finally {
+    $("go").disabled = false;
+    $("busy").textContent = "";
+  }
+}
+
+$("go").addEventListener("click", generate);
+$("stop").addEventListener("click", () => { const p = $("player"); p.pause(); p.currentTime = 0; });
+statusPing();
