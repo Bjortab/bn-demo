@@ -1,70 +1,59 @@
-// Frontend controller — GC v1.4.0
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BlushNarratives — Core</title>
+  <style>
+    body{background:#0f1115;color:#e9eef5;font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:24px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    input,select,button,textarea{font-size:16px}
+    textarea{width:100%;min-height:90px;background:#141824;color:#e9eef5;border:1px solid #252938;border-radius:8px;padding:12px}
+    button{background:#e5484d;border:0;color:#fff;padding:10px 14px;border-radius:8px;cursor:pointer}
+    button[disabled]{opacity:.6;cursor:not-allowed}
+    .btn-green{background:#2fbf71}
+    .log{font-family:ui-monospace,Consolas,monospace;background:#0b0d12;border:1px solid #1a2030;border-radius:8px;padding:8px;white-space:pre-wrap}
+    audio{width:100%}
+    .spinner{display:inline-block;width:10px;height:10px;border-radius:50%;background:#8aa0b4;box-shadow:16px 0 0 #8aa0b4,32px 0 0 #8aa0b4;animation:sp 1s infinite ease-in-out}
+    @keyframes sp{0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2}}
+    .muted{opacity:.7}
+  </style>
+</head>
+<body>
+  <h1>BlushNarratives — Core</h1>
 
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev";  // Ändra om din worker har annan URL
+  <textarea id="prompt" placeholder="Skriv din prompt..."></textarea>
 
-const $ = (id) => document.getElementById(id);
-const log = (m) => { const d = new Date().toLocaleTimeString(); $("log").textContent += `[${d}] ${m}\n`; };
+  <div class="row" style="margin:8px 0">
+    <label>Nivå:
+      <select id="level">
+        <option value="1">1 – mjuk</option>
+        <option value="2">2 – antydande</option>
+        <option value="3" selected>3 – mellan</option>
+        <option value="5">5 – explicit</option>
+      </select>
+    </label>
+    <label>Längd (min):
+      <select id="minutes">
+        <option>3</option><option selected>5</option><option>7</option><option>10</option>
+      </select>
+    </label>
+    <label>Språk:
+      <select id="lang">
+        <option value="sv" selected>Svenska</option>
+        <option value="en">Engelska</option>
+      </select>
+    </label>
+    <button id="go">Generera & lyssna</button>
+    <button id="stop" class="muted">Stoppa röst</button>
+    <span id="busy" class="muted"></span>
+  </div>
 
-async function statusPing() {
-  try {
-    const r = await fetch(`${API_BASE}/api/v1/status`);
-    const j = await r.json();
-    log(`Status: ${JSON.stringify(j)}`);
-  } catch (e) {
-    log(`Status FEL: ${e}`);
-  }
-}
+  <audio id="player" controls preload="none"></audio>
 
-async function generate() {
-  const prompt = $("prompt").value.trim();
-  const level = parseInt($("level").value,10);
-  const minutes = parseInt($("minutes").value,10);
-  const lang = $("lang").value;
+  <h3>Logg</h3>
+  <div id="log" class="log"></div>
 
-  if (!prompt) { alert("Skriv en prompt."); return; }
-
-  $("go").disabled = true;
-  $("busy").innerHTML = `<span class="spinner"></span> genererar...`;
-  $("player").src = ""; $("player").load();
-
-  try {
-    log(`POST /episodes/generate (lvl ${level}, ${minutes} min, ${lang})`);
-    const r = await fetch(`${API_BASE}/api/v1/episodes/generate`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ prompt, level, minutes, lang })
-    });
-    if (!r.ok) {
-      const txt = await r.text();
-      throw new Error(`HTTP ${r.status} ${txt}`);
-    }
-    const j = await r.json();
-
-    // visa text
-    const header = (lang === "sv") ? `(sv) nivå ${level}` : `(en) level ${level}`;
-    $("prompt").value = `${header}\n\n${j.text}`;
-
-    if (j.audio) {
-      // gör knappen grön när ljudet är klart
-      $("go").classList.add("btn-green");
-      $("go").textContent = "Spela upp";
-      const b64 = j.audio;
-      $("player").src = `data:audio/mp3;base64,${b64}`;
-      $("player").load();
-    } else {
-      $("go").classList.remove("btn-green");
-      $("go").textContent = "Generera & lyssna";
-      log(`Ingen audio (tts_failed=${j.tts_failed ? "true" : "false"})`);
-    }
-  } catch (e) {
-    log(`FEL: ${e.message}`);
-    alert("Failed to fetch. Se loggen för detaljer.");
-  } finally {
-    $("go").disabled = false;
-    $("busy").textContent = "";
-  }
-}
-
-$("go").addEventListener("click", generate);
-$("stop").addEventListener("click", () => { const p = $("player"); p.pause(); p.currentTime = 0; });
-statusPing();
+  <script src="./app.js"></script>
+</body>
+</html>
