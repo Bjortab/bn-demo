@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="sv">
 <head>
   <meta charset="utf-8" />
@@ -6,270 +6,207 @@
   <title>BlushNarratives — Core (GC)</title>
   <style>
     :root{
-      --bg:#0f0f12;--panel:#17171b;--muted:#8b8d93;--text:#e9e9ef;--accent:#ff3355;--ok:#2ecc71;--warn:#ffb84d;--err:#ff5c5c;
-      --btn:#22232a;--btn-hover:#2a2b33;--btn-active:#333543;--input:#111218;--border:#2b2c33;
+      --bg:#0f1115; --panel:#171a21; --text:#e6e9ef; --muted:#9aa4b2;
+      --accent:#d84a8a; --ok:#36c28b; --warn:#f2b01d; --err:#ff4d4d;
+      --btn:#262a33; --btnHover:#313543;
     }
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
-      display:flex;justify-content:center;align-items:flex-start;
-    }
-    .wrap{width:min(980px,100%);padding:28px 18px}
-    h1{margin:0 0 12px;font-size:22px}
-    .status{font-size:12px;color:var(--muted);margin-bottom:16px}
-    .card{
-      background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 16px 10px;
-      box-shadow:0 6px 18px rgba(0,0,0,.25)
-    }
-    label.small{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
-    textarea{
-      width:100%;min-height:110px;background:var(--input);color:var(--text);border:1px solid var(--border);
-      border-radius:10px;padding:12px;resize:vertical;outline:none
-    }
-    .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
-    .grid .field{background:var(--input);border:1px solid var(--border);border-radius:10px;padding:10px}
-    select,input[type="number"]{
-      width:100%;background:transparent;border:0;color:var(--text);font-weight:600;outline:none
-    }
-    .row{display:flex;gap:10px;align-items:center;margin:8px 0 2px}
-    .btn{
-      appearance:none;border:1px solid var(--border);background:var(--btn);color:var(--text);
-      padding:10px 14px;border-radius:10px;cursor:pointer;transition:.15s;user-select:none
-    }
-    .btn:hover{background:var(--btn-hover)}
-    .btn:active{background:var(--btn-active)}
-    .btn.main{background:var(--accent);border-color:transparent;font-weight:700}
-    .btn[disabled]{opacity:.5;cursor:not-allowed}
-    .btn.play.ready{background:var(--ok);border-color:#1f9d5a;color:#08140e}
-    .log{white-space:pre-wrap;background:#0b0c10;border:1px solid var(--border);border-radius:10px;color:#cfd3dc;
-      padding:10px;min-height:36px;max-height:170px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
-    .story{
-      margin-top:12px;background:#0d0e13;border:1px solid var(--border);border-radius:12px;padding:12px;min-height:80px
-    }
-    .story p{margin:.45em 0}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto}
+    .wrap{max-width:980px;margin:32px auto;padding:0 16px}
+    .card{background:var(--panel);border:1px solid #222631;border-radius:12px;padding:16px 16px 8px 16px;box-shadow:0 10px 30px #0004}
+    h1{font-size:20px;margin:0 0 12px 0;font-weight:700}
+    label{display:block;margin:14px 0 6px 0;color:var(--muted);font-size:13px}
+    textarea,input,select{width:100%;background:#0b0e13;border:1px solid #2a2f3a;color:var(--text);border-radius:10px;padding:12px 12px}
+    textarea{min-height:110px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
+    .row > div{display:flex;flex-direction:column}
+    .btns{display:flex;gap:10px;align-items:center;margin:12px 0}
+    button{background:var(--btn);color:var(--text);border:1px solid #2a2f3a;border-radius:10px;padding:10px 14px;cursor:pointer}
+    button:hover{background:var(--btnHover)} button:disabled{opacity:.6;cursor:not-allowed}
+    .primary{background:var(--accent);border-color:#0000;color:#fff}
+    .ok{background:var(--ok);color:#04110b;border-color:#0000}
+    .muted{color:var(--muted);font-size:13px}
+    .story{white-space:pre-wrap;word-break:break-word;background:#0b0e13;border:1px solid #2a2f3a;border-radius:10px;padding:12px;margin-top:8px;min-height:140px}
+    .log{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+         white-space:pre-wrap;color:#a7b3c6;background:#0b0e13;border:1px dashed #2a2f3a;border-radius:10px;padding:10px;margin-top:10px;max-height:160px;overflow:auto}
+    /* spinner */
+    .spinner{display:inline-flex;gap:6px;align-items:center}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.4;animation:b 1.2s linear infinite}
+    .dot:nth-child(2){animation-delay:.15s} .dot:nth-child(3){animation-delay:.3s}
+    @keyframes b{0%{opacity:.2;transform:translateY(0)}50%{opacity:1;transform:translateY(-4px)}100%{opacity:.2;transform:translateY(0)}}
+    .badge{display:inline-block;padding:2px 8px;border:1px solid #2a2f3a;border-radius:999px;font-size:12px;margin-left:6px}
+    .inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     audio{width:100%;margin-top:8px}
-    .api{font-size:11px;color:var(--muted);margin-top:6px}
-    .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:#11121a;font-size:12px;color:var(--muted)}
-    .chip.ok{color:#a6f4c5;border-color:#1f9d5a;background:#0c1a13}
-    .chip.err{color:#ffd0d0;border-color:#7a1d1d;background:#180d0d}
-    .right{margin-left:auto}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>BlushNarratives — Core</h1>
-    <div class="status">
-      <span id="statusBadge" class="chip">Init…</span>
-      <span id="ttsBadge" class="chip right">TTS ok?</span>
-    </div>
-
     <div class="card">
-      <label class="small">Din prompt</label>
-      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig…"></textarea>
+      <div class="inline">
+        <h1>BlushNarratives — Core</h1>
+        <span id="status" class="badge">OK…</span>
+        <span id="ttsBadge" class="badge">TTS: —</span>
+      </div>
 
-      <div class="grid">
-        <div class="field">
-          <label class="small">Nivå (1–5)</label>
+      <label for="prompt">Din prompt</label>
+      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig när vagnen rullade ut från perrongen."></textarea>
+
+      <div class="row">
+        <div>
+          <label for="level">Nivå (1–5)</label>
           <select id="level">
-            <option value="1">1 – romantik</option>
-            <option value="2" selected>2 – antydande</option>
-            <option value="3">3 – sensuellt</option>
-            <option value="4">4 – explicit</option>
-            <option value="5">5 – explicit (hard)</option>
+            <option value="2">2 — antydande</option>
+            <option value="3">3 — sensuell</option>
+            <option value="4">4 — explicit</option>
+            <option value="5">5 — hardcore</option>
+            <option value="1">1 — mjukt</option>
           </select>
         </div>
-        <div class="field">
-          <label class="small">Längd (minuter)</label>
-          <input id="minutes" type="number" min="1" max="20" step="1" value="5"/>
+        <div>
+          <label for="minutes">Längd (minuter)</label>
+          <input id="minutes" type="number" min="3" max="15" value="5"/>
         </div>
-        <div class="field">
-          <label class="small">Språk</label>
+        <div>
+          <label for="lang">Språk</label>
           <select id="lang">
             <option value="sv" selected>Svenska</option>
             <option value="en">Engelska</option>
           </select>
         </div>
-        <div class="field">
-          <label class="small">Worker</label>
-          <input id="apiBase" type="text" value="https://bn-worker.bjorta-bb.workers.dev" />
+        <div>
+          <label for="api">Worker</label>
+          <input id="api" type="url" placeholder="https://bn-worker.bjorta-bb.workers.dev" />
         </div>
       </div>
 
-      <div class="row">
-        <button id="goBtn" class="btn main">Generera & lyssna</button>
-        <button id="stopBtn" class="btn">Stoppa röst</button>
-        <button id="playBtn" class="btn play" disabled>Spela upp</button>
-        <span id="hint" style="color:var(--muted);font-size:12px;margin-left:auto">Knappen blir grön när rösten är klar</span>
+      <div class="btns">
+        <button id="gen" class="primary">Generera & lyssna</button>
+        <button id="stop">Stoppa röst</button>
+        <button id="play" disabled>Spela upp</button>
+        <div id="spin" class="spinner" style="display:none"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        <span id="hint" class="muted"></span>
       </div>
 
-      <audio id="player" controls preload="none"></audio>
+      <audio id="audio" controls preload="none"></audio>
 
-      <div class="story" id="story"></div>
-      <div class="api">API: <span id="apiLabel"></span></div>
-    </div>
+      <div id="story" class="story"></div>
 
-    <div style="height:10px"></div>
-    <div class="card">
-      <label class="small">Logg</label>
+      <div class="muted" style="margin-top:8px">API: <span id="apiEcho">—</span></div>
       <div id="log" class="log"></div>
     </div>
   </div>
 
   <script>
-    // ---- Helpers ------------------------------------------------------------
-    const $ = (sel)=>document.querySelector(sel);
-    const log = (msg, type='info')=>{
-      const box = $('#log');
-      const t = new Date().toLocaleTimeString();
-      box.textContent += `[${t}] ${msg}\n`;
-      box.scrollTop = box.scrollHeight;
+    // ==== KONFIG ====
+    const API_BASE = "https://bn-worker.bjorta-bb.workers.dev"; // <-- BYT till din worker om annan
+    // ===============
+
+    const el = {
+      prompt:  document.getElementById('prompt'),
+      level:   document.getElementById('level'),
+      minutes: document.getElementById('minutes'),
+      lang:    document.getElementById('lang'),
+      api:     document.getElementById('api'),
+      apiEcho: document.getElementById('apiEcho'),
+      gen:     document.getElementById('gen'),
+      stop:    document.getElementById('stop'),
+      play:    document.getElementById('play'),
+      spin:    document.getElementById('spin'),
+      hint:    document.getElementById('hint'),
+      status:  document.getElementById('status'),
+      ttsBadge:document.getElementById('ttsBadge'),
+      story:   document.getElementById('story'),
+      audio:   document.getElementById('audio'),
+      log:     document.getElementById('log'),
     };
-    const paragraphs = (text)=>{
-      return text
-        .replace(/\r\n/g, '\n')
-        .split(/\n{2,}/)
-        .map(s=>s.trim())
-        .filter(Boolean)
-        .map(p=>`<p>${p}</p>`).join('');
-    };
-    const setBadge = (el, ok, labelOk, labelFail)=>{
-      el.classList.remove('ok','err');
-      el.textContent = ok ? labelOk : labelFail;
-      el.classList.add(ok ? 'ok' : 'err');
-    };
 
-    // ---- UI refs ------------------------------------------------------------
-    const promptEl  = $('#prompt');
-    const levelEl   = $('#level');
-    const minutesEl = $('#minutes');
-    const langEl    = $('#lang');
-    const apiBaseEl = $('#apiBase');
+    // init
+    el.api.value = API_BASE;
+    el.apiEcho.textContent = API_BASE;
 
-    const goBtn   = $('#goBtn');
-    const stopBtn = $('#stopBtn');
-    const playBtn = $('#playBtn');
+    function log(o){ 
+      const line = typeof o === 'string' ? o : JSON.stringify(o);
+      el.log.textContent = `[${new Date().toLocaleTimeString()}] ${line}\n` + el.log.textContent;
+    }
+    function spin(on){ el.spin.style.display = on ? 'inline-flex':'none'; }
+    function playReady(ready){
+      el.play.disabled = !ready;
+      el.play.classList.toggle('ok', ready);
+      el.play.textContent = ready ? "Spela upp (klar)" : "Spela upp";
+    }
 
-    const player  = $('#player');
-    const storyEl = $('#story');
-
-    const statusBadge = $('#statusBadge');
-    const ttsBadge    = $('#ttsBadge');
-    const apiLabel    = $('#apiLabel');
-
-    let audioReady = false;
-    let lastAudioUrl = null;
-
-    // ---- Status probe -------------------------------------------------------
-    async function probe(){
-      const API_BASE = apiBaseEl.value.trim().replace(/\/+$/,'');
-      apiLabel.textContent = `${API_BASE}/api/v1`;
+    async function ping(){
       try{
-        const r = await fetch(`${API_BASE}/api/v1/status`, { method:'GET' });
+        const base = (el.api.value || API_BASE).replace(/\/$/,'');
+        el.apiEcho.textContent = base;
+        const r = await fetch(base + "/api/v1/status", {cache:"no-store"});
         const j = await r.json();
-        const ok = j && j.ok === true;
-        setBadge(statusBadge, ok, `OK: worker ${j?.v ?? ''}`, 'Worker: offline');
-        const ttsOk = j?.tts && (j.tts.provider || j.tts.speechify);
-        setBadge(ttsBadge, !!ttsOk, `TTS: ${j?.tts?.provider ?? 'ok'}`, 'TTS: av');
-        log(`Status: ${JSON.stringify(j)}`);
-        return ok;
-      }catch(err){
-        setBadge(statusBadge, false, '', 'Worker: offline');
-        setBadge(ttsBadge, false, '', 'TTS: av');
-        log(`Status fel: ${String(err)}`, 'err');
-        return false;
-      }
-    }
-
-    // ---- Generate flow ------------------------------------------------------
-    async function generate(){
-      const API_BASE = apiBaseEl.value.trim().replace(/\/+$/,'');
-      const prompt  = promptEl.value.trim();
-      const level   = Number(levelEl.value);
-      const minutes = Number(minutesEl.value);
-      const lang    = langEl.value;
-
-      audioReady = false;
-      playBtn.disabled = true;
-      playBtn.classList.remove('ready');
-
-      if(!prompt){ alert('Skriv en prompt först.'); promptEl.focus(); return; }
-
-      goBtn.disabled = true;
-      goBtn.textContent = 'Genererar…';
-      storyEl.innerHTML = '';
-      player.pause();
-      if(lastAudioUrl){ URL.revokeObjectURL(lastAudioUrl); lastAudioUrl = null; }
-      player.removeAttribute('src');
-      player.load();
-
-      log(`POST /episodes/generate (${minutes} min, nivå ${level}, ${lang})`);
-
-      try{
-        const res = await fetch(`${API_BASE}/api/v1/episodes/generate`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ prompt, level, minutes, lang })
-        });
-
-        const data = await res.json().catch(()=> ({}));
-        if(!res.ok || !data.ok){
-          throw new Error(data?.error || `HTTP ${res.status}`);
-        }
-
-        // Text
-        const text = data.text || '';
-        storyEl.innerHTML = paragraphs(text || '(ingen text)');
-        log(`Berättelsetext: ${text.slice(0,140)}${text.length>140?'…':''}`);
-
-        // Ljud
-        if(data.audio){
-          const b64 = data.audio.replace(/^data:audio\/\w+;base64,/,'');
-          const byteChars = atob(b64);
-          const byteNums = new Uint8Array(byteChars.length);
-          for(let i=0;i<byteChars.length;i++) byteNums[i] = byteChars.charCodeAt(i);
-          const blob = new Blob([byteNums], { type:'audio/mpeg' });
-          lastAudioUrl = URL.createObjectURL(blob);
-          player.src = lastAudioUrl;
-          player.load();
-
-          audioReady = true;
-          playBtn.disabled = false;
-          playBtn.classList.add('ready');
-          log(`Ljud klart (${(blob.size/1024).toFixed(1)} KB). Klicka "Spela upp".`);
+        if(j.ok){
+          el.status.textContent = `OK v${j.v}`;
+          el.ttsBadge.textContent = `TTS: ${j.tts?.provider || '—'}`;
         }else{
-          log('Ingen audio returnerades (TTS av eller fel).', 'warn');
+          el.status.textContent = "Status: fel";
         }
-
-      }catch(err){
-        log(`Fel vid generering: ${String(err.message || err)}`, 'err');
-        alert(`Fel: ${String(err.message || err)}`);
-      }finally{
-        goBtn.disabled = false;
-        goBtn.textContent = 'Generera & lyssna';
+        log({status:j});
+      }catch(e){
+        el.status.textContent = "Status: nås ej";
+        log("status fail: " + e.message);
       }
     }
+    ping();
 
-    // ---- Events -------------------------------------------------------------
-    goBtn.addEventListener('click', generate);
-    stopBtn.addEventListener('click', ()=>{
-      player.pause();
-      player.currentTime = 0;
-    });
-    playBtn.addEventListener('click', ()=>{
-      if(!audioReady){ return; }
-      player.play().catch(e=>{
-        log(`Kunde inte spela upp: ${String(e)}`, 'err');
-      });
-    });
-    apiBaseEl.addEventListener('change', probe);
+    el.stop.onclick = ()=>{ el.audio.pause(); el.audio.currentTime = 0; };
+    el.play.onclick = ()=> el.audio.play();
 
-    // ---- Init ---------------------------------------------------------------
-    (async()=>{
-      // Förifyll ett mjukt exempel
-      promptEl.value = 'Vi möttes på tåget, hennes blick fastnade på mig när vagnen rullade ut från perrongen.';
-      await probe();
-    })();
+    el.gen.onclick = async ()=>{
+      playReady(false);
+      el.audio.src = "";
+      el.story.textContent = "";
+      el.hint.textContent = "Genererar berättelse…";
+      spin(true);
+      el.gen.disabled = true;
+
+      const base = (el.api.value || API_BASE).replace(/\/$/,'');
+      try{
+        const body = {
+          prompt: el.prompt.value.trim(),
+          minutes: Number(el.minutes.value)||5,
+          level: Number(el.level.value)||3,
+          lang: el.lang.value || "sv"
+        };
+        log({POST:"/api/v1/story", body});
+        const r = await fetch(base + "/api/v1/story", {
+          method:"POST",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify(body)
+        });
+        const j = await r.json();
+        if(!r.ok || !j.ok){
+          const msg = j?.error?.detail || ("HTTP " + r.status);
+          throw new Error(msg);
+        }
+
+        el.story.textContent = j.story || "";
+        log("Berättelse klar (" + (j.story?.split(/\s+/).length||0) + " ord)");
+
+        if(j.audio){
+          el.hint.textContent = "Renderar ljud…";
+          // sätt direkt – data: url
+          el.audio.src = j.audio;
+          el.audio.oncanplaythrough = ()=>{ playReady(true); el.hint.textContent = "Ljud klart."; };
+          // safety fallback
+          setTimeout(()=>playReady(true), 1200);
+        }else{
+          el.hint.textContent = "Ingen audio returnerades (TTS av eller fel).";
+          log("Ingen audio (TTS av/fel)");
+        }
+      }catch(e){
+        log("Fel: " + e.message);
+        alert("Fel: " + e.message);
+      }finally{
+        spin(false);
+        el.gen.disabled = false;
+      }
+    };
   </script>
 </body>
 </html>
