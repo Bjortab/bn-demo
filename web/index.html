@@ -4,155 +4,150 @@
   <meta charset="UTF-8" />
   <title>BlushNarratives — Core</title>
   <style>
-    body { background:#111; color:#eee; font-family:sans-serif; padding:20px; }
-    textarea { width:100%; height:80px; }
-    select,button { margin:5px; }
-    #story { white-space:pre-wrap; margin-top:20px; background:#222; padding:10px; }
-    #log { width:100%; height:150px; background:#000; color:#0f0; font-family:monospace; }
-    #spinner{
-      width:14px; height:14px;
-      border:2px solid #888; border-top-color:transparent;
-      border-radius:50%; display:none;
-      animation: spin 0.8s linear infinite; margin-left:8px;
-    }
-    @keyframes spin { to { transform:rotate(360deg); } }
+    body{background:#111;color:#eee;font-family:system-ui,Segoe UI,Roboto,sans-serif;padding:24px}
+    textarea{width:100%;height:90px;background:#1b1b1b;color:#eee;border:1px solid #333;border-radius:6px;padding:10px}
+    .row{margin:10px 0}
+    select,button{padding:8px 12px;border-radius:6px;border:1px solid #333;background:#1b1b1b;color:#eee}
+    button.primary{background:#e23b3b;border-color:#e23b3b}
+    #story{margin-top:16px;white-space:pre-wrap;background:#191919;border:1px solid #333;border-radius:8px;padding:14px}
+    #log{width:100%;height:160px;background:#000;color:#0f0;font-family:ui-monospace,monospace;border-radius:6px;border:1px solid #333;padding:8px}
+    #spinner{display:none;width:16px;height:16px;border:2px solid #888;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;margin-left:8px;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
   <h1>BlushNarratives — Core</h1>
 
-  <textarea id="prompt" placeholder="Skriv din prompt här..."></textarea><br/>
-  <label>Nivå:
-    <select id="level">
-      <option value="2">2 – antydande</option>
-      <option value="3" selected>3 – mellan</option>
-      <option value="5">5 – explicit</option>
-    </select>
-  </label>
-  <label>Längd:
-    <select id="minutes">
-      <option value="3">3</option>
-      <option value="5" selected>5</option>
-      <option value="10">10</option>
-    </select>
-  </label>
-  <label>Språk:
-    <select id="lang">
-      <option value="sv" selected>Svenska</option>
-      <option value="en">Engelska</option>
-    </select>
-  </label><br/>
+  <div class="row">
+    <textarea id="prompt" placeholder="Skriv din prompt…"></textarea>
+  </div>
 
-  <button id="btn-generate">Generera & lyssna</button>
-  <button id="btn-stop">Stoppa röst</button>
-  <div id="spinner"></div>
+  <div class="row">
+    <label>Nivå:
+      <select id="level">
+        <option value="2">2 – antydande</option>
+        <option value="3" selected>3 – mellan</option>
+        <option value="5">5 – explicit</option>
+      </select>
+    </label>
+    <label style="margin-left:10px">Längd (min):
+      <select id="minutes">
+        <option>3</option><option selected>5</option><option>10</option>
+      </select>
+    </label>
+    <label style="margin-left:10px">Språk:
+      <select id="lang">
+        <option value="sv" selected>Svenska</option>
+        <option value="en">Engelska</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="row">
+    <button id="btnGen" class="primary">Generera & lyssna</button>
+    <button id="btnStop">Stoppa röst</button>
+    <span id="spinner"></span>
+  </div>
 
   <div id="story"></div>
-  <audio id="audio" controls></audio>
+  <audio id="audio" controls style="margin-top:10px;width:100%"></audio>
 
   <h3>Logg</h3>
   <textarea id="log" readonly></textarea>
 
   <script>
-  (() => {
+    // ----- STÄLL IN DIN WORKER-URL HÄR -----
     const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 
-    const btn = document.querySelector("#btn-generate");
-    const stopBtn = document.querySelector("#btn-stop");
-    const textarea = document.querySelector("#prompt");
-    const levelSel = document.querySelector("#level");
-    const minutesSel = document.querySelector("#minutes");
-    const langSel = document.querySelector("#lang");
-    const logBox = document.querySelector("#log");
-    const audio = document.querySelector("#audio");
-    const spinner = document.querySelector("#spinner");
+    const qs = sel => document.querySelector(sel);
+    const promptEl = qs("#prompt");
+    const levelEl = qs("#level");
+    const minutesEl = qs("#minutes");
+    const langEl = qs("#lang");
+    const btnGen = qs("#btnGen");
+    const btnStop = qs("#btnStop");
+    const story = qs("#story");
+    const audio = qs("#audio");
+    const logBox = qs("#log");
+    const spinner = qs("#spinner");
 
-    function log(line) {
+    function log(s){
       const t = new Date().toLocaleTimeString();
-      logBox.value += `[${t}] ${line}\n`;
+      logBox.value += `[${t}] ${s}\n`;
       logBox.scrollTop = logBox.scrollHeight;
     }
+    function spin(on){ spinner.style.display = on ? "inline-block" : "none"; }
 
-    function showSpinner(on) {
-      spinner.style.display = on ? "inline-block" : "none";
-    }
-
-    async function safeFetch(url, opts) {
-      const options = {
+    async function api(path, opts={}){
+      const res = await fetch(`${API_BASE}${path}`, {
         method: "GET",
         mode: "cors",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type":"application/json" },
         ...opts
-      };
-      return await fetch(url, options);
+      });
+      return res;
     }
 
-    async function checkStatus() {
-      try {
-        const r = await safeFetch(`${API_BASE}/status`);
+    async function checkStatus(){
+      try{
+        const r = await api("/status");
         const j = await r.json();
         log(`Status: ${JSON.stringify(j)}`);
-      } catch (e) {
-        log(`Status FEL: ${e.message}`);
-      }
+      }catch(e){ log(`Status FEL: ${e.message}`); }
     }
 
-    async function generate() {
-      const prompt = (textarea.value || "").trim();
-      const level = Number(levelSel.value || 3);
-      const minutes = Number(minutesSel.value || 5);
-      const lang = (langSel.value || "sv").toLowerCase();
+    async function generate(){
+      const prompt = (promptEl.value||"").trim();
+      if(!prompt){ alert("Skriv en prompt."); return; }
 
-      if (!prompt) {
-        alert("Skriv en prompt först.");
-        return;
-      }
+      const body = {
+        prompt,
+        level: Number(levelEl.value||3),
+        minutes: Number(minutesEl.value||5),
+        lang: (langEl.value||"sv").toLowerCase()
+      };
 
-      showSpinner(true);
-      btn.disabled = true;
-      audio.pause();
-      audio.src = "";
+      try{
+        btnGen.disabled = true;
+        spin(true);
+        audio.pause(); audio.src = "";
+        story.textContent = "";
 
-      try {
-        const body = { prompt, level, minutes, lang };
-        log(`POST /episodes/generate (${minutes} min, nivå ${level}, ${lang})`);
-
-        const r = await safeFetch(`${API_BASE}/episodes/generate`, {
-          method: "POST",
-          body: JSON.stringify(body)
-        });
-
-        if (!r.ok) {
-          const text = await r.text();
-          throw new Error(`HTTP ${r.status} – ${text}`);
+        log(`POST /episodes/generate ${JSON.stringify({lvl:body.level,min:body.minutes,lang:body.lang})}`);
+        const r = await api("/episodes/generate", { method:"POST", body: JSON.stringify(body) });
+        if(!r.ok){
+          const t = await r.text();
+          throw new Error(`HTTP ${r.status} ${t}`);
         }
+        const j = await r.json();
+        if(!j.ok) throw new Error(j.error?.code || "ok=false");
 
-        const data = await r.json();
-        if (!data.ok) throw new Error(data.error || "Ok=false");
+        story.textContent = j.text || "";
 
-        document.querySelector("#story").textContent = data.text || "";
-
-        if (data.audio) {
-          audio.src = data.audio;
+        if (j.audio_url){
+          audio.src = j.audio_url;
           await audio.play().catch(()=>{});
-          log("Ljud klart ✅");
+          log("Ljud klart (url) ✅");
+        } else if (j.audio_b64){
+          audio.src = `data:audio/mpeg;base64,${j.audio_b64}`;
+          await audio.play().catch(()=>{});
+          log("Ljud klart (base64) ✅");
         } else {
           log("Ingen audio returnerades (TTS av eller fel).");
         }
-      } catch (e) {
+      }catch(e){
         alert(`Fel: ${e.message}`);
         log(`FEL: ${e.message}`);
-      } finally {
-        showSpinner(false);
-        btn.disabled = false;
+      }finally{
+        btnGen.disabled = false;
+        spin(false);
       }
     }
 
-    btn?.addEventListener("click", generate);
-    stopBtn?.addEventListener("click", () => audio.pause());
+    btnGen.addEventListener("click", generate);
+    btnStop.addEventListener("click", ()=> audio.pause());
 
     checkStatus();
-  })();
   </script>
 </body>
 </html>
