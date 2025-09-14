@@ -1,212 +1,158 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BlushNarratives — Core (GC)</title>
+  <meta charset="UTF-8" />
+  <title>BlushNarratives — Core</title>
   <style>
-    :root{
-      --bg:#0f1115; --panel:#171a21; --text:#e6e9ef; --muted:#9aa4b2;
-      --accent:#d84a8a; --ok:#36c28b; --warn:#f2b01d; --err:#ff4d4d;
-      --btn:#262a33; --btnHover:#313543;
+    body { background:#111; color:#eee; font-family:sans-serif; padding:20px; }
+    textarea { width:100%; height:80px; }
+    select,button { margin:5px; }
+    #story { white-space:pre-wrap; margin-top:20px; background:#222; padding:10px; }
+    #log { width:100%; height:150px; background:#000; color:#0f0; font-family:monospace; }
+    #spinner{
+      width:14px; height:14px;
+      border:2px solid #888; border-top-color:transparent;
+      border-radius:50%; display:none;
+      animation: spin 0.8s linear infinite; margin-left:8px;
     }
-    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto}
-    .wrap{max-width:980px;margin:32px auto;padding:0 16px}
-    .card{background:var(--panel);border:1px solid #222631;border-radius:12px;padding:16px 16px 8px 16px;box-shadow:0 10px 30px #0004}
-    h1{font-size:20px;margin:0 0 12px 0;font-weight:700}
-    label{display:block;margin:14px 0 6px 0;color:var(--muted);font-size:13px}
-    textarea,input,select{width:100%;background:#0b0e13;border:1px solid #2a2f3a;color:var(--text);border-radius:10px;padding:12px 12px}
-    textarea{min-height:110px;resize:vertical}
-    .row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px}
-    .row > div{display:flex;flex-direction:column}
-    .btns{display:flex;gap:10px;align-items:center;margin:12px 0}
-    button{background:var(--btn);color:var(--text);border:1px solid #2a2f3a;border-radius:10px;padding:10px 14px;cursor:pointer}
-    button:hover{background:var(--btnHover)} button:disabled{opacity:.6;cursor:not-allowed}
-    .primary{background:var(--accent);border-color:#0000;color:#fff}
-    .ok{background:var(--ok);color:#04110b;border-color:#0000}
-    .muted{color:var(--muted);font-size:13px}
-    .story{white-space:pre-wrap;word-break:break-word;background:#0b0e13;border:1px solid #2a2f3a;border-radius:10px;padding:12px;margin-top:8px;min-height:140px}
-    .log{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-         white-space:pre-wrap;color:#a7b3c6;background:#0b0e13;border:1px dashed #2a2f3a;border-radius:10px;padding:10px;margin-top:10px;max-height:160px;overflow:auto}
-    /* spinner */
-    .spinner{display:inline-flex;gap:6px;align-items:center}
-    .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);opacity:.4;animation:b 1.2s linear infinite}
-    .dot:nth-child(2){animation-delay:.15s} .dot:nth-child(3){animation-delay:.3s}
-    @keyframes b{0%{opacity:.2;transform:translateY(0)}50%{opacity:1;transform:translateY(-4px)}100%{opacity:.2;transform:translateY(0)}}
-    .badge{display:inline-block;padding:2px 8px;border:1px solid #2a2f3a;border-radius:999px;font-size:12px;margin-left:6px}
-    .inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    audio{width:100%;margin-top:8px}
+    @keyframes spin { to { transform:rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <div class="inline">
-        <h1>BlushNarratives — Core</h1>
-        <span id="status" class="badge">OK…</span>
-        <span id="ttsBadge" class="badge">TTS: —</span>
-      </div>
+  <h1>BlushNarratives — Core</h1>
 
-      <label for="prompt">Din prompt</label>
-      <textarea id="prompt" placeholder="Ex: Vi möttes på tåget, hennes blick fastnade på mig när vagnen rullade ut från perrongen."></textarea>
+  <textarea id="prompt" placeholder="Skriv din prompt här..."></textarea><br/>
+  <label>Nivå:
+    <select id="level">
+      <option value="2">2 – antydande</option>
+      <option value="3" selected>3 – mellan</option>
+      <option value="5">5 – explicit</option>
+    </select>
+  </label>
+  <label>Längd:
+    <select id="minutes">
+      <option value="3">3</option>
+      <option value="5" selected>5</option>
+      <option value="10">10</option>
+    </select>
+  </label>
+  <label>Språk:
+    <select id="lang">
+      <option value="sv" selected>Svenska</option>
+      <option value="en">Engelska</option>
+    </select>
+  </label><br/>
 
-      <div class="row">
-        <div>
-          <label for="level">Nivå (1–5)</label>
-          <select id="level">
-            <option value="2">2 — antydande</option>
-            <option value="3">3 — sensuell</option>
-            <option value="4">4 — explicit</option>
-            <option value="5">5 — hardcore</option>
-            <option value="1">1 — mjukt</option>
-          </select>
-        </div>
-        <div>
-          <label for="minutes">Längd (minuter)</label>
-          <input id="minutes" type="number" min="3" max="15" value="5"/>
-        </div>
-        <div>
-          <label for="lang">Språk</label>
-          <select id="lang">
-            <option value="sv" selected>Svenska</option>
-            <option value="en">Engelska</option>
-          </select>
-        </div>
-        <div>
-          <label for="api">Worker</label>
-          <input id="api" type="url" placeholder="https://bn-worker.bjorta-bb.workers.dev" />
-        </div>
-      </div>
+  <button id="btn-generate">Generera & lyssna</button>
+  <button id="btn-stop">Stoppa röst</button>
+  <div id="spinner"></div>
 
-      <div class="btns">
-        <button id="gen" class="primary">Generera & lyssna</button>
-        <button id="stop">Stoppa röst</button>
-        <button id="play" disabled>Spela upp</button>
-        <div id="spin" class="spinner" style="display:none"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <span id="hint" class="muted"></span>
-      </div>
+  <div id="story"></div>
+  <audio id="audio" controls></audio>
 
-      <audio id="audio" controls preload="none"></audio>
-
-      <div id="story" class="story"></div>
-
-      <div class="muted" style="margin-top:8px">API: <span id="apiEcho">—</span></div>
-      <div id="log" class="log"></div>
-    </div>
-  </div>
+  <h3>Logg</h3>
+  <textarea id="log" readonly></textarea>
 
   <script>
-    // ==== KONFIG ====
-    const API_BASE = "https://bn-worker.bjorta-bb.workers.dev"; // <-- BYT till din worker om annan
-    // ===============
+  (() => {
+    const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";
 
-    const el = {
-      prompt:  document.getElementById('prompt'),
-      level:   document.getElementById('level'),
-      minutes: document.getElementById('minutes'),
-      lang:    document.getElementById('lang'),
-      api:     document.getElementById('api'),
-      apiEcho: document.getElementById('apiEcho'),
-      gen:     document.getElementById('gen'),
-      stop:    document.getElementById('stop'),
-      play:    document.getElementById('play'),
-      spin:    document.getElementById('spin'),
-      hint:    document.getElementById('hint'),
-      status:  document.getElementById('status'),
-      ttsBadge:document.getElementById('ttsBadge'),
-      story:   document.getElementById('story'),
-      audio:   document.getElementById('audio'),
-      log:     document.getElementById('log'),
-    };
+    const btn = document.querySelector("#btn-generate");
+    const stopBtn = document.querySelector("#btn-stop");
+    const textarea = document.querySelector("#prompt");
+    const levelSel = document.querySelector("#level");
+    const minutesSel = document.querySelector("#minutes");
+    const langSel = document.querySelector("#lang");
+    const logBox = document.querySelector("#log");
+    const audio = document.querySelector("#audio");
+    const spinner = document.querySelector("#spinner");
 
-    // init
-    el.api.value = API_BASE;
-    el.apiEcho.textContent = API_BASE;
-
-    function log(o){ 
-      const line = typeof o === 'string' ? o : JSON.stringify(o);
-      el.log.textContent = `[${new Date().toLocaleTimeString()}] ${line}\n` + el.log.textContent;
-    }
-    function spin(on){ el.spin.style.display = on ? 'inline-flex':'none'; }
-    function playReady(ready){
-      el.play.disabled = !ready;
-      el.play.classList.toggle('ok', ready);
-      el.play.textContent = ready ? "Spela upp (klar)" : "Spela upp";
+    function log(line) {
+      const t = new Date().toLocaleTimeString();
+      logBox.value += `[${t}] ${line}\n`;
+      logBox.scrollTop = logBox.scrollHeight;
     }
 
-    async function ping(){
-      try{
-        const base = (el.api.value || API_BASE).replace(/\/$/,'');
-        el.apiEcho.textContent = base;
-        const r = await fetch(base + "/api/v1/status", {cache:"no-store"});
+    function showSpinner(on) {
+      spinner.style.display = on ? "inline-block" : "none";
+    }
+
+    async function safeFetch(url, opts) {
+      const options = {
+        method: "GET",
+        mode: "cors",
+        headers: { "Content-Type": "application/json" },
+        ...opts
+      };
+      return await fetch(url, options);
+    }
+
+    async function checkStatus() {
+      try {
+        const r = await safeFetch(`${API_BASE}/status`);
         const j = await r.json();
-        if(j.ok){
-          el.status.textContent = `OK v${j.v}`;
-          el.ttsBadge.textContent = `TTS: ${j.tts?.provider || '—'}`;
-        }else{
-          el.status.textContent = "Status: fel";
-        }
-        log({status:j});
-      }catch(e){
-        el.status.textContent = "Status: nås ej";
-        log("status fail: " + e.message);
+        log(`Status: ${JSON.stringify(j)}`);
+      } catch (e) {
+        log(`Status FEL: ${e.message}`);
       }
     }
-    ping();
 
-    el.stop.onclick = ()=>{ el.audio.pause(); el.audio.currentTime = 0; };
-    el.play.onclick = ()=> el.audio.play();
+    async function generate() {
+      const prompt = (textarea.value || "").trim();
+      const level = Number(levelSel.value || 3);
+      const minutes = Number(minutesSel.value || 5);
+      const lang = (langSel.value || "sv").toLowerCase();
 
-    el.gen.onclick = async ()=>{
-      playReady(false);
-      el.audio.src = "";
-      el.story.textContent = "";
-      el.hint.textContent = "Genererar berättelse…";
-      spin(true);
-      el.gen.disabled = true;
+      if (!prompt) {
+        alert("Skriv en prompt först.");
+        return;
+      }
 
-      const base = (el.api.value || API_BASE).replace(/\/$/,'');
-      try{
-        const body = {
-          prompt: el.prompt.value.trim(),
-          minutes: Number(el.minutes.value)||5,
-          level: Number(el.level.value)||3,
-          lang: el.lang.value || "sv"
-        };
-        log({POST:"/api/v1/story", body});
-        const r = await fetch(base + "/api/v1/story", {
-          method:"POST",
-          headers:{ "Content-Type":"application/json" },
+      showSpinner(true);
+      btn.disabled = true;
+      audio.pause();
+      audio.src = "";
+
+      try {
+        const body = { prompt, level, minutes, lang };
+        log(`POST /episodes/generate (${minutes} min, nivå ${level}, ${lang})`);
+
+        const r = await safeFetch(`${API_BASE}/episodes/generate`, {
+          method: "POST",
           body: JSON.stringify(body)
         });
-        const j = await r.json();
-        if(!r.ok || !j.ok){
-          const msg = j?.error?.detail || ("HTTP " + r.status);
-          throw new Error(msg);
+
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(`HTTP ${r.status} – ${text}`);
         }
 
-        el.story.textContent = j.story || "";
-        log("Berättelse klar (" + (j.story?.split(/\s+/).length||0) + " ord)");
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error || "Ok=false");
 
-        if(j.audio){
-          el.hint.textContent = "Renderar ljud…";
-          // sätt direkt – data: url
-          el.audio.src = j.audio;
-          el.audio.oncanplaythrough = ()=>{ playReady(true); el.hint.textContent = "Ljud klart."; };
-          // safety fallback
-          setTimeout(()=>playReady(true), 1200);
-        }else{
-          el.hint.textContent = "Ingen audio returnerades (TTS av eller fel).";
-          log("Ingen audio (TTS av/fel)");
+        document.querySelector("#story").textContent = data.text || "";
+
+        if (data.audio) {
+          audio.src = data.audio;
+          await audio.play().catch(()=>{});
+          log("Ljud klart ✅");
+        } else {
+          log("Ingen audio returnerades (TTS av eller fel).");
         }
-      }catch(e){
-        log("Fel: " + e.message);
-        alert("Fel: " + e.message);
-      }finally{
-        spin(false);
-        el.gen.disabled = false;
+      } catch (e) {
+        alert(`Fel: ${e.message}`);
+        log(`FEL: ${e.message}`);
+      } finally {
+        showSpinner(false);
+        btn.disabled = false;
       }
-    };
+    }
+
+    btn?.addEventListener("click", generate);
+    stopBtn?.addEventListener("click", () => audio.pause());
+
+    checkStatus();
+  })();
   </script>
 </body>
 </html>
