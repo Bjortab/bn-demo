@@ -1,59 +1,147 @@
 <!doctype html>
 <html lang="sv">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BlushNarratives — Core</title>
-  <style>
-    body{background:#0f1115;color:#e9eef5;font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:24px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-    input,select,button,textarea{font-size:16px}
-    textarea{width:100%;min-height:90px;background:#141824;color:#e9eef5;border:1px solid #252938;border-radius:8px;padding:12px}
-    button{background:#e5484d;border:0;color:#fff;padding:10px 14px;border-radius:8px;cursor:pointer}
-    button[disabled]{opacity:.6;cursor:not-allowed}
-    .btn-green{background:#2fbf71}
-    .log{font-family:ui-monospace,Consolas,monospace;background:#0b0d12;border:1px solid #1a2030;border-radius:8px;padding:8px;white-space:pre-wrap}
-    audio{width:100%}
-    .spinner{display:inline-block;width:10px;height:10px;border-radius:50%;background:#8aa0b4;box-shadow:16px 0 0 #8aa0b4,32px 0 0 #8aa0b4;animation:sp 1s infinite ease-in-out}
-    @keyframes sp{0%{opacity:.2} 50%{opacity:1} 100%{opacity:.2}}
-    .muted{opacity:.7}
-  </style>
-</head>
-<body>
-  <h1>BlushNarratives — Core</h1>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>BlushNarratives — Core</title>
+    <style>
+      body { background:#0e0e0e; color:#eee; font:16px/1.5 system-ui, sans-serif; }
+      .wrap { max-width:900px; margin:40px auto; padding:0 16px; }
+      textarea { width:100%; min-height:120px; background:#141414; color:#eee; border:1px solid #333; border-radius:6px; padding:12px; }
+      .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0; }
+      select, button, input { background:#1e1e1e; color:#eee; border:1px solid #333; border-radius:6px; padding:8px 10px; }
+      button.primary { background:#b91c1c; border-color:#b91c1c; }
+      button.good { background:#16a34a; border-color:#16a34a; }
+      .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre-wrap; background:#111; border:1px solid #222; border-radius:6px; padding:10px; margin-top:12px; color:#9ef99e; }
+      .spinner { display:inline-block; width:18px; height:18px; border:2px solid #555; border-top-color:#eee; border-radius:50%; animation:spin 0.9s linear infinite; vertical-align: text-bottom; margin-left:6px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      audio { width:100%; margin:12px 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>BlushNarratives — Core</h1>
 
-  <textarea id="prompt" placeholder="Skriv din prompt..."></textarea>
+      <textarea id="prompt" placeholder="Skriv din prompt…"></textarea>
 
-  <div class="row" style="margin:8px 0">
-    <label>Nivå:
-      <select id="level">
-        <option value="1">1 – mjuk</option>
-        <option value="2">2 – antydande</option>
-        <option value="3" selected>3 – mellan</option>
-        <option value="5">5 – explicit</option>
-      </select>
-    </label>
-    <label>Längd (min):
-      <select id="minutes">
-        <option>3</option><option selected>5</option><option>7</option><option>10</option>
-      </select>
-    </label>
-    <label>Språk:
-      <select id="lang">
-        <option value="sv" selected>Svenska</option>
-        <option value="en">Engelska</option>
-      </select>
-    </label>
-    <button id="go">Generera & lyssna</button>
-    <button id="stop" class="muted">Stoppa röst</button>
-    <span id="busy" class="muted"></span>
-  </div>
+      <div class="row">
+        <label>Nivå:
+          <select id="lvl">
+            <option value="1">1 – snäll</option>
+            <option value="3" selected>3 – mellan</option>
+            <option value="5">5 – explicit</option>
+          </select>
+        </label>
+        <label>Längd (min):
+          <select id="mins">
+            <option>3</option><option selected>5</option><option>8</option><option>10</option>
+          </select>
+        </label>
+        <label>Språk:
+          <select id="lang">
+            <option value="sv" selected>Svenska</option>
+            <option value="en">Engelska</option>
+          </select>
+        </label>
+        <button id="go" class="primary">Generera & lyssna</button>
+        <button id="stop">Stoppa röst</button>
+        <span id="busy" style="display:none" class="spinner"></span>
+      </div>
 
-  <audio id="player" controls preload="none"></audio>
+      <audio id="player" controls></audio>
 
-  <h3>Logg</h3>
-  <div id="log" class="log"></div>
+      <div id="story" style="white-space:pre-wrap;"></div>
 
-  <script src="./app.js"></script>
-</body>
+      <div class="log" id="log"></div>
+
+    </div>
+    <script>
+      // ======= CONFIG =======
+      const API_BASE = 'https://bn-worker.bjorta-bb.workers.dev/api/v1'; // <-- din worker
+
+      const el = {
+        prompt: document.getElementById('prompt'),
+        lvl: document.getElementById('lvl'),
+        mins: document.getElementById('mins'),
+        lang: document.getElementById('lang'),
+        go: document.getElementById('go'),
+        stop: document.getElementById('stop'),
+        busy: document.getElementById('busy'),
+        player: document.getElementById('player'),
+        story: document.getElementById('story'),
+        log: document.getElementById('log'),
+      };
+
+      log(`Status…`);
+      ping();
+
+      el.go.onclick = async () => {
+        try {
+          setBusy(true);
+          el.go.disabled = true;
+          el.go.classList.remove('good');
+          el.player.src = ''; el.player.pause();
+          el.story.textContent = '';
+
+          const payload = {
+            lvl: Number(el.lvl.value),
+            minutes: Number(el.mins.value),
+            lang: el.lang.value,
+            prompt: el.prompt.value || ''
+          };
+          log(`POST /episodes/generate ${JSON.stringify(payload)}`);
+
+          const r = await fetch(`${API_BASE}/episodes/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const data = await r.json();
+
+          if (!data?.ok) throw new Error(data?.error?.detail || 'API error');
+
+          el.story.textContent = data.text || '';
+          if (data.audio_url && !data.tts_failed) {
+            el.player.src = data.audio_url;
+            await el.player.load();
+            el.go.classList.add('good');      // signal att ljudet är klart
+            el.player.play().catch(()=>{});
+          } else {
+            log(`Ingen audio (tts_failed=${data.tts_failed || false})`);
+          }
+        } catch (e) {
+          alert(`Failed to fetch. Se loggen för detaljer.`);
+          log(`FEL: ${String(e)}`);
+        } finally {
+          setBusy(false);
+          el.go.disabled = false;
+        }
+      };
+
+      el.stop.onclick = () => {
+        try { el.player.pause(); el.player.currentTime = 0; } catch {}
+      };
+
+      async function ping() {
+        try {
+          const r = await fetch(`${API_BASE}/status`);
+          const j = await r.json();
+          log(`Status: ${JSON.stringify(j)}`);
+        } catch (e) {
+          log(`Status-fel: ${String(e)}`);
+        }
+      }
+
+      function log(s) {
+        const t = new Date().toLocaleTimeString();
+        el.log.textContent += `[${t}] ${s}\n`;
+        el.log.scrollTop = el.log.scrollHeight;
+      }
+
+      function setBusy(b) {
+        el.busy.style.display = b ? 'inline-block' : 'none';
+      }
+    </script>
+  </body>
 </html>
