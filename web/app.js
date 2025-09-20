@@ -1,6 +1,6 @@
 // Frontend controller — GC v1.4.0
 
-const API_BASE = "https://bn-custom-server.onrender.com";  // Ändra om din worker har annan URL
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev/api/v1";  // Ändra om din worker har annan URL
 
 const $ = (id) => document.getElementById(id);
 const log = (m) => { const d = new Date().toLocaleTimeString(); $("log").textContent += `[${d}] ${m}\n`; };
