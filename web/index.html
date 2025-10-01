@@ -3,26 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BlushNarratives — Core</title>
+  <title>BN – Core</title>
   <style>
-    body { background:#111; color:#eee; font:16px/1.4 system-ui, sans-serif; margin:0; padding:24px; }
-    .row { margin:12px 0; }
-    textarea { width:100%; height:140px; background:#181818; color:#eee; border:1px solid #333; padding:10px; }
-    select, input, button { padding:8px 10px; margin-right:8px; background:#181818; color:#eee; border:1px solid #333; }
-    button#go { background:#c21; border-color:#c21; }
-    pre#log { background:#000; color:#90ee90; padding:10px; height:180px; overflow:auto; border:1px solid #333; }
+    body { background:#0e0e0e; color:#eee; font:16px/1.45 system-ui,sans-serif; margin:0; padding:24px; }
+    h1 { margin-top:0; }
+    .row { margin:12px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    textarea { width:100%; height:160px; background:#151515; color:#eee; border:1px solid #333; padding:10px; border-radius:6px; }
+    select, input, button { padding:8px 12px; background:#151515; color:#eee; border:1px solid #333; border-radius:6px; }
+    button#go { background:#d02828; border-color:#d02828; cursor:pointer; }
+    button#status { background:#2b7; border-color:#2b7; cursor:pointer; }
+    pre#log { background:#000; color:#9f9; padding:10px; border:1px solid #333; height:220px; overflow:auto; border-radius:6px; }
     audio { width:100%; margin-top:10px; }
+    .hint { opacity:.7; font-size:14px; }
   </style>
 </head>
 <body>
-  <h1>BlushNarratives — Core</h1>
+  <h1>BlushNarratives – Core</h1>
 
   <div class="row">
     <textarea id="prompt" placeholder="Skriv din prompt…"></textarea>
   </div>
 
   <div class="row">
-    Nivå:
+    <label for="level">Nivå:</label>
     <select id="level">
       <option value="1">1 – lätt</option>
       <option value="2">2 – enkel</option>
@@ -31,34 +34,32 @@
       <option value="5">5 – explicit</option>
     </select>
 
-    Längd (min):
+    <label for="minutes">Längd (min):</label>
     <input id="minutes" type="number" min="1" max="20" value="5"/>
 
-    Språk:
+    <label for="lang">Språk:</label>
     <select id="lang">
       <option value="sv" selected>Svenska</option>
       <option value="en">Engelska</option>
     </select>
 
-    <button id="status" type="button">Status</button>
-    <button id="go" type="button">Generera & lyssna</button>
+    <button id="status" type="button" onclick="window.statusPing?.()">Status</button>
+    <button id="go" type="button" onclick="window.generate?.()">Generera & lyssna</button>
   </div>
 
   <audio id="player" controls></audio>
-
+  <div class="hint">Tips: öppna DevTools → Console. Allt som händer loggas nedan.</div>
   <pre id="log"></pre>
 
-  <!-- Viktigt: app.js laddas sist så att elementen finns när event-lyssnarna sätts -->
+  <!-- Viktigt: ladda JS sist -->
   <script src="./app.js"></script>
-  <!-- Snabb sanity-check: skriv en rad i loggen när app.js verkligen laddats -->
   <script>
-    if (window && typeof statusPing === "function") {
-      const t = new Date().toLocaleTimeString();
-      document.getElementById("log").textContent += `[${t}] Frontend redo (app.js laddad)\n`;
-    } else {
-      console.error("app.js laddades inte – kontrollera sökvägen.");
-      alert("app.js laddades inte – kontrollera <script src='./app.js'> i index.html");
-    }
+    // Sanity: skriv en rad så vi vet att app.js finns och f-namnen existerar
+    const t = new Date().toLocaleTimeString();
+    const ok = (typeof window.statusPing === "function" && typeof window.generate === "function");
+    const el = document.getElementById("log");
+    el.textContent += `[${t}] Frontend redo. app.js ${ok ? 'OK' : 'SAKNAS!'}\n`;
+    if (!ok) alert("app.js laddades inte eller saknar statusPing()/generate(). Kontrollera sökvägen & filerna.");
   </script>
 </body>
 </html>
