@@ -90,4 +90,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#go").addEventListener("click", generate);
   // auto-status vid start är skönt:
   statusPing();
+  // Exponera för snabb manuell test i konsolen
+window.statusPing = statusPing;
+window.generate = generate;
 });
