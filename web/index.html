@@ -1,65 +1,35 @@
 <!doctype html>
 <html lang="sv">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BN – Core</title>
-  <style>
-    body { background:#0e0e0e; color:#eee; font:16px/1.45 system-ui,sans-serif; margin:0; padding:24px; }
-    h1 { margin-top:0; }
-    .row { margin:12px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    textarea { width:100%; height:160px; background:#151515; color:#eee; border:1px solid #333; padding:10px; border-radius:6px; }
-    select, input, button { padding:8px 12px; background:#151515; color:#eee; border:1px solid #333; border-radius:6px; }
-    button#go { background:#d02828; border-color:#d02828; cursor:pointer; }
-    button#status { background:#2b7; border-color:#2b7; cursor:pointer; }
-    pre#log { background:#000; color:#9f9; padding:10px; border:1px solid #333; height:220px; overflow:auto; border-radius:6px; }
-    audio { width:100%; margin-top:10px; }
-    .hint { opacity:.7; font-size:14px; }
-  </style>
+<meta charset="utf-8" />
+<title>BlushNarratives — Core</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <h1>BlushNarratives – Core</h1>
+  <main>
+    <h1>BlushNarratives — Core</h1>
+    <textarea id="prompt" placeholder="Skriv din prompt..." rows="6" style="width:90%;"></textarea>
+    <div>
+      <label for="lvl">Nivå:</label>
+      <select id="lvl"><option value="3">3 - mellan</option><option value="5">5 - explicit</option></select>
+      <label for="mins">Längd (min):</label>
+      <select id="mins"><option>1</option><option selected>5</option></select>
+      <label for="lang">Språk:</label>
+      <select id="lang"><option selected>sv</option><option>en</option></select>
+      <button id="status">Status</button>
+      <button id="go" class="red">Generera & lyssna</button>
+    </div>
 
-  <div class="row">
-    <textarea id="prompt" placeholder="Skriv din prompt…"></textarea>
-  </div>
+    <div style="margin-top:12px">
+      <div id="spinner" style="display:none">Genererar<span id="dots">...</span></div>
+      <div><strong>Genererad text:</strong></div>
+      <pre id="result" style="background:#111;color:#0f0;padding:10px;min-height:120px;"></pre>
+    </div>
 
-  <div class="row">
-    <label for="level">Nivå:</label>
-    <select id="level">
-      <option value="1">1 – lätt</option>
-      <option value="2">2 – enkel</option>
-      <option value="3" selected>3 – mellan</option>
-      <option value="4">4 – svår</option>
-      <option value="5">5 – explicit</option>
-    </select>
+    <div id="log" style="background:#000;color:#0f0;margin-top:8px;padding:8px;font-family:monospace;min-height:60px;overflow:auto"></div>
+  </main>
 
-    <label for="minutes">Längd (min):</label>
-    <input id="minutes" type="number" min="1" max="20" value="5"/>
-
-    <label for="lang">Språk:</label>
-    <select id="lang">
-      <option value="sv" selected>Svenska</option>
-      <option value="en">Engelska</option>
-    </select>
-
-    <button id="status" type="button" onclick="window.statusPing?.()">Status</button>
-    <button id="go" type="button" onclick="window.generate?.()">Generera & lyssna</button>
-  </div>
-
-  <audio id="player" controls></audio>
-  <div class="hint">Tips: öppna DevTools → Console. Allt som händer loggas nedan.</div>
-  <pre id="log"></pre>
-
-  <!-- Viktigt: ladda JS sist -->
-  <script src="./app.js"></script>
-  <script>
-    // Sanity: skriv en rad så vi vet att app.js finns och f-namnen existerar
-    const t = new Date().toLocaleTimeString();
-    const ok = (typeof window.statusPing === "function" && typeof window.generate === "function");
-    const el = document.getElementById("log");
-    el.textContent += `[${t}] Frontend redo. app.js ${ok ? 'OK' : 'SAKNAS!'}\n`;
-    if (!ok) alert("app.js laddades inte eller saknar statusPing()/generate(). Kontrollera sökvägen & filerna.");
-  </script>
+<script src="app.js"></script>
 </body>
 </html>
