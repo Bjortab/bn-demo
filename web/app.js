@@ -1,121 +1,74 @@
-// BN – app controller (GC v1.9.1)
-
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev"; // <-- din Worker
-const AUTH_TOKEN = localStorage.getItem("BN_AUTH_TOKEN") || ""; // valfritt
-
-// Mini helpers
-const $ = (sel) => document.querySelector(sel);
-const log = (m) => {
-  const t = new Date().toLocaleTimeString();
-  const el = $("#log");
-  el.textContent += `[${t}] ${m}\n`;
-  el.scrollTop = el.scrollHeight;
+// web/app.js
+const $ = id => document.getElementById(id);
+const log = (t) => {
+  const el = $('log'); el.textContent += `[${new Date().toLocaleTimeString()}] ${t}\n`; el.scrollTop = el.scrollHeight;
 };
 
 async function statusPing() {
-  log("Kollar status…");
   try {
-    const res = await fetch(`${API_BASE}/api/v1/status`, {
-      method: "GET",
-      mode: "cors",
-      credentials: "omit",
-      headers: AUTH_TOKEN ? { "Authorization": AUTH_TOKEN } : {}
-    });
+    const res = await fetch('/api/v1/status');
     const j = await res.json();
-    log(`STATUS: ${JSON.stringify(j)}`);
-  } catch (e) {
-    log(`STATUS FEL: ${e.message}`);
-    console.error(e);
-  }
+    log('STATUS: ' + JSON.stringify(j));
+    return j;
+  } catch (e) { log('Status-fel: ' + e.message); return null; }
+}
+
+let spinnerInterval = null;
+function startSpinner() {
+  $('spinner').style.display = 'inline';
+  let dots = 0;
+  spinnerInterval = setInterval(()=> {
+    dots = (dots+1)%4;
+    $('dots').textContent = '.'.repeat(dots);
+  }, 400);
+}
+function stopSpinner() {
+  if (spinnerInterval) clearInterval(spinnerInterval);
+  spinnerInterval = null;
+  $('spinner').style.display = 'none';
+  $('dots').textContent = '...';
 }
 
 async function generate() {
-  const prompt  = $("#prompt")?.value?.trim() || "";
-  const level   = parseInt($("#level")?.value || "3", 10);
-  const minutes = parseInt($("#minutes")?.value || "5", 10);
-  const lang    = $("#lang")?.value || "sv";
+  const btn = $('go');
+  btn.disabled = true;
+  startSpinner();
+  $('result').textContent = '';
 
-  if (!prompt) { alert("Skriv en prompt…"); return; }
+  const prompt = $('prompt').value.trim();
+  if (!prompt) { alert('Skriv en prompt först'); stopSpinner(); btn.disabled = false; return; }
 
-  const btn = $("#go");
-  if (btn) btn.disabled = true;
-
-  log(`Skickar POST → /episodes/generate (lvl=${level}, min=${minutes}, lang=${lang})`);
+  const payload = { prompt, lvl: parseInt($('lvl').value), minutes: parseInt($('mins').value), lang: $('lang').value };
 
   try {
-    const res = await fetch(`${API_BASE}/api/v1/episodes/generate`, {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: {
-        "Content-Type": "application/json",
-        ...(AUTH_TOKEN ? { "Authorization": AUTH_TOKEN } : {})
-      },
-      body: JSON.stringify({ prompt, lvl: level, minutes, lang })
+    log('Skickar POST -> /api/v1/episodes/generate (' + JSON.stringify({lvl:payload.lvl, minutes:payload.minutes, lang:payload.lang}) + ')');
+    const res = await fetch('/api/v1/episodes/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-
-    // Visa preflight/headers-problem direkt
-    log(`HTTP: ${res.status} ${res.statusText}`);
-    if (!res.ok) {
-      const txt = await res.text().catch(()=> "");
-      log(`BODY: ${txt.slice(0, 300)}`);
-      throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    if (!j.ok) {
+      log('RESP ERROR: ' + JSON.stringify(j));
+      alert('Fel: ' + (j.detail || j.error || 'okänt'));
+    } else {
+      log('HTTP: ' + res.status + ' OK');
+      $('result').textContent = j.text || '(ingen text)';
+      log('RESP: ' + JSON.stringify({ok:j.ok, cached:j.cached, r2Key:j.r2Key}));
     }
-
-    const data = await res.json();
-    log(`RESP: ${JSON.stringify({
-      ok: data.ok ?? true,
-      cached: data.cached,
-      via: data.via,
-      r2Key: data.r2Key || data.r2_key || null
-    })}`);
-
-    // Spelare: stöd både base64 och signed URL
-    const player = $("#player");
-    if (!player) return;
-
-    // 1) Debug worker (v1.6.2-debug): { url: signed }
-    if (data.url) {
-      player.src = data.url;
-      await player.play().catch(()=>{});
-      return;
-    }
-
-    // 2) Nyare worker: { audio: { audio_base64, mime } }
-    if (data.audio?.audio_base64) {
-      const mime = data.audio?.mime || "audio/mpeg";
-      player.src = `data:${mime};base64,${data.audio.audio_base64}`;
-      await player.play().catch(()=>{});
-      return;
-    }
-
-    // 3) Vissa svar kan returnera { audio: { format, base64 } }
-    if (data.audio?.base64) {
-      const fmt = data.audio?.format || "mp3";
-      player.src = `data:audio/${fmt};base64,${data.audio.base64}`;
-      await player.play().catch(()=>{});
-      return;
-    }
-
-    log("Ingen audio i svaret – visar bara text i loggen.");
-    if (data.text) log(`TEXT: ${data.text.slice(0, 240)}…`);
-
   } catch (e) {
-    log(`FEL: ${e.message}`);
-    console.error(e);
-    alert("Failed to fetch – se loggen (och Network-fliken) för detaljer.");
+    log('Generera-fel: ' + e.message);
+    alert('Failed to fetch. Se loggen för detaljer.');
   } finally {
-    if (btn) btn.disabled = false;
+    stopSpinner();
+    btn.disabled = false;
   }
 }
 
-// Koppla event listeners (och ha inline onclick i HTML som fallback)
-window.addEventListener("DOMContentLoaded", () => {
-  $("#status")?.addEventListener("click", statusPing);
-  $("#go")?.addEventListener("click", generate);
-  statusPing(); // auto
+// wire up
+window.addEventListener('DOMContentLoaded', () => {
+  $('status').addEventListener('click', statusPing);
+  $('go').addEventListener('click', generate);
+  // auto status ping
+  statusPing();
 });
-
-// Exponera för inline onclick + devtools
-window.statusPing = statusPing;
-window.generate   = generate;
