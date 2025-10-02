@@ -1,99 +1,119 @@
-// GC v1.10 — BN Core frontend
+// GC v2.0 – frontend-kontroller
+// Viktigt: ändra API_BASE till din worker-URL.
+const API_BASE = "https://bn-worker.bjorta-bb.workers.dev"; // <- BYT vid behov
 
-const API_BASE = "https://bn-worker.bjorta-bb.workers.dev"; // din worker
 const $ = (id) => document.getElementById(id);
-const log = (m) => { const d = new Date().toLocaleTimeString(); $("log").textContent += `[${d}] ${m}\n`; };
+const log = (m) => {
+  const t = new Date().toLocaleTimeString();
+  const line = `[${t}] ${m}\n`;
+  const el = $("log");
+  el.textContent += line;
+  el.scrollTop = el.scrollHeight;
+};
 
+// enkel rullande ... spinner
 let spinTimer = null;
-function startSpinner(btn) {
-  stopSpinner();
-  const orig = btn.dataset.origText || btn.textContent;
-  btn.dataset.origText = orig;
+function startSpin() {
+  stopSpin();
+  const s = $("spin");
   let dots = 0;
   spinTimer = setInterval(() => {
     dots = (dots + 1) % 4;
-    btn.textContent = orig + " " + ".".repeat(dots);
-  }, 350);
+    s.textContent = ".".repeat(dots);
+  }, 300);
 }
-function stopSpinner(btn = $("go")) {
+function stopSpin() {
+  const s = $("spin");
   if (spinTimer) clearInterval(spinTimer);
-  spinTimer = null;
-  if (btn && btn.dataset.origText) btn.textContent = btn.dataset.origText;
+  s.textContent = "";
 }
 
 async function statusPing() {
-  log("Kollar status…");
   try {
-    const r = await fetch(`${API_BASE}/api/v1/status`, { cache: "no-store" });
+    log("Kollar status…");
+    const r = await fetch(`${API_BASE}/api/v1/status`, { method: "GET" });
     const j = await r.json();
     log(`STATUS: ${JSON.stringify(j)}`);
   } catch (e) {
-    log(`Status-fel: ${e.message}`);
+    log(`Status-fel: ${e.message || e}`);
+    alert("Failed to fetch. Se loggen för detaljer.");
   }
-}
-
-// visar texten i en <pre id="story">
-function showStory(txt) {
-  const pre = $("story");
-  if (pre) pre.textContent = txt || "";
 }
 
 async function generate() {
   const btn = $("go");
-  const prompt = $("prompt").value.trim();
-  const lvl = parseInt($("level").value, 10);
-  const mins = parseInt($("minutes").value, 10);
-  const lang = $("lang").value;
-
-  if (!prompt) { alert("Skriv en prompt."); return; }
-
-  btn.disabled = true;
-  startSpinner(btn);
-  showStory("");
-  log(`Skickar POST → /episodes/generate (lvl=${lvl}, min=${mins}, lang=${lang})`);
+  const storyBox = $("story");
+  const player = $("player");
 
   try {
-    const resp = await fetch(`${API_BASE}/api/v1/episodes/generate`, {
+    const prompt = $("prompt").value.trim();
+    const lvl = parseInt($("level").value, 10) || 3;
+    const mins = parseInt($("minutes").value, 10) || 5;
+    const lang = $("lang").value || "sv";
+    const variant = $("variant").checked;
+
+    if (!prompt) {
+      alert("Skriv en prompt.");
+      return;
+    }
+
+    btn.disabled = true;
+    $("goText").textContent = "Genererar…";
+    startSpin();
+    storyBox.textContent = ""; // clear text
+
+    const body = { lvl, mins, lang, prompt };
+    // “Variant” ger ett seed så samma prompt kan bli annorlunda
+    if (variant) body.seed = Date.now();
+
+    log(`POST /episodes/generate (lvl=${lvl}, min=${mins}, lang=${lang}${variant ? ", variant" : ""})`);
+
+    const r = await fetch(`${API_BASE}/episodes/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, lvl, minutes: mins, lang })
+      body: JSON.stringify(body),
     });
 
-    log(`HTTP: ${resp.status} ${resp.statusText}`);
-    if (!resp.ok) {
-      const errText = await resp.text().catch(()=> "");
-      throw new Error(`Serverfel ${resp.status}: ${errText}`);
+    log(`HTTP: ${r.status} ${r.statusText}`);
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      throw new Error(`Generate ${r.status}: ${text.slice(0, 240)}`);
     }
 
-    const data = await resp.json();
-    log(`RESP: ${JSON.stringify({ ok: data.ok, cached: data.cached, r2Key: data.r2Key || null })}`);
+    const data = await r.json();
+    // { ok, cached, text, audio: { format, base64 }, r2Key? }
+    if (data.text) {
+      storyBox.textContent = data.text;
+      log(`TEXT len=${data.text.length}${data.cached ? " (cache)" : " (new)"}`);
+    } else {
+      log("Ingen text mottagen.");
+    }
 
-    // visa texten
-    if (data.text) showStory(data.text);
-
-    // spela upp TTS om vi fick med ljud
-    if (data.audio && data.audio.format && data.audio.base64) {
+    if (data.audio && data.audio.base64 && data.audio.format) {
       const src = `data:audio/${data.audio.format};base64,${data.audio.base64}`;
-      const player = $("player");
       player.src = src;
       try { await player.play(); } catch { /* ignore */ }
+      log(`Audio: inline base64 ${data.cached ? "(cache)" : "(new)"}`);
+    } else {
+      log("Inget audio mottaget.");
     }
   } catch (e) {
-    log(`Status-fel: ${e.message}`);
+    log(`Fel: ${e.message || e}`);
     alert("Failed to fetch. Se loggen för detaljer.");
   } finally {
-    stopSpinner(btn);
+    stopSpin();
+    $("goText").textContent = "Generera & lyssna";
     btn.disabled = false;
   }
 }
 
-// wire-up
+// Wire-up
 window.addEventListener("DOMContentLoaded", () => {
   $("status").addEventListener("click", statusPing);
   $("go").addEventListener("click", generate);
-  statusPing(); // initial check
+  // auto-status vid start
+  statusPing();
+  // exponera för manuella tester
+  window.statusPing = statusPing;
+  window.generate = generate;
 });
-
-// Exponera för konsoltest
-window.statusPing = statusPing;
-window.generate = generate;
