@@ -1,35 +1,53 @@
 <!doctype html>
 <html lang="sv">
 <head>
-<meta charset="utf-8" />
-<title>BlushNarratives — Core</title>
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="stylesheet" href="styles.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BN — Core</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main>
+  <main class="app">
     <h1>BlushNarratives — Core</h1>
-    <textarea id="prompt" placeholder="Skriv din prompt..." rows="6" style="width:90%;"></textarea>
-    <div>
-      <label for="lvl">Nivå:</label>
-      <select id="lvl"><option value="3">3 - mellan</option><option value="5">5 - explicit</option></select>
-      <label for="mins">Längd (min):</label>
-      <select id="mins"><option>1</option><option selected>5</option></select>
-      <label for="lang">Språk:</label>
-      <select id="lang"><option selected>sv</option><option>en</option></select>
-      <button id="status">Status</button>
-      <button id="go" class="red">Generera & lyssna</button>
+
+    <textarea id="prompt" rows="6" placeholder="Skriv din prompt…"></textarea>
+
+    <div class="controls">
+      <label>Nivå:
+        <select id="level">
+          <option value="1">1 – lätt</option>
+          <option value="2">2 – enkel</option>
+          <option value="3" selected>3 – mellan</option>
+          <option value="4">4 – svår</option>
+          <option value="5">5 – explicit</option>
+        </select>
+      </label>
+
+      <label>Längd (min):
+        <input id="minutes" type="number" min="1" max="20" value="5" />
+      </label>
+
+      <label>Språk:
+        <select id="lang">
+          <option value="sv" selected>Svenska</option>
+          <option value="en">Engelska</option>
+        </select>
+      </label>
+
+      <button id="status" type="button">Status</button>
+      <button id="go" type="button">Generera & lyssna</button>
+      <span id="spinner" class="spinner" aria-live="polite" style="display:none">Genererar<span id="dots">.</span></span>
     </div>
 
-    <div style="margin-top:12px">
-      <div id="spinner" style="display:none">Genererar<span id="dots">...</span></div>
-      <div><strong>Genererad text:</strong></div>
-      <pre id="result" style="background:#111;color:#0f0;padding:10px;min-height:120px;"></pre>
+    <div class="out">
+      <h3>Genererad text</h3>
+      <pre id="text"></pre>
+      <audio id="player" controls></audio>
     </div>
 
-    <div id="log" style="background:#000;color:#0f0;margin-top:8px;padding:8px;font-family:monospace;min-height:60px;overflow:auto"></div>
+    <pre id="log" class="log" aria-live="polite"></pre>
   </main>
 
-<script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
